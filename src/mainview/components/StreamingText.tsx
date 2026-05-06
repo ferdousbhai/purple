@@ -8,7 +8,7 @@ export function StreamingText({ text }: StreamingTextProps) {
   return (
     <div className="whitespace-pre-wrap text-sm leading-relaxed">
       <CodeBlockRenderer text={text} />
-      <span className="animate-pulse text-accent-light">|</span>
+      <span className="inline-block w-[2px] h-[14px] bg-neon-cyan ml-0.5 animate-glow-pulse align-middle" />
     </div>
   );
 }

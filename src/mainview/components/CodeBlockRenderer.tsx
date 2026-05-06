@@ -2,13 +2,17 @@ interface CodeBlockRendererProps {
   text: string;
 }
 
+const FENCED_CODE_BLOCK = /(```[\s\S]*?```|```[\s\S]*$)/g;
+
 function parseCodeBlock(raw: string): string {
-  const lines = raw.split("\n");
-  return lines.slice(1).join("\n").replace(/```$/, "").trim();
+  return raw
+    .replace(/^```[^\n]*\n?/, "")
+    .replace(/```$/, "")
+    .trim();
 }
 
 export function CodeBlockRenderer({ text }: CodeBlockRendererProps) {
-  const parts = text.split(/(```[\s\S]*?```|```[\s\S]*$)/g).filter(Boolean);
+  const parts = text.split(FENCED_CODE_BLOCK).filter(Boolean);
 
   return (
     <>
@@ -17,7 +21,9 @@ export function CodeBlockRenderer({ text }: CodeBlockRendererProps) {
           return (
             <pre
               key={i}
-              className="my-2 p-3 bg-black/30 rounded text-green-300 font-mono text-xs overflow-x-auto"
+              className="my-2 p-3 bg-black/40 rounded border border-neon-lime/10
+                text-neon-lime/80 font-mono text-xs overflow-x-auto
+                shadow-[inset_0_0_20px_#39ff1408]"
             >
               {parseCodeBlock(part)}
             </pre>

@@ -199,14 +199,8 @@ async function streamClaude(messages: Message[]): Promise<void> {
       { signal: abort.signal },
     );
 
-    for await (const event of stream) {
-      if (
-        event.type === "content_block_delta" &&
-        event.delta.type === "text_delta"
-      ) {
-        rpc.send.streamDelta({ delta: event.delta.text });
-      }
-    }
+    stream.on("text", (delta) => rpc.send.streamDelta({ delta }));
+    await stream.done();
 
     rpc.send.streamDone({});
   } catch (err) {

@@ -19,21 +19,28 @@ export function PlaybackControls({
       {isPlaying ? (
         <button
           onClick={onStop}
-          className="flex items-center gap-1.5 px-3 py-1 text-sm bg-red-600/80 hover:bg-red-600 rounded transition-colors"
+          className="group flex items-center gap-1.5 px-3 py-1 text-xs font-mono font-medium
+            bg-neon-magenta/15 hover:bg-neon-magenta/25 text-neon-magenta
+            border border-neon-magenta/30 hover:border-neon-magenta/60
+            rounded transition-all hover:shadow-[0_0_12px_#ff2d9540]"
           title="Stop (Ctrl+.)"
         >
-          <span className="inline-block w-2.5 h-2.5 bg-white rounded-sm" />
-          Stop
+          <span className="inline-block w-2 h-2 bg-neon-magenta rounded-[1px]" />
+          STOP
         </button>
       ) : (
         <button
           onClick={onPlay}
           disabled={isLoading}
-          className="flex items-center gap-1.5 px-3 py-1 text-sm bg-green-600/80 hover:bg-green-600 rounded transition-colors disabled:opacity-50"
+          className="group flex items-center gap-1.5 px-3 py-1 text-xs font-mono font-medium
+            bg-neon-lime/10 hover:bg-neon-lime/20 text-neon-lime
+            border border-neon-lime/30 hover:border-neon-lime/60
+            rounded transition-all hover:shadow-[0_0_12px_#39ff1440]
+            disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:shadow-none"
           title="Play (Ctrl+Enter)"
         >
-          <span className="inline-block w-0 h-0 border-l-[8px] border-l-white border-y-[5px] border-y-transparent" />
-          {isLoading ? "Loading..." : "Play"}
+          <span className="inline-block w-0 h-0 border-l-[7px] border-l-current border-y-[4px] border-y-transparent" />
+          {isLoading ? "INIT..." : "PLAY"}
         </button>
       )}
     </div>

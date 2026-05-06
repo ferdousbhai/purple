@@ -3,19 +3,22 @@ import { useStrudel } from "./useStrudel";
 import type { PlaybackState, EvalResult } from "../../shared/types";
 
 export function usePlayback() {
-  const { isReady, init, evaluate, hush } = useStrudel();
+  const { isReady, acquireAudioContext, init, evaluate, hush } = useStrudel();
   const [playbackState, setPlaybackState] = useState<PlaybackState>("stopped");
   const [error, setError] = useState<string | null>(null);
 
+  // Call this synchronously from a click/keypress handler so AudioContext
+  // is created within the user gesture's call stack.
   const initAudio = useCallback(async () => {
+    const ctx = acquireAudioContext(); // sync — must be in gesture
     try {
-      await init();
+      await init(ctx);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setError(`Audio init failed: ${message}`);
       setPlaybackState("error");
     }
-  }, [init]);
+  }, [acquireAudioContext, init]);
 
   const play = useCallback(
     async (code: string): Promise<EvalResult> => {

@@ -3,6 +3,13 @@ import { extractPattern } from "../../shared/pattern-extractor";
 import { electroview, setStreamHandler } from "../rpc";
 import type { Message } from "../../shared/types";
 
+interface StreamSession {
+  assistantId: string;
+  baseMessages: Message[];
+  resolve?: () => void;
+  text: string;
+}
+
 export function useChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [streamingText, setStreamingText] = useState("");
@@ -10,10 +17,7 @@ export function useChat() {
   const messagesRef = useRef<Message[]>([]);
   const busyRef = useRef(false);
   const idCounter = useRef(0);
-  const resolveStreamRef = useRef<(() => void) | null>(null);
-  const fullTextRef = useRef("");
-  const assistantIdRef = useRef("");
-  const updatedRef = useRef<Message[]>([]);
+  const streamRef = useRef<StreamSession | null>(null);
 
   function nextId(): string {
     return String(++idCounter.current);
@@ -22,22 +26,27 @@ export function useChat() {
   useEffect(() => {
     setStreamHandler({
       onDelta: (delta) => {
-        fullTextRef.current += delta;
-        const text = fullTextRef.current;
-        setStreamingText(text);
+        const stream = streamRef.current;
+        if (!stream) return;
+
+        stream.text += delta;
+        setStreamingText(stream.text);
         setMessages([
-          ...updatedRef.current,
+          ...stream.baseMessages,
           {
-            id: assistantIdRef.current,
+            id: stream.assistantId,
             role: "assistant",
-            content: text,
+            content: stream.text,
           },
         ]);
       },
-      onDone: () => resolveStreamRef.current?.(),
+      onDone: () => streamRef.current?.resolve?.(),
       onError: (error) => {
-        fullTextRef.current = `Error: ${error}`;
-        resolveStreamRef.current?.();
+        const stream = streamRef.current;
+        if (!stream) return;
+
+        stream.text = `Error: ${error}`;
+        stream.resolve?.();
       },
     });
 
@@ -46,7 +55,7 @@ export function useChat() {
 
   const abortStream = useCallback(() => {
     electroview.rpc!.request.abortStream({});
-    resolveStreamRef.current?.();
+    streamRef.current?.resolve?.();
   }, []);
 
   const sendMessage = useCallback(
@@ -57,22 +66,33 @@ export function useChat() {
       const userMsg: Message = { id: nextId(), role: "user", content: text };
       const updated = [...messagesRef.current, userMsg];
       messagesRef.current = updated;
-      updatedRef.current = updated;
       setMessages([...updated]);
       setIsStreaming(true);
       setStreamingText("");
-      fullTextRef.current = "";
-      assistantIdRef.current = nextId();
+      streamRef.current = {
+        assistantId: nextId(),
+        baseMessages: updated,
+        text: "",
+      };
 
       await new Promise<void>((resolve) => {
-        resolveStreamRef.current = resolve;
-        electroview.rpc!.request.startStream({ messages: updated });
+        if (streamRef.current) streamRef.current.resolve = resolve;
+        electroview
+          .rpc!.request.startStream({ messages: updated })
+          .catch((err: unknown) => {
+            const stream = streamRef.current;
+            if (!stream) return;
+
+            stream.text = `Error: ${err instanceof Error ? err.message : String(err)}`;
+            stream.resolve?.();
+          });
       });
 
-      const fullText = fullTextRef.current;
+      const stream = streamRef.current;
+      const fullText = stream?.text ?? "";
       const pattern = extractPattern(fullText);
       const assistantMsg: Message = {
-        id: assistantIdRef.current,
+        id: stream?.assistantId ?? nextId(),
         role: "assistant",
         content: fullText,
         pattern: pattern || undefined,
@@ -83,7 +103,7 @@ export function useChat() {
       setStreamingText("");
       setIsStreaming(false);
       busyRef.current = false;
-      resolveStreamRef.current = null;
+      streamRef.current = null;
 
       return pattern;
     },

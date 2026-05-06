@@ -23,7 +23,6 @@ export function EditorPanel({
   onPlay,
   onStop,
 }: EditorPanelProps) {
-  // Ref keeps code in sync for keymap callbacks (closures capture stale props)
   const codeRef = useRef(code);
   codeRef.current = code;
 
@@ -50,11 +49,14 @@ export function EditorPanel({
   );
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 py-2 border-b border-white/10">
-        <span className="text-sm font-medium text-gray-400">
-          Pattern Editor
-        </span>
+    <div className="flex flex-col h-full bg-surface-light/50 relative">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-neon-cyan/10 bg-surface/60">
+        <div className="flex items-center gap-2">
+          <div className="w-1.5 h-1.5 rounded-full bg-neon-cyan/60" />
+          <span className="text-[11px] font-mono font-medium text-neon-cyan/70 tracking-widest uppercase">
+            Pattern Editor
+          </span>
+        </div>
         <PlaybackControls
           playbackState={playbackState}
           onPlay={handlePlay}
@@ -79,9 +81,14 @@ export function EditorPanel({
       </div>
 
       {error && playbackState === "error" && (
-        <div className="px-4 py-2 text-xs text-red-400 bg-red-900/20 border-t border-red-900/30 truncate">
+        <div className="px-4 py-2 text-xs font-mono text-neon-magenta bg-neon-magenta/10 border-t border-neon-magenta/20 truncate border-glow-magenta">
+          <span className="text-neon-magenta/60 mr-2">ERR</span>
           {error}
         </div>
+      )}
+
+      {playbackState === "playing" && (
+        <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-neon-lime/0 via-neon-lime/60 to-neon-lime/0 animate-glow-pulse" />
       )}
     </div>
   );

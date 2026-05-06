@@ -3,62 +3,73 @@ import type { EvalResult } from "../../shared/types";
 
 export function useStrudel() {
   const [isReady, setIsReady] = useState(false);
-  const strudelRef = useRef<typeof import("@strudel/web") | null>(null);
+  const strudelRef = useRef<typeof import("@strudel/web/web.mjs") | null>(null);
   const initPromiseRef = useRef<Promise<void> | null>(null);
-  const initErrorRef = useRef<string | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
-  const init = useCallback(async () => {
-    if (strudelRef.current) return;
-    // If already initializing, wait for that attempt instead of bailing out
-    if (initPromiseRef.current) return initPromiseRef.current;
-
-    initErrorRef.current = null;
-
-    const promise = (async () => {
-      console.log("[Strudel] Starting init...");
-      const strudel = await import("@strudel/web");
-      console.log("[Strudel] Module imported");
-
-      // Pre-create AudioContext before initStrudel() to bypass initAudioOnFirstClick()
-      const ctx = new AudioContext();
-      console.log("[Strudel] AudioContext state:", ctx.state);
-      await ctx.resume();
-      console.log("[Strudel] AudioContext resumed:", ctx.state);
-      strudel.setAudioContext(ctx);
-
-      await strudel.initStrudel({
-        prebake: () =>
-          strudel.samples("github:tidalcycles/Dirt-Samples/master"),
-      });
-      console.log("[Strudel] initStrudel done");
-
-      await strudel.initAudio();
-      console.log("[Strudel] initAudio done");
-
-      strudelRef.current = strudel;
-      setIsReady(true);
-    })();
-
-    initPromiseRef.current = promise;
-
-    try {
-      await promise;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      initErrorRef.current = message;
-      console.error("[Strudel] Init failed:", message);
-      initPromiseRef.current = null; // Allow retry
-      throw err;
+  // Must be called synchronously in a user gesture (click/keypress) handler
+  // so the browser allows AudioContext creation and resume.
+  const acquireAudioContext = useCallback(() => {
+    if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
+      audioCtxRef.current.resume().catch(() => {});
+      return audioCtxRef.current;
     }
+
+    const ctx = new AudioContext();
+    audioCtxRef.current = ctx;
+    ctx.resume().catch(() => {});
+    console.log("[Strudel] AudioContext created in gesture, state:", ctx.state);
+    return ctx;
   }, []);
+
+  const init = useCallback(
+    async (ctx: AudioContext) => {
+      if (strudelRef.current) return;
+      if (initPromiseRef.current) return initPromiseRef.current;
+
+      const promise = (async () => {
+        console.log("[Strudel] Starting init...");
+        const strudel = await import("@strudel/web/web.mjs");
+        console.log("[Strudel] Module imported");
+
+        // Ensure context is running (resume may have completed async)
+        if (ctx.state === "suspended") await ctx.resume();
+        console.log("[Strudel] AudioContext state:", ctx.state);
+
+        await strudel.initStrudel({
+          audioContext: ctx,
+          prebake: () =>
+            strudel.samples("github:tidalcycles/Dirt-Samples/master"),
+        });
+        console.log("[Strudel] initStrudel done");
+
+        await strudel.initAudio();
+        console.log("[Strudel] initAudio done");
+
+        strudelRef.current = strudel;
+        setIsReady(true);
+      })();
+
+      initPromiseRef.current = promise;
+
+      try {
+        await promise;
+      } catch (err) {
+        console.error("[Strudel] Init failed:", err);
+        initPromiseRef.current = null; // Allow retry
+        throw err;
+      }
+    },
+    [],
+  );
 
   const evaluate = useCallback(async (code: string): Promise<EvalResult> => {
     const strudel = strudelRef.current;
     if (!strudel) {
-      const reason = initErrorRef.current
-        ? `Audio engine failed to initialize: ${initErrorRef.current}`
-        : "Audio engine not initialized — try clicking Play to retry";
-      return { ok: false, error: reason };
+      return {
+        ok: false,
+        error: "Audio engine not initialized — click Play to retry",
+      };
     }
 
     try {
@@ -77,5 +88,5 @@ export function useStrudel() {
     strudelRef.current?.hush();
   }, []);
 
-  return { isReady, init, evaluate, hush };
+  return { isReady, acquireAudioContext, init, evaluate, hush };
 }
