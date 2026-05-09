@@ -2,6 +2,7 @@
   "name": "riff",
   "version": "0.3.0",
   "description": "AI-powered music production — Cursor for music",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "start": "vite build && electrobun dev",
