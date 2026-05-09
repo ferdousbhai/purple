@@ -7,6 +7,8 @@ export interface Message {
 
 export type PlaybackState = "stopped" | "playing" | "loading" | "error";
 
+export type SourceRange = readonly [from: number, to: number];
+
 export interface EvalResult {
   ok: boolean;
   error?: string;

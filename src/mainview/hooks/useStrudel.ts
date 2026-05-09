@@ -1,11 +1,32 @@
 import { useRef, useCallback, useState } from "react";
-import type { EvalResult } from "../../shared/types";
+import type { EvalResult, SourceRange } from "../../shared/types";
+
+interface StrudelLocation {
+  start: number;
+  end: number;
+}
+
+interface StrudelHap {
+  context?: {
+    locations?: StrudelLocation[];
+  };
+  isActive?: (time: number) => boolean;
+}
+
+interface StrudelPattern {
+  queryArc: (
+    begin: number,
+    end: number,
+    controls?: Record<string, unknown>,
+  ) => StrudelHap[];
+}
 
 export function useStrudel() {
   const [isReady, setIsReady] = useState(false);
   const strudelRef = useRef<typeof import("@strudel/web/web.mjs") | null>(null);
   const initPromiseRef = useRef<Promise<void> | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const activePatternRef = useRef<StrudelPattern | null>(null);
 
   // Must be called synchronously in a user gesture (click/keypress) handler
   // so the browser allows AudioContext creation and resume.
@@ -76,7 +97,8 @@ export function useStrudel() {
       const ctx = strudel.getAudioContext();
       if (ctx.state === "suspended") await ctx.resume();
 
-      await strudel.evaluate(code, true);
+      const pattern = await strudel.evaluate(code, true);
+      activePatternRef.current = isStrudelPattern(pattern) ? pattern : null;
       return { ok: true };
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -86,7 +108,63 @@ export function useStrudel() {
 
   const hush = useCallback(() => {
     strudelRef.current?.hush();
+    activePatternRef.current = null;
   }, []);
 
-  return { isReady, acquireAudioContext, init, evaluate, hush };
+  const getActiveSourceRanges = useCallback((): SourceRange[] => {
+    const pattern = activePatternRef.current;
+    const strudel = strudelRef.current;
+    if (!pattern || !strudel) return [];
+
+    try {
+      const time = strudel.getTime();
+      const haps = pattern
+        .queryArc(time - 1, time + 1, {
+          _cps: strudel.getCps?.(),
+          cyclist: "riff-highlight",
+        })
+        .filter((hap) => hap.isActive?.(time));
+
+      return sourceRangesFromHaps(haps);
+    } catch (err) {
+      console.warn("[Strudel] Highlight query failed:", err);
+      return [];
+    }
+  }, []);
+
+  return {
+    isReady,
+    acquireAudioContext,
+    init,
+    evaluate,
+    hush,
+    getActiveSourceRanges,
+  };
+}
+
+function isStrudelPattern(value: unknown): value is StrudelPattern {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "queryArc" in value &&
+    typeof value.queryArc === "function"
+  );
+}
+
+function sourceRangesFromHaps(haps: readonly StrudelHap[]): SourceRange[] {
+  const seen = new Set<string>();
+  const ranges: SourceRange[] = [];
+
+  for (const hap of haps) {
+    for (const location of hap.context?.locations ?? []) {
+      const range: SourceRange = [location.start, location.end];
+      const key = range.join(":");
+      if (seen.has(key)) continue;
+
+      seen.add(key);
+      ranges.push(range);
+    }
+  }
+
+  return ranges;
 }

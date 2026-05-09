@@ -29,7 +29,16 @@ export function App() {
     clearChat,
   } =
     useChat();
-  const { isReady, playbackState, error, initAudio, play, stop } =
+  const {
+    isReady,
+    playbackState,
+    error,
+    activeCode,
+    activeRanges,
+    initAudio,
+    play,
+    stop,
+  } =
     usePlayback();
 
   useKeyboardShortcuts({
@@ -107,6 +116,7 @@ export function App() {
             onCodeChange={setCode}
             playbackState={playbackState}
             error={error}
+            activeRanges={code === activeCode ? activeRanges : []}
             onPlay={handlePlay}
             onStop={stop}
           />

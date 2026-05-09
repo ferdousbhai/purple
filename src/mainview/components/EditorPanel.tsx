@@ -1,16 +1,21 @@
-import { useCallback, useRef, useMemo } from "react";
+import { useCallback, useEffect, useRef, useMemo } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { javascript } from "@codemirror/lang-javascript";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { keymap } from "@codemirror/view";
+import { EditorView, keymap } from "@codemirror/view";
 import { PlaybackControls } from "./PlaybackControls";
-import type { PlaybackState, EvalResult } from "../../shared/types";
+import {
+  playbackHighlightExtension,
+  updatePlaybackHighlights,
+} from "../editor/playbackHighlight";
+import type { PlaybackState, EvalResult, SourceRange } from "../../shared/types";
 
 interface EditorPanelProps {
   code: string;
   onCodeChange: (code: string) => void;
   playbackState: PlaybackState;
   error: string | null;
+  activeRanges: readonly SourceRange[];
   onPlay: (code: string) => Promise<EvalResult>;
   onStop: () => void;
 }
@@ -20,10 +25,12 @@ export function EditorPanel({
   onCodeChange,
   playbackState,
   error,
+  activeRanges,
   onPlay,
   onStop,
 }: EditorPanelProps) {
   const codeRef = useRef(code);
+  const editorViewRef = useRef<EditorView | null>(null);
   codeRef.current = code;
 
   const handlePlay = useCallback(() => {
@@ -35,6 +42,7 @@ export function EditorPanel({
   const extensions = useMemo(
     () => [
       javascript(),
+      playbackHighlightExtension,
       keymap.of([
         {
           key: "Ctrl-Enter",
@@ -47,6 +55,13 @@ export function EditorPanel({
     ],
     [handlePlay],
   );
+
+  useEffect(() => {
+    const view = editorViewRef.current;
+    if (!view) return;
+
+    updatePlaybackHighlights(view, activeRanges);
+  }, [activeRanges]);
 
   return (
     <div className="flex flex-col h-full bg-surface-light/50 relative">
@@ -75,6 +90,10 @@ export function EditorPanel({
             foldGutter: false,
             highlightActiveLine: true,
             autocompletion: false,
+          }}
+          onCreateEditor={(view) => {
+            editorViewRef.current = view;
+            updatePlaybackHighlights(view, activeRanges);
           }}
           className="h-full"
         />

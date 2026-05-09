@@ -149,6 +149,14 @@ body,
 .cm-editor .cm-cursor {
   border-left-color: #00fff5 !important;
 }
+.cm-editor .cm-playback-highlight {
+  background: color-mix(in srgb, #39ff14 24%, transparent);
+  outline: 1px solid #39ff14cc;
+  border-radius: 3px;
+  box-shadow:
+    0 0 8px #39ff1466,
+    inset 0 0 10px #39ff141f;
+}
 
 /* ── Panel resize handle ── */
 [data-panel-resize-handle-id] {
