@@ -1,4 +1,5 @@
 interface CodeBlockRendererProps {
+  hideCodeBlocks?: boolean;
   text: string;
 }
 
@@ -11,7 +12,22 @@ function parseCodeBlock(raw: string): string {
     .trim();
 }
 
-export function CodeBlockRenderer({ text }: CodeBlockRendererProps) {
+export function visibleTextWithoutCodeBlocks(text: string): string {
+  return text.replace(FENCED_CODE_BLOCK, "").trimEnd();
+}
+
+export function CodeBlockRenderer({
+  hideCodeBlocks = false,
+  text,
+}: CodeBlockRendererProps) {
+  if (hideCodeBlocks) {
+    return (
+      <span className="whitespace-pre-wrap">
+        {visibleTextWithoutCodeBlocks(text)}
+      </span>
+    );
+  }
+
   const parts = text.split(FENCED_CODE_BLOCK).filter(Boolean);
 
   return (

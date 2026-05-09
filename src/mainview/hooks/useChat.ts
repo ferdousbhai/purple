@@ -31,14 +31,6 @@ export function useChat() {
 
         stream.text += delta;
         setStreamingText(stream.text);
-        setMessages([
-          ...stream.baseMessages,
-          {
-            id: stream.assistantId,
-            role: "assistant",
-            content: stream.text,
-          },
-        ]);
       },
       onDone: () => streamRef.current?.resolve?.(),
       onError: (error) => {

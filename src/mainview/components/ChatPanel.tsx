@@ -41,10 +41,10 @@ export function ChatPanel({
 
   return (
     <div className="flex flex-col h-full bg-surface/80">
-      <div className="px-4 py-2 border-b border-neon-magenta/10 bg-surface/60">
+      <div className="px-4 py-2 border-b border-neon-cyan/10 bg-surface/60">
         <div className="flex items-center gap-2">
-          <div className="w-1.5 h-1.5 rounded-full bg-neon-magenta/60" />
-          <span className="text-[11px] font-mono font-medium text-neon-magenta/70 tracking-widest uppercase">
+          <div className="w-1.5 h-1.5 rounded-full bg-neon-cyan/60" />
+          <span className="text-[11px] font-mono font-medium text-neon-cyan/70 tracking-widest uppercase">
             Chat
           </span>
         </div>
