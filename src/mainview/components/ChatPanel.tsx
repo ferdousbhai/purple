@@ -1,4 +1,10 @@
-import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from "react";
+import {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  type KeyboardEvent,
+} from "react";
 import { MessageBubble } from "./MessageBubble";
 import { StreamingText } from "./StreamingText";
 import type { Message } from "../../shared/types";
@@ -8,6 +14,7 @@ interface ChatPanelProps {
   streamingText: string;
   isStreaming: boolean;
   onSendMessage: (text: string) => void;
+  onClearChat: () => void;
 }
 
 export function ChatPanel({
@@ -15,6 +22,7 @@ export function ChatPanel({
   streamingText,
   isStreaming,
   onSendMessage,
+  onClearChat,
 }: ChatPanelProps) {
   const [inputValue, setInputValue] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -30,6 +38,11 @@ export function ChatPanel({
     onSendMessage(text);
   }, [inputValue, isStreaming, onSendMessage]);
 
+  const handleClear = useCallback(() => {
+    setInputValue("");
+    onClearChat();
+  }, [onClearChat]);
+
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>): void {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -38,6 +51,8 @@ export function ChatPanel({
   }
 
   const isEmpty = messages.length === 0 && !streamingText;
+  const canClear =
+    messages.length > 0 || Boolean(streamingText) || Boolean(inputValue.trim());
 
   return (
     <div className="flex flex-col h-full bg-surface/80">
@@ -47,6 +62,24 @@ export function ChatPanel({
           <span className="text-[11px] font-mono font-medium text-neon-cyan/70 tracking-widest uppercase">
             Chat
           </span>
+          <button
+            type="button"
+            onClick={handleClear}
+            disabled={!canClear}
+            title="Start over"
+            aria-label="Clear chat and start over"
+            className="ml-auto grid size-7 place-items-center rounded border border-white/10
+              bg-surface-lighter/30 text-base leading-none text-white/35 transition-all
+              hover:border-neon-magenta/45 hover:bg-neon-magenta/10 hover:text-neon-magenta
+              hover:shadow-[0_0_12px_#ff2d9525]
+              focus:outline-none focus:border-neon-magenta/60 focus:text-neon-magenta
+              focus:shadow-[0_0_12px_#ff2d9530]
+              disabled:opacity-25 disabled:cursor-not-allowed disabled:hover:border-white/10
+              disabled:hover:bg-surface-lighter/30 disabled:hover:text-white/35
+              disabled:hover:shadow-none"
+          >
+            <span aria-hidden="true">↺</span>
+          </button>
         </div>
       </div>
 

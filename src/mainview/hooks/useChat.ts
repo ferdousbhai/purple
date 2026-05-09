@@ -5,7 +5,6 @@ import type { Message } from "../../shared/types";
 
 interface StreamSession {
   assistantId: string;
-  baseMessages: Message[];
   resolve?: () => void;
   text: string;
 }
@@ -50,6 +49,21 @@ export function useChat() {
     streamRef.current?.resolve?.();
   }, []);
 
+  const clearChat = useCallback(() => {
+    const stream = streamRef.current;
+    if (stream) {
+      electroview.rpc!.request.abortStream({});
+      streamRef.current = null;
+      stream.resolve?.();
+    }
+
+    messagesRef.current = [];
+    setMessages([]);
+    setStreamingText("");
+    setIsStreaming(false);
+    busyRef.current = false;
+  }, []);
+
   const sendMessage = useCallback(
     async (text: string): Promise<string | null> => {
       if (busyRef.current) return null;
@@ -61,24 +75,25 @@ export function useChat() {
       setMessages([...updated]);
       setIsStreaming(true);
       setStreamingText("");
-      streamRef.current = {
+      const activeStream: StreamSession = {
         assistantId: nextId(),
-        baseMessages: updated,
         text: "",
       };
+      streamRef.current = activeStream;
 
       await new Promise<void>((resolve) => {
-        if (streamRef.current) streamRef.current.resolve = resolve;
+        activeStream.resolve = resolve;
         electroview
           .rpc!.request.startStream({ messages: updated })
           .catch((err: unknown) => {
-            const stream = streamRef.current;
-            if (!stream) return;
+            if (streamRef.current !== activeStream) return;
 
-            stream.text = `Error: ${err instanceof Error ? err.message : String(err)}`;
-            stream.resolve?.();
+            activeStream.text = `Error: ${err instanceof Error ? err.message : String(err)}`;
+            activeStream.resolve?.();
           });
       });
+
+      if (streamRef.current !== activeStream) return null;
 
       const stream = streamRef.current;
       const fullText = stream?.text ?? "";
@@ -102,7 +117,14 @@ export function useChat() {
     [],
   );
 
-  return { messages, streamingText, isStreaming, sendMessage, abortStream };
+  return {
+    messages,
+    streamingText,
+    isStreaming,
+    sendMessage,
+    abortStream,
+    clearChat,
+  };
 }
 
 export function buildRetryMessage(code: string, error: string): string {

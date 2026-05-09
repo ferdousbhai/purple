@@ -20,7 +20,14 @@ type StatusLedState = keyof typeof STATUS_LED_CLASSES;
 
 export function App() {
   const [code, setCode] = useState("");
-  const { messages, streamingText, isStreaming, sendMessage, abortStream } =
+  const {
+    messages,
+    streamingText,
+    isStreaming,
+    sendMessage,
+    abortStream,
+    clearChat,
+  } =
     useChat();
   const { isReady, playbackState, error, initAudio, play, stop } =
     usePlayback();
@@ -113,6 +120,7 @@ export function App() {
             streamingText={streamingText}
             isStreaming={isStreaming}
             onSendMessage={handleSendMessage}
+            onClearChat={clearChat}
           />
         </Panel>
       </Group>
