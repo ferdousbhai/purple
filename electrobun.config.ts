@@ -4,7 +4,7 @@ export default {
   app: {
     name: "riff",
     identifier: "dev.ferdous.riff",
-    version: "0.3.0",
+    version: "0.1.0",
   },
   build: {
     copy: {

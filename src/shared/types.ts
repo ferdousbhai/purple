@@ -13,3 +13,10 @@ export interface EvalResult {
   ok: boolean;
   error?: string;
 }
+
+export type ApiKeySource = "app" | "missing";
+
+export interface ApiKeyStatus {
+  hasKey: boolean;
+  source: ApiKeySource;
+}

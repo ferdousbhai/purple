@@ -13,7 +13,7 @@ interface ChatPanelProps {
   messages: Message[];
   streamingText: string;
   isStreaming: boolean;
-  onSendMessage: (text: string) => void;
+  onSendMessage: (text: string) => Promise<boolean> | boolean;
   onClearChat: () => void;
 }
 
@@ -31,11 +31,12 @@ export function ChatPanel({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streamingText]);
 
-  const handleSubmit = useCallback(() => {
+  const handleSubmit = useCallback(async () => {
     const text = inputValue.trim();
     if (!text || isStreaming) return;
-    setInputValue("");
-    onSendMessage(text);
+
+    const didSend = await onSendMessage(text);
+    if (didSend) setInputValue("");
   }, [inputValue, isStreaming, onSendMessage]);
 
   const handleClear = useCallback(() => {

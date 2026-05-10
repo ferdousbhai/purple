@@ -15,7 +15,7 @@ Before you run Riff, you need:
 
 - A computer with macOS, Linux, or Windows.
 - An internet connection.
-- A Claude API key from Anthropic.
+- An Anthropic API key.
 - Bun, which is the tool this app uses to install and run itself.
 
 If you do not already have Bun installed, open a terminal and run the command for your computer.
@@ -62,40 +62,7 @@ bun install
 
 This downloads the pieces Riff needs. It may take a few minutes the first time.
 
-## 3. Add Your Claude API Key
-
-Riff needs an Anthropic API key so it can ask Claude to generate music patterns.
-
-1. Create an API key in your Anthropic account.
-2. In this project folder, make a copy of `.env.example` named `.env`.
-
-Run:
-
-```bash
-cp .env.example .env
-```
-
-Open the new `.env` file in any text editor. It will look like this:
-
-```text
-ANTHROPIC_API_KEY=sk-ant-...
-# CLAUDE_MODEL=claude-sonnet-4-6
-```
-
-Replace `sk-ant-...` with your real API key.
-
-For example:
-
-```text
-ANTHROPIC_API_KEY=sk-ant-your-real-key-goes-here
-# CLAUDE_MODEL=claude-sonnet-4-6
-```
-
-Save the file.
-
-Do not share your `.env` file or API key with anyone.
-
-## 4. Start Riff
+## 3. Start Riff
 
 Run:
 
@@ -106,6 +73,16 @@ bun run start
 A desktop window named Riff should open.
 
 To stop Riff later, close the app window. If the terminal is still running the app, click the terminal and press `Ctrl+C`.
+
+## 4. Add Your Anthropic API Key
+
+Riff needs an Anthropic API key so it can ask Claude to generate music patterns.
+
+Create an API key in your Anthropic account. In Riff, click `KEY`, paste the API
+key, and save it.
+
+If you try to send a prompt before adding a key, Riff opens the key box
+automatically and keeps your prompt in the chat input.
 
 ## 5. Make Some Music
 
@@ -164,19 +141,8 @@ powershell -c "irm bun.sh/install.ps1|iex"
 
 ### "Invalid API key"
 
-Check your `.env` file.
-
-Make sure the line starts with `ANTHROPIC_API_KEY=` and that your real key comes immediately after the equals sign:
-
-```text
-ANTHROPIC_API_KEY=sk-ant-your-real-key-goes-here
-```
-
-After changing `.env`, stop Riff and start it again with:
-
-```bash
-bun run start
-```
+Click `KEY`, clear the saved app key, paste a valid Anthropic API key, and save
+it again.
 
 ### The app opens, but no sound plays
 
@@ -220,6 +186,61 @@ bun run dev:hmr      # Launch with Vite hot reload
 bun run test         # Run tests
 bun run build:canary # Build a canary release
 bun run build:stable # Build a stable release
+bun run package:linux # Build a shareable Linux x86_64 tarball
+bun run reinstall:linux # Rebuild and reinstall locally on Linux
+```
+
+## Sharing With Omarchy Or Arch Users
+
+For friends using Omarchy or Arch Linux, build the user-local Linux package:
+
+```bash
+bun run package:linux
+```
+
+This creates:
+
+```text
+build/release/riff-<version>-linux-x64.tar.gz
+build/release/riff-<version>-linux-x64.tar.gz.sha256
+```
+
+Share both files. The recipient can verify and install:
+
+```bash
+sha256sum -c riff-<version>-linux-x64.tar.gz.sha256
+tar -xzf riff-<version>-linux-x64.tar.gz
+cd riff-<version>-linux-x64
+./install.sh
+```
+
+The installer copies Riff into the user's XDG data directory, creates a
+`~/.local/bin/riff` command, installs a Freedesktop `.desktop` entry, installs
+the app icon, refreshes Omarchy's Walker launcher when available, and keeps all
+changes scoped to the current user.
+
+On Omarchy, open the launcher with `Super + Space` and search for `Riff`.
+
+After making code changes, rebuild and reinstall the local Omarchy/Arch app:
+
+```bash
+bun run reinstall:linux
+```
+
+Use the `KEY` button in Riff to save an Anthropic API key for the desktop app.
+The packaged app requires the key to be entered in the app.
+
+If the app does not open or audio does not work on Arch or Omarchy, install the
+runtime packages:
+
+```bash
+./install.sh --install-deps
+```
+
+or manually:
+
+```bash
+sudo pacman -S --needed webkit2gtk-4.1 gst-plugins-base gst-plugins-good
 ```
 
 ## Technology Used

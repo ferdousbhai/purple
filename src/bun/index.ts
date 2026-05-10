@@ -1,7 +1,9 @@
 import { ApplicationMenu, BrowserView, BrowserWindow, Updater } from "electrobun/bun";
 import Anthropic from "@anthropic-ai/sdk";
+import { mkdir, rm } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import type { RiffRPC } from "../shared/rpc-schema";
-import type { Message } from "../shared/types";
+import type { ApiKeyStatus, Message } from "../shared/types";
 
 // ── Claude Streaming ─────────────────────────────────────────────────
 
@@ -113,12 +115,73 @@ stack(
 \`\`\`
 `;
 
-const client = new Anthropic();
 const model = process.env.CLAUDE_MODEL ?? "claude-sonnet-4-6";
+
+interface UserConfig {
+  anthropicApiKey?: string;
+}
+
+function getConfigPath(): string {
+  const home = process.env.HOME ?? ".";
+  const configHome = process.env.XDG_CONFIG_HOME ?? join(home, ".config");
+  return join(configHome, "riff", "config.json");
+}
+
+async function readUserConfig(): Promise<UserConfig> {
+  try {
+    return await Bun.file(getConfigPath()).json();
+  } catch {
+    return {};
+  }
+}
+
+async function writeUserConfig(config: UserConfig): Promise<void> {
+  const path = getConfigPath();
+  await mkdir(dirname(path), { recursive: true });
+  await Bun.write(path, `${JSON.stringify(config, null, 2)}\n`);
+}
+
+async function getAppApiKey(): Promise<string | undefined> {
+  const key = (await readUserConfig()).anthropicApiKey?.trim();
+  return key || undefined;
+}
+
+async function getEffectiveApiKey(): Promise<string | undefined> {
+  return getAppApiKey();
+}
+
+async function getApiKeyStatus(): Promise<ApiKeyStatus> {
+  if (await getAppApiKey()) return { hasKey: true, source: "app" };
+  return { hasKey: false, source: "missing" };
+}
+
+async function saveApiKey(apiKey: string): Promise<ApiKeyStatus> {
+  const trimmed = apiKey.trim();
+  if (!trimmed) {
+    await clearApiKey();
+    return getApiKeyStatus();
+  }
+
+  await writeUserConfig({ ...(await readUserConfig()), anthropicApiKey: trimmed });
+  return getApiKeyStatus();
+}
+
+async function clearApiKey(): Promise<ApiKeyStatus> {
+  const config = await readUserConfig();
+  delete config.anthropicApiKey;
+
+  if (Object.keys(config).length === 0) {
+    await rm(getConfigPath(), { force: true });
+  } else {
+    await writeUserConfig(config);
+  }
+
+  return getApiKeyStatus();
+}
 
 function friendlyError(err: unknown): string {
   if (err instanceof Anthropic.AuthenticationError)
-    return "Invalid API key. Check ANTHROPIC_API_KEY in your .env file.";
+    return "Invalid API key. Check the Anthropic API key saved in Riff settings.";
   if (err instanceof Anthropic.RateLimitError)
     return "Rate limited by the API. Wait a moment and try again.";
   if (err instanceof Anthropic.APIConnectionError)
@@ -162,6 +225,15 @@ const rpc = BrowserView.defineRPC<RiffRPC>({
         activeAbort = null;
         return { ok: true };
       },
+      getApiKeyStatus() {
+        return getApiKeyStatus();
+      },
+      saveApiKey({ apiKey }) {
+        return saveApiKey(apiKey);
+      },
+      clearApiKey() {
+        return clearApiKey();
+      },
     },
     messages: {},
   },
@@ -189,6 +261,15 @@ async function streamClaude(messages: Message[]): Promise<void> {
   activeAbort = abort;
 
   try {
+    const apiKey = await getEffectiveApiKey();
+    if (!apiKey) {
+      rpc.send.streamError({
+        error: "Missing Anthropic API key. Add one in Riff settings.",
+      });
+      return;
+    }
+
+    const client = new Anthropic({ apiKey });
     const stream = client.messages.stream(
       {
         model,

@@ -1,5 +1,5 @@
 import type { RPCSchema } from "electrobun/bun";
-import type { Message } from "./types";
+import type { ApiKeyStatus, Message } from "./types";
 
 export type RiffRPC = {
   bun: RPCSchema<{
@@ -11,6 +11,18 @@ export type RiffRPC = {
       abortStream: {
         params: Record<string, never>;
         response: { ok: boolean };
+      };
+      getApiKeyStatus: {
+        params: Record<string, never>;
+        response: ApiKeyStatus;
+      };
+      saveApiKey: {
+        params: { apiKey: string };
+        response: ApiKeyStatus;
+      };
+      clearApiKey: {
+        params: Record<string, never>;
+        response: ApiKeyStatus;
       };
     };
     messages: Record<string, never>;
