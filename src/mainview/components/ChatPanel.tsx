@@ -211,7 +211,7 @@ export function ChatPanel({
 
       {/* Modifier chips for continuous music evolution */}
       {!isEmpty && (
-        <div className="px-3 py-1.5 border-t border-neon-cyan/10 bg-surface-light/40 overflow-x-auto flex items-center gap-1.5 scrollbar-thin">
+        <div className="px-3 py-1.5 border-t border-neon-cyan/10 bg-surface-light/40 flex flex-wrap items-center gap-1.5">
           <span className="text-[10px] font-mono uppercase tracking-wider text-neon-cyan/50 whitespace-nowrap mr-1">
             Transform:
           </span>
