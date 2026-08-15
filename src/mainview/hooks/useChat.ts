@@ -156,6 +156,8 @@ export function useChat() {
     ): Promise<string | null> => {
       if (busyRef.current) return null;
       busyRef.current = true;
+      const startedAt = performance.now();
+      const submittedAtMs = Date.now();
 
       const userMsg: Message = { id: nextId(), role: "user", content: text };
       const previousConversation = conversationRef.current;
@@ -175,7 +177,7 @@ export function useChat() {
         assistantId: nextId(),
         firstDeltaSeen: false,
         requestId: crypto.randomUUID(),
-        startedAt: performance.now(),
+        startedAt,
         terminalReason: "streaming",
         text: "",
       };
@@ -199,6 +201,7 @@ export function useChat() {
           .rpc!.request.startStream({
             requestId: activeStream.requestId,
             messages: conversation.slice(-MAX_CONTEXT_MESSAGES),
+            submittedAtMs,
           })
           .catch((err: unknown) => {
             if (streamRef.current !== activeStream) return;

@@ -6,7 +6,11 @@ export type RiffRPC = {
   bun: RPCSchema<{
     requests: {
       startStream: {
-        params: { requestId: string; messages: Message[] };
+        params: {
+          requestId: string;
+          messages: Message[];
+          submittedAtMs: number;
+        };
         response: { ok: boolean };
       };
       abortStream: {

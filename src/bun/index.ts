@@ -11,6 +11,7 @@ import {
   type Message,
 } from "../shared/types";
 import { parseCliArgs, readForwardedStartupArgs } from "../shared/cli";
+import { extractPattern } from "../shared/pattern-extractor";
 import { SYSTEM_PROMPT } from "./system-prompt";
 
 // ── Gemini Streaming ─────────────────────────────────────────────────
@@ -149,7 +150,12 @@ function parseUserConfig(value: unknown): UserConfig | null {
 
 function getGeminiClient(apiKey: string): GoogleGenAI {
   if (!geminiClient || geminiClientKey !== apiKey) {
-    geminiClient = new GoogleGenAI({ apiKey });
+    geminiClient = new GoogleGenAI({
+      apiKey,
+      // A music prompt is interactive: surface transient failures immediately
+      // instead of silently spending seconds on SDK retries.
+      httpOptions: { retryOptions: { attempts: 1 } },
+    });
     geminiClientKey = apiKey;
   }
   return geminiClient;
@@ -172,7 +178,10 @@ function getThinkingLevel(value: string | undefined): ThinkingLevel {
   );
 }
 
+class ModelResponseError extends Error {}
+
 function friendlyError(err: unknown): string {
+  if (err instanceof ModelResponseError) return err.message;
   if (err instanceof Error) {
     if (err.message.includes("API key not valid") || err.message.includes("API key"))
       return "Invalid API key. Check the Google Gemini API key saved in Riff settings.";
@@ -301,8 +310,8 @@ const rpc = BrowserView.defineRPC<RiffRPC>({
   maxRequestTime: 10000,
   handlers: {
     requests: {
-      startStream({ requestId, messages }) {
-        void streamGemini(requestId, messages);
+      startStream({ requestId, messages, submittedAtMs }) {
+        void streamGemini(requestId, messages, submittedAtMs);
         return { ok: true };
       },
       abortStream({ requestId }) {
@@ -349,18 +358,24 @@ new BrowserWindow({
 
 // ── Stream Management ────────────────────────────────────────────────
 
-async function streamGemini(requestId: string, messages: Message[]): Promise<void> {
+async function streamGemini(
+  requestId: string,
+  messages: Message[],
+  submittedAtMs: number,
+): Promise<void> {
   activeStream?.abort.abort();
   const abort = new AbortController();
   const stream = { requestId, abort };
   activeStream = stream;
   const startedAt = performance.now();
+  const ipcMs = Math.max(0, Date.now() - submittedAtMs);
   const recentMessages = messages.slice(-MAX_CONTEXT_MESSAGES);
   console.log(
-    `[Gemini ${requestId}] Request started (${recentMessages.length}/${messages.length} messages)`,
+    `[Gemini ${requestId}] Backend received request in ${ipcMs}ms (${recentMessages.length}/${messages.length} messages)`,
   );
 
   try {
+    const credentialsStartedAt = performance.now();
     const apiKey = await getEffectiveApiKey();
     if (!apiKey) {
       rpc.send.streamError({
@@ -371,6 +386,7 @@ async function streamGemini(requestId: string, messages: Message[]): Promise<voi
     }
 
     const ai = getGeminiClient(apiKey);
+    const credentialsMs = Math.round(performance.now() - credentialsStartedAt);
 
     // Convert generic roles to Gemini roles ('user' or 'model')
     const contents = recentMessages.map(({ role, content }) => ({
@@ -378,6 +394,10 @@ async function streamGemini(requestId: string, messages: Message[]): Promise<voi
       parts: [{ text: content }],
     }));
 
+    const inferenceStartedAt = performance.now();
+    console.log(
+      `[Gemini ${requestId}] Dispatching inference after ${Math.round(inferenceStartedAt - startedAt)}ms (credentials/client ${credentialsMs}ms)`,
+    );
     const responseStream = await ai.models.generateContentStream({
       model,
       contents,
@@ -390,21 +410,39 @@ async function streamGemini(requestId: string, messages: Message[]): Promise<voi
         }),
       },
     });
+    const streamOpenedAt = performance.now();
+    console.log(
+      `[Gemini ${requestId}] HTTP stream opened after ${Math.round(streamOpenedAt - inferenceStartedAt)}ms`,
+    );
 
     let receivedFirstChunk = false;
+    let responseText = "";
+    let finishReason: string | undefined;
     for await (const chunk of responseStream) {
+      finishReason = chunk.candidates?.[0]?.finishReason ?? finishReason;
       if (!chunk.text) continue;
       if (!receivedFirstChunk) {
         receivedFirstChunk = true;
         console.log(
-          `[Gemini ${requestId}] First token in ${Math.round(performance.now() - startedAt)}ms`,
+          `[Gemini ${requestId}] First token in ${Math.max(0, Date.now() - submittedAtMs)}ms total (${Math.round(performance.now() - inferenceStartedAt)}ms after inference dispatch)`,
         );
       }
+      responseText += chunk.text;
       rpc.send.streamDelta({ requestId, delta: chunk.text });
     }
 
     if (!receivedFirstChunk) {
       throw new Error("Gemini returned an empty response.");
+    }
+    console.log(
+      `[Gemini ${requestId}] Response finished (${finishReason ?? "unknown"})`,
+    );
+    if (!extractPattern(responseText)) {
+      throw new ModelResponseError(
+        finishReason === "MAX_TOKENS"
+          ? "Gemini reached its output limit before completing the Strudel pattern. Please try again."
+          : "Gemini returned no complete Strudel pattern. Please try again.",
+      );
     }
 
     rpc.send.streamDone({ requestId });
