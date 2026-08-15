@@ -1,5 +1,6 @@
-import { useRef, useCallback, useState } from "react";
+import { useRef, useCallback, useEffect } from "react";
 import type { EvalResult, SourceRange } from "../../shared/types";
+import { requireRunningAudioContext } from "../audio-activation";
 
 interface StrudelLocation {
   start: number;
@@ -21,25 +22,42 @@ interface StrudelPattern {
   ) => StrudelHap[];
 }
 
+interface StrudelModule {
+  evaluate: (code: string, autoplay: boolean) => Promise<unknown>;
+  getAudioContext: () => AudioContext;
+  getCps?: () => unknown;
+  getTime: () => number;
+  hush: () => void;
+  initAudio: () => Promise<void>;
+  initStrudel: (options: {
+    audioContext: AudioContext;
+    onEvalError: (error: unknown) => void;
+    prebake: () => unknown;
+  }) => Promise<void>;
+  samples: (source: string) => unknown;
+}
+
 export function useStrudel() {
-  const [isReady, setIsReady] = useState(false);
-  const strudelRef = useRef<typeof import("@strudel/web/web.mjs") | null>(null);
+  const strudelRef = useRef<StrudelModule | null>(null);
   const initPromiseRef = useRef<Promise<void> | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const activePatternRef = useRef<StrudelPattern | null>(null);
+  const lastEvaluationErrorRef = useRef<unknown>(null);
 
-  // Must be called synchronously in a user gesture (click/keypress) handler
-  // so the browser allows AudioContext creation and resume.
   const acquireAudioContext = useCallback(() => {
     if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
-      audioCtxRef.current.resume().catch(() => {});
       return audioCtxRef.current;
+    }
+
+    if (audioCtxRef.current?.state === "closed") {
+      strudelRef.current = null;
+      initPromiseRef.current = null;
+      activePatternRef.current = null;
     }
 
     const ctx = new AudioContext();
     audioCtxRef.current = ctx;
-    ctx.resume().catch(() => {});
-    console.log("[Strudel] AudioContext created in gesture, state:", ctx.state);
+    console.log("[Strudel] AudioContext created, initial state:", ctx.state);
     return ctx;
   }, []);
 
@@ -50,15 +68,14 @@ export function useStrudel() {
 
       const promise = (async () => {
         console.log("[Strudel] Starting init...");
-        const strudel = await import("@strudel/web/web.mjs");
+        const strudel = (await import("@strudel/web/web.mjs")) as StrudelModule;
         console.log("[Strudel] Module imported");
-
-        // Ensure context is running (resume may have completed async)
-        if (ctx.state === "suspended") await ctx.resume();
-        console.log("[Strudel] AudioContext state:", ctx.state);
 
         await strudel.initStrudel({
           audioContext: ctx,
+          onEvalError: (error) => {
+            lastEvaluationErrorRef.current = error;
+          },
           prebake: () =>
             strudel.samples("github:tidalcycles/Dirt-Samples/master"),
         });
@@ -68,7 +85,6 @@ export function useStrudel() {
         console.log("[Strudel] initAudio done");
 
         strudelRef.current = strudel;
-        setIsReady(true);
       })();
 
       initPromiseRef.current = promise;
@@ -84,25 +100,53 @@ export function useStrudel() {
     [],
   );
 
+  // Call from a click or key handler. requireRunningAudioContext invokes
+  // resume() before its first await, preserving the browser's user activation.
+  const activate = useCallback(async () => {
+    const ctx = acquireAudioContext();
+    await requireRunningAudioContext(ctx);
+    await init(ctx);
+    await requireRunningAudioContext(ctx);
+    console.log("[Strudel] AudioContext active, state:", ctx.state);
+  }, [acquireAudioContext, init]);
+
   const evaluate = useCallback(async (code: string): Promise<EvalResult> => {
     const strudel = strudelRef.current;
     if (!strudel) {
       return {
         ok: false,
         error: "Audio engine not initialized — click Play to retry",
+        kind: "audio",
       };
     }
 
     try {
       const ctx = strudel.getAudioContext();
-      if (ctx.state === "suspended") await ctx.resume();
+      if (String(ctx.state) !== "running") {
+        return {
+          ok: false,
+          error: `Audio output is blocked (${String(ctx.state)}). Click Play to enable sound.`,
+          kind: "audio",
+        };
+      }
 
+      lastEvaluationErrorRef.current = null;
       const pattern = await strudel.evaluate(code, true);
-      activePatternRef.current = isStrudelPattern(pattern) ? pattern : null;
+      if (!isStrudelPattern(pattern)) {
+        const evaluationError = lastEvaluationErrorRef.current;
+        const message =
+          evaluationError instanceof Error
+            ? evaluationError.message
+            : "Strudel could not evaluate this pattern.";
+        activePatternRef.current = null;
+        return { ok: false, error: message, kind: "evaluation" };
+      }
+
+      activePatternRef.current = pattern;
       return { ok: true };
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      return { ok: false, error: message };
+      return { ok: false, error: message, kind: "evaluation" };
     }
   }, []);
 
@@ -132,10 +176,17 @@ export function useStrudel() {
     }
   }, []);
 
+  useEffect(() => {
+    return () => {
+      strudelRef.current?.hush();
+      activePatternRef.current = null;
+      const context = audioCtxRef.current;
+      if (context && context.state !== "closed") void context.close();
+    };
+  }, []);
+
   return {
-    isReady,
-    acquireAudioContext,
-    init,
+    activate,
     evaluate,
     hush,
     getActiveSourceRanges,

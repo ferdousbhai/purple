@@ -8,14 +8,10 @@
   --color-neon-magenta: #ff2d95;
   --color-neon-lime: #39ff14;
   --color-neon-amber: #ffb800;
-  --color-accent: #00fff5;
-  --color-accent-light: #66fff8;
   --font-display: "Outfit", sans-serif;
   --font-mono: "IBM Plex Mono", "JetBrains Mono", monospace;
   --animate-glow-pulse: glow-pulse 2s ease-in-out infinite;
   --animate-bar-bounce: bar-bounce 0.6s ease-in-out infinite;
-  --animate-neon-flicker: neon-flicker 3s ease-in-out infinite;
-  --animate-scan: scan 4s linear infinite;
 }
 
 @keyframes glow-pulse {
@@ -38,31 +34,6 @@
   }
 }
 
-@keyframes neon-flicker {
-  0%,
-  100%,
-  41%,
-  43%,
-  46% {
-    opacity: 1;
-  }
-  42% {
-    opacity: 0.8;
-  }
-  45% {
-    opacity: 0.6;
-  }
-}
-
-@keyframes scan {
-  0% {
-    transform: translateY(-100%);
-  }
-  100% {
-    transform: translateY(100%);
-  }
-}
-
 html,
 body,
 #root {
@@ -79,37 +50,8 @@ body,
 .glow-cyan {
   text-shadow: 0 0 7px #00fff5, 0 0 20px #00fff580, 0 0 40px #00fff540;
 }
-.glow-magenta {
-  text-shadow: 0 0 7px #ff2d95, 0 0 20px #ff2d9580, 0 0 40px #ff2d9540;
-}
-.glow-lime {
-  text-shadow: 0 0 7px #39ff14, 0 0 20px #39ff1480, 0 0 40px #39ff1440;
-}
-
-.border-glow-cyan {
-  box-shadow: 0 0 5px #00fff540, inset 0 0 5px #00fff510;
-}
 .border-glow-magenta {
   box-shadow: 0 0 5px #ff2d9540, inset 0 0 5px #ff2d9510;
-}
-.border-glow-lime {
-  box-shadow: 0 0 5px #39ff1440, inset 0 0 5px #39ff1410;
-}
-
-/* ── Scanline overlay ── */
-.scanlines::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 2px,
-    rgba(0, 0, 0, 0.08) 2px,
-    rgba(0, 0, 0, 0.08) 4px
-  );
-  pointer-events: none;
-  z-index: 1;
 }
 
 /* ── Scrollbar styling ── */
@@ -185,4 +127,14 @@ body,
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
   pointer-events: none;
   z-index: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }

@@ -1,15 +1,16 @@
 import type { RPCSchema } from "electrobun/bun";
 import type { ApiKeyStatus, Message } from "./types";
+import type { StartupOptions } from "./cli";
 
 export type RiffRPC = {
   bun: RPCSchema<{
     requests: {
       startStream: {
-        params: { messages: Message[] };
+        params: { requestId: string; messages: Message[] };
         response: { ok: boolean };
       };
       abortStream: {
-        params: Record<string, never>;
+        params: { requestId: string };
         response: { ok: boolean };
       };
       getApiKeyStatus: {
@@ -24,15 +25,23 @@ export type RiffRPC = {
         params: Record<string, never>;
         response: ApiKeyStatus;
       };
+      getStartupOptions: {
+        params: Record<string, never>;
+        response: StartupOptions;
+      };
+      log: {
+        params: { level: string; message: string };
+        response: { ok: boolean };
+      };
     };
     messages: Record<string, never>;
   }>;
   webview: RPCSchema<{
     requests: Record<string, never>;
     messages: {
-      streamDelta: { delta: string };
-      streamDone: Record<string, never>;
-      streamError: { error: string };
+      streamDelta: { requestId: string; delta: string };
+      streamDone: { requestId: string };
+      streamError: { requestId: string; error: string };
     };
   }>;
 };

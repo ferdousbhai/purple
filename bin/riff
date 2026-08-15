@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." >/dev/null && /bin/pwd)"
+cd "$repo_root"
+
+arg_index=0
+for arg in "$@"; do
+  export "RIFF_STARTUP_ARG_${arg_index}=${arg}"
+  arg_index=$((arg_index + 1))
+done
+export RIFF_STARTUP_ARGC="${arg_index}"
+
+exec pnpm run start

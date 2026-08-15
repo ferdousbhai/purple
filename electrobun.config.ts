@@ -1,10 +1,11 @@
 import type { ElectrobunConfig } from "electrobun";
+import packageJson from "./package.json" with { type: "json" };
 
 export default {
   app: {
     name: "riff",
     identifier: "dev.ferdous.riff",
-    version: "0.1.0",
+    version: packageJson.version,
   },
   build: {
     copy: {

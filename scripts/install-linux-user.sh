@@ -112,7 +112,13 @@ fi
 cat > "$wrapper" <<EOF
 #!/usr/bin/env bash
 cd "$app_dir"
-exec "$app_dir/bin/launcher" "\$@"
+arg_index=0
+for arg in "\$@"; do
+  export "RIFF_STARTUP_ARG_\${arg_index}=\${arg}"
+  arg_index=\$((arg_index + 1))
+done
+export RIFF_STARTUP_ARGC="\${arg_index}"
+exec "$app_dir/bin/launcher"
 EOF
 chmod +x "$wrapper"
 
@@ -123,7 +129,7 @@ Version=1.0
 Name=$APP_NAME
 GenericName=AI Music App
 Comment=AI-powered music production
-Exec=$wrapper
+Exec="$wrapper"
 Icon=$icon_target
 Terminal=false
 Categories=Audio;AudioVideo;Music;

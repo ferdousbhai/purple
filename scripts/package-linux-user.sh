@@ -10,8 +10,8 @@ release_name="riff-${version}-linux-x64"
 stage="${release_root}/${release_name}"
 archive="${release_root}/${release_name}.tar.gz"
 
-bun install
-bun run build:stable
+pnpm install --frozen-lockfile
+pnpm run build:stable
 
 rm -rf "$stage" "$archive" "${archive}.sha256"
 mkdir -p "$stage"
@@ -19,6 +19,8 @@ mkdir -p "$stage"
 cp artifacts/stable-linux-x64-riff-Setup.tar.gz "$stage/riff-Setup.tar.gz"
 cp scripts/install-linux-user.sh "$stage/install.sh"
 cp assets/riff.svg "$stage/riff.svg"
+cp LICENSE THIRD_PARTY_NOTICES.md "$stage/"
+cp node_modules/@strudel/core/LICENSE "$stage/STRUDEL-AGPL-3.0.txt"
 chmod +x "$stage/install.sh"
 
 cat > "$stage/README.txt" <<EOF
@@ -39,7 +41,7 @@ Or install them manually:
 
   sudo pacman -S --needed webkit2gtk-4.1 gst-plugins-base gst-plugins-good
 
-Riff requires an Anthropic API key. See the project README for setup details.
+Riff requires a Google Gemini API key. See the project README for setup details.
 EOF
 
 tar -C "$release_root" -czf "$archive" "$release_name"

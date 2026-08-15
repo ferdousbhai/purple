@@ -1,96 +1,161 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useReducer, useCallback, useRef } from "react";
 import { useStrudel } from "./useStrudel";
 import type { PlaybackState, EvalResult, SourceRange } from "../../shared/types";
 
+type AudioActivationResult =
+  | { ok: true }
+  | { ok: false; kind: "audio"; error: string };
+
 export function usePlayback() {
-  const {
-    isReady,
-    acquireAudioContext,
-    init,
-    evaluate,
-    hush,
-    getActiveSourceRanges,
-  } = useStrudel();
-  const [playbackState, setPlaybackState] = useState<PlaybackState>("stopped");
-  const [error, setError] = useState<string | null>(null);
-  const [activeCode, setActiveCode] = useState("");
-  const [activeRanges, setActiveRanges] = useState<readonly SourceRange[]>([]);
+  const { activate, evaluate, hush, getActiveSourceRanges } = useStrudel();
+  const [state, dispatch] = useReducer(playbackReducer, INITIAL_PLAYBACK_STATE);
+  const operationRef = useRef(0);
+  const playQueueRef = useRef<Promise<void>>(Promise.resolve());
 
-  const clearActivePlayback = useCallback(() => {
-    setActiveCode("");
-    setActiveRanges([]);
-  }, []);
-
-  // Call this synchronously from a click/keypress handler so AudioContext
-  // is created within the user gesture's call stack.
-  const initAudio = useCallback(async () => {
-    const ctx = acquireAudioContext(); // sync — must be in gesture
+  const activateAudio = useCallback(async (): Promise<AudioActivationResult> => {
     try {
-      await init(ctx);
+      await activate();
+      return { ok: true };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      setError(`Audio init failed: ${message}`);
-      setPlaybackState("error");
+      return { ok: false, error: message, kind: "audio" };
     }
-  }, [acquireAudioContext, init]);
+  }, [activate]);
+
+  const prepareAudio = useCallback(async (): Promise<EvalResult> => {
+    const result = await activateAudio();
+    if (!result.ok) {
+      dispatch({ type: "error", error: result.error });
+    }
+    return result;
+  }, [activateAudio]);
 
   const play = useCallback(
     async (code: string): Promise<EvalResult> => {
-      setPlaybackState("loading");
-      setError(null);
+      const operation = ++operationRef.current;
+      dispatch({ type: "loading" });
 
-      const result = await evaluate(code);
-      if (result.ok) {
-        setActiveCode(code);
-        setPlaybackState("playing");
-      } else {
-        setPlaybackState("error");
-        setError(result.error ?? "Evaluation failed");
-        clearActivePlayback();
+      let releaseQueue: () => void = () => {};
+      const queueTurn = new Promise<void>((resolve) => {
+        releaseQueue = resolve;
+      });
+      const previousTurn = playQueueRef.current;
+      playQueueRef.current = queueTurn;
+      await previousTurn;
+
+      try {
+        if (operation !== operationRef.current) {
+          return { ok: false, kind: "cancelled" };
+        }
+
+        const activation = await activateAudio();
+        if (operation !== operationRef.current) {
+          return { ok: false, kind: "cancelled" };
+        }
+        if (!activation.ok) {
+          dispatch({ type: "error", error: activation.error });
+          return activation;
+        }
+
+        const result = await evaluate(code);
+        if (operation !== operationRef.current) {
+          hush();
+          return { ok: false, kind: "cancelled" };
+        }
+        if (result.ok) {
+          dispatch({ type: "playing", code });
+        } else {
+          if (result.kind === "cancelled") return result;
+          dispatch({ type: "error", error: result.error });
+        }
+        return result;
+      } finally {
+        releaseQueue();
       }
-      return result;
     },
-    [clearActivePlayback, evaluate],
+    [activateAudio, evaluate, hush],
   );
 
   const stop = useCallback(() => {
+    ++operationRef.current;
     hush();
-    setPlaybackState("stopped");
-    clearActivePlayback();
-  }, [clearActivePlayback, hush]);
+    dispatch({ type: "stopped" });
+  }, [hush]);
 
   useEffect(() => {
-    if (playbackState !== "playing") {
-      setActiveRanges([]);
-      return;
-    }
+    if (state.playbackState !== "playing") return;
 
-    let frameId = 0;
     let lastKey = "";
     const update = () => {
       const ranges = getActiveSourceRanges();
       const key = getRangesKey(ranges);
       if (key !== lastKey) {
         lastKey = key;
-        setActiveRanges(ranges);
+        dispatch({ type: "ranges", ranges });
       }
-      frameId = requestAnimationFrame(update);
     };
 
-    frameId = requestAnimationFrame(update);
-    return () => cancelAnimationFrame(frameId);
-  }, [getActiveSourceRanges, playbackState]);
+    update();
+    const intervalId = window.setInterval(update, 50);
+    return () => window.clearInterval(intervalId);
+  }, [getActiveSourceRanges, state.playbackState]);
 
   return {
-    isReady,
-    playbackState,
-    error,
-    activeCode,
-    activeRanges,
-    initAudio,
+    ...state,
+    prepareAudio,
     play,
     stop,
   };
+}
+
+interface PlaybackSnapshot {
+  playbackState: PlaybackState;
+  error: string | null;
+  activeCode: string;
+  activeRanges: readonly SourceRange[];
+}
+
+type PlaybackAction =
+  | { type: "loading" }
+  | { type: "playing"; code: string }
+  | { type: "error"; error: string }
+  | { type: "stopped" }
+  | { type: "ranges"; ranges: readonly SourceRange[] };
+
+const INITIAL_PLAYBACK_STATE: PlaybackSnapshot = {
+  playbackState: "stopped",
+  error: null,
+  activeCode: "",
+  activeRanges: [],
+};
+
+function playbackReducer(
+  state: PlaybackSnapshot,
+  action: PlaybackAction,
+): PlaybackSnapshot {
+  switch (action.type) {
+    case "loading":
+      return { ...INITIAL_PLAYBACK_STATE, playbackState: "loading" };
+    case "playing":
+      return {
+        playbackState: "playing",
+        error: null,
+        activeCode: action.code,
+        activeRanges: [],
+      };
+    case "error":
+      return {
+        ...INITIAL_PLAYBACK_STATE,
+        playbackState: "error",
+        error: action.error,
+      };
+    case "stopped":
+      return INITIAL_PLAYBACK_STATE;
+    case "ranges":
+      return state.playbackState === "playing"
+        ? { ...state, activeRanges: action.ranges }
+        : state;
+  }
 }
 
 function getRangesKey(ranges: readonly SourceRange[]) {

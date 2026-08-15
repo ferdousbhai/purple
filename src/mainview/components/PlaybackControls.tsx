@@ -2,12 +2,14 @@ import type { PlaybackState } from "../../shared/types";
 
 interface PlaybackControlsProps {
   playbackState: PlaybackState;
+  requiresUserActivation?: boolean;
   onPlay: () => void;
   onStop: () => void;
 }
 
 export function PlaybackControls({
   playbackState,
+  requiresUserActivation = false,
   onPlay,
   onStop,
 }: PlaybackControlsProps) {
@@ -18,6 +20,7 @@ export function PlaybackControls({
     <div className="flex items-center gap-2">
       {isPlaying ? (
         <button
+          type="button"
           onClick={onStop}
           className="group flex items-center gap-1.5 px-3 py-1 text-xs font-mono font-medium
             bg-neon-magenta/15 hover:bg-neon-magenta/25 text-neon-magenta
@@ -25,11 +28,12 @@ export function PlaybackControls({
             rounded transition-all hover:shadow-[0_0_12px_#ff2d9540]"
           title="Stop (Ctrl+.)"
         >
-          <span className="inline-block w-2 h-2 bg-neon-magenta rounded-[1px]" />
+          <span aria-hidden="true" className="inline-block w-2 h-2 bg-neon-magenta rounded-[1px]" />
           STOP
         </button>
       ) : (
         <button
+          type="button"
           onClick={onPlay}
           disabled={isLoading}
           className="group flex items-center gap-1.5 px-3 py-1 text-xs font-mono font-medium
@@ -39,8 +43,12 @@ export function PlaybackControls({
             disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:shadow-none"
           title="Play (Ctrl+Enter)"
         >
-          <span className="inline-block w-0 h-0 border-l-[7px] border-l-current border-y-[4px] border-y-transparent" />
-          {isLoading ? "INIT..." : "PLAY"}
+          <span aria-hidden="true" className="inline-block w-0 h-0 border-l-[7px] border-l-current border-y-[4px] border-y-transparent" />
+          {isLoading
+            ? "INIT..."
+            : requiresUserActivation
+              ? "START AUDIO"
+              : "PLAY"}
         </button>
       )}
     </div>

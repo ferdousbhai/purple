@@ -2,7 +2,7 @@
 
 Riff is a desktop app for making music with AI.
 
-You type a plain-English music idea, such as "make a slow lo-fi drum loop with warm chords." Riff asks Claude to write a Strudel music pattern, puts that pattern in the editor, and plays it through your computer speakers.
+You type a plain-English music idea, such as "make a slow lo-fi drum loop with warm chords." Riff asks Gemini to write a Strudel music pattern, puts that pattern in the editor, and plays it through your computer speakers.
 
 The app has two main areas:
 
@@ -15,8 +15,9 @@ Before you run Riff, you need:
 
 - A computer with macOS, Linux, or Windows.
 - An internet connection.
-- An Anthropic API key.
-- Bun, which is the tool this app uses to install and run itself.
+- A Google Gemini API key.
+- Bun, which Electrobun uses as its desktop runtime.
+- pnpm 10, which manages the project dependencies and scripts.
 
 If you do not already have Bun installed, open a terminal and run the command for your computer.
 
@@ -40,6 +41,12 @@ bun --version
 
 If that prints a version number, Bun is ready.
 
+Install pnpm if `pnpm --version` is not already available:
+
+```bash
+npm install --global pnpm@10.27.0
+```
+
 ## 1. Open This Folder In A Terminal
 
 Open a terminal in the Riff project folder.
@@ -57,7 +64,7 @@ cd path/to/riff
 Run this command once:
 
 ```bash
-bun install
+pnpm install
 ```
 
 This downloads the pieces Riff needs. It may take a few minutes the first time.
@@ -67,18 +74,18 @@ This downloads the pieces Riff needs. It may take a few minutes the first time.
 Run:
 
 ```bash
-bun run start
+pnpm run start
 ```
 
 A desktop window named Riff should open.
 
 To stop Riff later, close the app window. If the terminal is still running the app, click the terminal and press `Ctrl+C`.
 
-## 4. Add Your Anthropic API Key
+## 4. Add Your Google Gemini API Key
 
-Riff needs an Anthropic API key so it can ask Claude to generate music patterns.
+Riff needs a Google Gemini API key so it can ask Gemini to generate music patterns.
 
-Create an API key in your Anthropic account. In Riff, click `KEY`, paste the API
+Create an API key in Google AI Studio. In Riff, click `KEY`, paste the API
 key, and save it.
 
 If you try to send a prompt before adding a key, Riff opens the key box
@@ -94,7 +101,7 @@ Make a mellow lo-fi beat with soft drums and jazzy chords.
 
 Press `Enter`.
 
-Claude will reply with a Strudel pattern. Riff will place the pattern in the editor on the left. Use the play controls, or press `Ctrl+Enter`, to hear it.
+Gemini will reply with a Strudel pattern. Riff will place the pattern in the editor on the left. Use the play controls, or press `Ctrl+Enter`, to hear it.
 
 You can ask for changes in normal language:
 
@@ -106,12 +113,42 @@ Make it faster and add a bassline.
 Make the drums simpler and the chords darker.
 ```
 
+## Command Line Usage
+
+From a source checkout, use `./bin/riff`. After installing a packaged Linux
+release, use `riff` instead. You can launch with code, presets, or prompts:
+
+With no arguments, Riff opens a random built-in musical recipe. It waits for
+your click before playing so the browser can activate audio.
+
+```bash
+# Direct Strudel live-coding pattern (click START AUDIO after launch)
+./bin/riff 's("bd hh sd hh")'
+./bin/riff 'note("c3 e3 g3 b3").s("sawtooth").lpf(800).room(0.5)'
+
+# Built-in presets
+./bin/riff lofi
+./bin/riff techno
+./bin/riff ambient
+./bin/riff dnb
+./bin/riff chiptune
+./bin/riff basic
+
+# Natural language prompt (generates the pattern, then asks you to start audio)
+./bin/riff "make a dark cyberpunk acid techno groove"
+
+# Explicit flags
+./bin/riff --preset basic
+./bin/riff --code 's("bd*4")'
+./bin/riff --prompt "make a sparse ambient pattern"
+```
+
 ## Keyboard Shortcuts
 
 - `Enter`: send a chat message.
 - `Ctrl+Enter`: play or re-run the pattern in the editor.
 - `Ctrl+.`: stop playback.
-- `Escape`: stop Claude while it is still writing a response.
+- `Escape`: stop Gemini while it is still writing a response.
 
 ## Troubleshooting
 
@@ -141,7 +178,7 @@ powershell -c "irm bun.sh/install.ps1|iex"
 
 ### "Invalid API key"
 
-Click `KEY`, clear the saved app key, paste a valid Anthropic API key, and save
+Click `KEY`, clear the saved app key, paste a valid Google Gemini API key, and save
 it again.
 
 ### The app opens, but no sound plays
@@ -150,7 +187,7 @@ Try these checks:
 
 - Make sure your computer volume is up.
 - Make sure the correct speakers or headphones are selected.
-- Click inside the Riff window once, then press `Ctrl+Enter` again. Browsers and webviews sometimes require a user action before audio can start.
+- For a pattern loaded from the command line, click `START AUDIO`. Browsers and webviews require a user action before audio can start.
 - Try a simple prompt such as `make a basic drum beat`.
 
 ### Linux: the app does not open or audio does not work
@@ -160,14 +197,14 @@ Riff uses your system webview and audio libraries. On Linux, you may need WebKit
 On Arch Linux, run:
 
 ```bash
-yay -S webkit2gtk gst-plugins-base gst-plugins-good
+yay -S webkit2gtk-4.1 gst-plugins-base gst-plugins-good
 ```
 
-If your system does not use `yay`, install the matching `webkit2gtk`, `gst-plugins-base`, and `gst-plugins-good` packages with your normal package manager.
+If your system does not use `yay`, install the matching `webkit2gtk-4.1`, `gst-plugins-base`, and `gst-plugins-good` packages with your normal package manager.
 
 ### The app says it was rate limited
 
-The Claude API is temporarily refusing more requests. Wait a minute and try again.
+The Gemini API is temporarily refusing more requests. Wait a minute and try again.
 
 ### The app says it cannot connect
 
@@ -175,19 +212,21 @@ Check your internet connection, then restart Riff.
 
 ## Developer Commands
 
-Most users only need `bun install` and `bun run start`.
+Most users only need `pnpm install` and `pnpm run start`.
 
 For development:
 
 ```bash
-bun run start        # Build and launch the desktop app
-bun run dev          # Launch Electrobun with file watching
-bun run dev:hmr      # Launch with Vite hot reload
-bun run test         # Run tests
-bun run build:canary # Build a canary release
-bun run build:stable # Build a stable release
-bun run package:linux # Build a shareable Linux x86_64 tarball
-bun run reinstall:linux # Rebuild and reinstall locally on Linux
+pnpm run start        # Build and launch the desktop app
+pnpm run dev          # Launch Electrobun with file watching
+pnpm run dev:hmr      # Launch with Vite hot reload
+pnpm run test         # Run tests
+pnpm run typecheck    # Check TypeScript
+pnpm run check        # Run tests and TypeScript checks
+pnpm run build:canary # Build a canary release
+pnpm run build:stable # Build a stable release
+pnpm run package:linux # Build a shareable Linux x86_64 tarball
+pnpm run reinstall:linux # Rebuild and reinstall locally on Linux
 ```
 
 ## Sharing With Omarchy Or Arch Users
@@ -195,7 +234,7 @@ bun run reinstall:linux # Rebuild and reinstall locally on Linux
 For friends using Omarchy or Arch Linux, build the user-local Linux package:
 
 ```bash
-bun run package:linux
+pnpm run package:linux
 ```
 
 This creates:
@@ -224,10 +263,10 @@ On Omarchy, open the launcher with `Super + Space` and search for `Riff`.
 After making code changes, rebuild and reinstall the local Omarchy/Arch app:
 
 ```bash
-bun run reinstall:linux
+pnpm run reinstall:linux
 ```
 
-Use the `KEY` button in Riff to save an Anthropic API key for the desktop app.
+Use the `KEY` button in Riff to save a Google Gemini API key for the desktop app.
 The packaged app requires the key to be entered in the app.
 
 If the app does not open or audio does not work on Arch or Omarchy, install the
@@ -249,4 +288,4 @@ sudo pacman -S --needed webkit2gtk-4.1 gst-plugins-base gst-plugins-good
 - React and Tailwind CSS for the interface.
 - CodeMirror for the code editor.
 - Strudel for browser-based music playback.
-- Claude through the Anthropic API for music pattern generation.
+- Gemini through the Google GenAI API for music pattern generation.

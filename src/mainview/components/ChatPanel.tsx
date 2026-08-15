@@ -2,47 +2,78 @@ import {
   useState,
   useRef,
   useEffect,
-  useCallback,
   type KeyboardEvent,
 } from "react";
 import { MessageBubble } from "./MessageBubble";
 import { StreamingText } from "./StreamingText";
+import {
+  PROMPT_PRESETS,
+  PROMPT_MODIFIERS,
+  generateRandomPrompt,
+  type PromptPreset,
+  type PromptModifier,
+} from "../prompt-presets";
 import type { Message } from "../../shared/types";
 
 interface ChatPanelProps {
   messages: Message[];
   streamingText: string;
+  error: string | null;
   isStreaming: boolean;
-  onSendMessage: (text: string) => Promise<boolean> | boolean;
+  isInputDisabled: boolean;
+  onSendMessage: (text: string) => boolean;
   onClearChat: () => void;
 }
-
 export function ChatPanel({
   messages,
   streamingText,
+  error,
   isStreaming,
+  isInputDisabled,
   onSendMessage,
   onClearChat,
 }: ChatPanelProps) {
   const [inputValue, setInputValue] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
+  const transcriptRef = useRef<HTMLDivElement>(null);
+  const shouldFollowRef = useRef(true);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streamingText]);
+    if (!shouldFollowRef.current) return;
+    bottomRef.current?.scrollIntoView({
+      behavior: isStreaming ? "auto" : "smooth",
+    });
+  }, [isStreaming, messages, streamingText]);
 
-  const handleSubmit = useCallback(async () => {
+  function submitPrompt(text: string): void {
+    if (isInputDisabled) return;
+    onSendMessage(text);
+  }
+
+  function handleSubmit(): void {
     const text = inputValue.trim();
-    if (!text || isStreaming) return;
+    if (!text || isInputDisabled) return;
 
-    const didSend = await onSendMessage(text);
+    const didSend = onSendMessage(text);
     if (didSend) setInputValue("");
-  }, [inputValue, isStreaming, onSendMessage]);
+  }
 
-  const handleClear = useCallback(() => {
+  function handleSelectPreset(preset: PromptPreset): void {
+    submitPrompt(preset.prompt);
+  }
+
+  function handleSelectModifier(mod: PromptModifier): void {
+    submitPrompt(mod.prompt);
+  }
+
+  function handleSurpriseMe(): void {
+    submitPrompt(generateRandomPrompt());
+  }
+
+  function handleClear(): void {
     setInputValue("");
     onClearChat();
-  }, [onClearChat]);
+  }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>): void {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -59,7 +90,7 @@ export function ChatPanel({
     <div className="flex flex-col h-full bg-surface/80">
       <div className="px-4 py-2 border-b border-neon-cyan/10 bg-surface/60">
         <div className="flex items-center gap-2">
-          <div className="w-1.5 h-1.5 rounded-full bg-neon-cyan/60" />
+          <div aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-neon-cyan/60" />
           <span className="text-[11px] font-mono font-medium text-neon-cyan/70 tracking-widest uppercase">
             Chat
           </span>
@@ -84,17 +115,75 @@ export function ChatPanel({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-3">
+      <div
+        ref={transcriptRef}
+        role="log"
+        aria-live="polite"
+        aria-label="Chat transcript"
+        onScroll={() => {
+          const transcript = transcriptRef.current;
+          if (!transcript) return;
+          const distanceFromBottom =
+            transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight;
+          shouldFollowRef.current = distanceFromBottom <= 80;
+        }}
+        className="flex-1 overflow-y-auto px-4 py-3"
+      >
         {isEmpty && (
-          <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
-            <div className="text-4xl">🎹</div>
-            <div className="space-y-1.5">
-              <p className="text-sm font-display font-medium text-white/60">
-                What do you want to hear?
+          <div className="flex flex-col h-full justify-between py-2 space-y-4">
+            <div className="text-center space-y-1 pt-2">
+              <div className="inline-flex items-center justify-center size-10 rounded-full bg-neon-cyan/10 border border-neon-cyan/25 text-xl mb-1 shadow-[0_0_15px_#00fff520]">
+                🎹
+              </div>
+              <h2 className="text-sm font-display font-medium text-white/90">
+                What do you want to create?
+              </h2>
+              <p className="text-[11px] font-mono text-white/40">
+                pick a starter vibe or roll the dice
               </p>
-              <p className="text-xs font-mono text-white/25">
-                describe a vibe, genre, or feeling
-              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-lg mx-auto w-full px-1">
+              {PROMPT_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => handleSelectPreset(preset)}
+                  disabled={isInputDisabled}
+                  className="group relative flex flex-col items-start p-2.5 rounded-lg border border-white/8
+                    bg-surface-lighter/40 hover:bg-surface-lighter/80 hover:border-neon-cyan/40
+                    text-left transition-all hover:shadow-[0_0_14px_#00fff515]
+                    focus:outline-none focus:border-neon-cyan/50 disabled:opacity-40"
+                >
+                  <div className="flex items-center gap-1.5 w-full">
+                    <span aria-hidden="true" className="text-sm">{preset.emoji}</span>
+                    <span className="text-xs font-display font-semibold text-white/80 group-hover:text-neon-cyan transition-colors">
+                      {preset.title}
+                    </span>
+                    <span className="ml-auto text-[9px] font-mono text-white/30 group-hover:text-neon-cyan/60">
+                      {preset.genre}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[10px] font-mono text-white/40 line-clamp-2 leading-relaxed">
+                    {preset.prompt}
+                  </p>
+                </button>
+              ))}
+            </div>
+
+            <div className="text-center pb-2">
+              <button
+                type="button"
+                onClick={handleSurpriseMe}
+                disabled={isInputDisabled}
+                className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-neon-cyan/30
+                  bg-neon-cyan/10 hover:bg-neon-cyan/20 text-neon-cyan text-xs font-mono
+                  transition-all hover:shadow-[0_0_15px_#00fff525] hover:border-neon-cyan/60
+                  focus:outline-none disabled:opacity-40"
+              >
+                <span aria-hidden="true">🎲</span>
+                <span>Surprise Me with a Random Recipe</span>
+              </button>
             </div>
           </div>
         )}
@@ -103,27 +192,62 @@ export function ChatPanel({
           <MessageBubble key={msg.id} message={msg} />
         ))}
 
-        {streamingText && isStreaming && (
-          <div className="flex justify-start mb-3">
+        {isStreaming && (
+          <div role="status" className="flex justify-start mb-3">
             <div className="max-w-[85%] px-3 py-2 rounded-lg bg-surface-lighter/80 border border-neon-cyan/10 text-gray-200">
               <StreamingText text={streamingText} />
             </div>
           </div>
         )}
 
+        {error && (
+          <div role="alert" className="mb-3 rounded-lg border border-neon-magenta/20 bg-neon-magenta/10 px-3 py-2 text-xs font-mono text-neon-magenta">
+            {error}
+          </div>
+        )}
+
         <div ref={bottomRef} />
       </div>
+
+      {/* Modifier chips for continuous music evolution */}
+      {!isEmpty && (
+        <div className="px-3 py-1.5 border-t border-neon-cyan/10 bg-surface-light/40 overflow-x-auto flex items-center gap-1.5 scrollbar-thin">
+          <span className="text-[10px] font-mono uppercase tracking-wider text-neon-cyan/50 whitespace-nowrap mr-1">
+            Transform:
+          </span>
+          {PROMPT_MODIFIERS.map((mod) => (
+            <button
+              key={mod.id}
+              type="button"
+              onClick={() => handleSelectModifier(mod)}
+              disabled={isInputDisabled}
+              title={mod.prompt}
+              className="px-2.5 py-0.5 rounded-full text-[10px] font-mono whitespace-nowrap
+                border border-white/10 bg-surface-lighter/40 text-white/70
+                hover:border-neon-cyan/40 hover:bg-neon-cyan/10 hover:text-neon-cyan
+                transition-all focus:outline-none disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              {mod.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="border-t border-neon-magenta/10 p-3 bg-surface/60">
         <div className="flex gap-2">
           <textarea
+            aria-label="Describe the music to generate"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={
-              isStreaming ? "generating..." : "describe your sound..."
+              isStreaming
+                ? "generating..."
+                : isInputDisabled
+                  ? "starting audio..."
+                  : "describe your sound..."
             }
-            disabled={isStreaming}
+            disabled={isInputDisabled}
             rows={1}
             className="flex-1 bg-surface-lighter/60 border border-white/8 rounded-lg px-3 py-2
               text-sm font-mono text-white/90 placeholder-white/20 resize-none
@@ -131,8 +255,9 @@ export function ChatPanel({
               disabled:opacity-40 transition-all"
           />
           <button
+            type="button"
             onClick={handleSubmit}
-            disabled={isStreaming || !inputValue.trim()}
+            disabled={isInputDisabled || !inputValue.trim()}
             className="px-4 py-2 bg-neon-cyan/15 hover:bg-neon-cyan/25 text-neon-cyan
               border border-neon-cyan/30 hover:border-neon-cyan/60
               rounded-lg text-xs font-mono font-medium tracking-wider transition-all

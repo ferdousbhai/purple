@@ -7,3 +7,4 @@ artifacts/
 *.tsbuildinfo
 package-lock.json
 bun.lockb
+bun.lock

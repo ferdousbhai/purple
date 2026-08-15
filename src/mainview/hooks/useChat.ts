@@ -1,19 +1,45 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { extractPattern } from "../../shared/pattern-extractor";
 import { electroview, setStreamHandler } from "../rpc";
-import type { Message } from "../../shared/types";
+import { MAX_CONTEXT_MESSAGES, type Message } from "../../shared/types";
 
 interface StreamSession {
   assistantId: string;
+  firstDeltaSeen: boolean;
+  frameId?: number;
+  requestId: string;
   resolve?: () => void;
+  startedAt: number;
+  terminalReason: "streaming" | "done" | "error" | "cancelled" | "timeout";
   text: string;
+  error?: string;
+  timeoutId?: ReturnType<typeof setTimeout>;
+}
+
+const STREAM_TIMEOUT_MS = 90_000;
+
+function settleStream(
+  stream: StreamSession,
+  reason: Exclude<StreamSession["terminalReason"], "streaming">,
+  error?: string,
+): void {
+  if (stream.terminalReason !== "streaming") return;
+  clearTimeout(stream.timeoutId);
+  if (stream.frameId !== undefined) cancelAnimationFrame(stream.frameId);
+  stream.terminalReason = reason;
+  stream.error = error;
+  stream.resolve?.();
 }
 
 export function useChat() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [streamingText, setStreamingText] = useState("");
-  const [isStreaming, setIsStreaming] = useState(false);
-  const messagesRef = useRef<Message[]>([]);
+  const [view, setView] = useState({
+    messages: [] as Message[],
+    streamingText: "",
+    isStreaming: false,
+    error: null as string | null,
+  });
+  const visibleMessagesRef = useRef<Message[]>([]);
+  const conversationRef = useRef<Message[]>([]);
   const busyRef = useRef(false);
   const idCounter = useRef(0);
   const streamRef = useRef<StreamSession | null>(null);
@@ -24,91 +50,215 @@ export function useChat() {
 
   useEffect(() => {
     setStreamHandler({
-      onDelta: (delta) => {
+      onDelta: (requestId, delta) => {
         const stream = streamRef.current;
-        if (!stream) return;
+        if (
+          !stream ||
+          stream.requestId !== requestId ||
+          stream.terminalReason !== "streaming"
+        )
+          return;
+
+        if (!stream.firstDeltaSeen) {
+          stream.firstDeltaSeen = true;
+          console.log(
+            `[Chat] First token in ${Math.round(performance.now() - stream.startedAt)}ms`,
+          );
+          stream.text += delta;
+          setView((current) => ({ ...current, streamingText: stream.text }));
+          return;
+        }
 
         stream.text += delta;
-        setStreamingText(stream.text);
+        if (stream.frameId !== undefined) return;
+        stream.frameId = requestAnimationFrame(() => {
+          stream.frameId = undefined;
+          if (
+            streamRef.current === stream &&
+            stream.terminalReason === "streaming"
+          ) {
+            setView((current) => ({ ...current, streamingText: stream.text }));
+          }
+        });
       },
-      onDone: () => streamRef.current?.resolve?.(),
-      onError: (error) => {
+      onDone: (requestId) => {
         const stream = streamRef.current;
-        if (!stream) return;
+        if (
+          stream?.requestId === requestId &&
+          stream.terminalReason === "streaming"
+        ) {
+          settleStream(stream, "done");
+        }
+      },
+      onError: (requestId, error) => {
+        const stream = streamRef.current;
+        if (
+          !stream ||
+          stream.requestId !== requestId ||
+          stream.terminalReason !== "streaming"
+        )
+          return;
 
-        stream.text = `Error: ${error}`;
-        stream.resolve?.();
+        settleStream(stream, "error", error);
       },
     });
 
-    return () => setStreamHandler({});
+    return () => {
+      setStreamHandler({});
+
+      const stream = streamRef.current;
+      if (!stream) return;
+
+      settleStream(stream, "cancelled");
+      streamRef.current = null;
+      busyRef.current = false;
+      void electroview.rpc!.request
+        .abortStream({ requestId: stream.requestId })
+        .catch((error: unknown) => {
+          console.error("[Chat] Could not abort stream during cleanup:", error);
+        });
+    };
   }, []);
 
   const abortStream = useCallback(() => {
-    electroview.rpc!.request.abortStream({});
-    streamRef.current?.resolve?.();
+    const stream = streamRef.current;
+    if (!stream) return;
+    void electroview.rpc!.request
+      .abortStream({ requestId: stream.requestId })
+      .catch((error: unknown) => {
+        console.error("[Chat] Could not abort stream:", error);
+      });
+    settleStream(stream, "cancelled");
   }, []);
 
   const clearChat = useCallback(() => {
     const stream = streamRef.current;
     if (stream) {
-      electroview.rpc!.request.abortStream({});
+      void electroview.rpc!.request
+        .abortStream({ requestId: stream.requestId })
+        .catch((error: unknown) => {
+          console.error("[Chat] Could not abort stream:", error);
+        });
+      settleStream(stream, "cancelled");
       streamRef.current = null;
-      stream.resolve?.();
     }
 
-    messagesRef.current = [];
-    setMessages([]);
-    setStreamingText("");
-    setIsStreaming(false);
+    visibleMessagesRef.current = [];
+    conversationRef.current = [];
+    setView({ messages: [], streamingText: "", isStreaming: false, error: null });
     busyRef.current = false;
   }, []);
 
   const sendMessage = useCallback(
-    async (text: string): Promise<string | null> => {
+    async (
+      text: string,
+      options: { hiddenUserMessage?: boolean } = {},
+    ): Promise<string | null> => {
       if (busyRef.current) return null;
       busyRef.current = true;
 
       const userMsg: Message = { id: nextId(), role: "user", content: text };
-      const updated = [...messagesRef.current, userMsg];
-      messagesRef.current = updated;
-      setMessages([...updated]);
-      setIsStreaming(true);
-      setStreamingText("");
+      const previousConversation = conversationRef.current;
+      const conversation = [...conversationRef.current, userMsg];
+      const visibleMessages = options.hiddenUserMessage
+        ? visibleMessagesRef.current
+        : [...visibleMessagesRef.current, userMsg];
+      conversationRef.current = conversation;
+      visibleMessagesRef.current = visibleMessages;
+      setView({
+        messages: [...visibleMessages],
+        streamingText: "",
+        isStreaming: true,
+        error: null,
+      });
       const activeStream: StreamSession = {
         assistantId: nextId(),
+        firstDeltaSeen: false,
+        requestId: crypto.randomUUID(),
+        startedAt: performance.now(),
+        terminalReason: "streaming",
         text: "",
       };
       streamRef.current = activeStream;
 
       await new Promise<void>((resolve) => {
         activeStream.resolve = resolve;
+        activeStream.timeoutId = setTimeout(() => {
+          if (streamRef.current !== activeStream) return;
+
+          void electroview.rpc!.request
+            .abortStream({ requestId: activeStream.requestId })
+            .catch(() => {});
+          settleStream(
+            activeStream,
+            "timeout",
+            "The model did not finish responding. Please try again.",
+          );
+        }, STREAM_TIMEOUT_MS);
         electroview
-          .rpc!.request.startStream({ messages: updated })
+          .rpc!.request.startStream({
+            requestId: activeStream.requestId,
+            messages: conversation.slice(-MAX_CONTEXT_MESSAGES),
+          })
           .catch((err: unknown) => {
             if (streamRef.current !== activeStream) return;
 
-            activeStream.text = `Error: ${err instanceof Error ? err.message : String(err)}`;
-            activeStream.resolve?.();
+            settleStream(
+              activeStream,
+              "error",
+              err instanceof Error ? err.message : String(err),
+            );
           });
       });
 
       if (streamRef.current !== activeStream) return null;
 
-      const stream = streamRef.current;
-      const fullText = stream?.text ?? "";
+      if (activeStream.terminalReason === "cancelled") {
+        conversationRef.current = previousConversation;
+        setView({
+          messages: visibleMessages,
+          streamingText: "",
+          isStreaming: false,
+          error: null,
+        });
+        busyRef.current = false;
+        streamRef.current = null;
+        return null;
+      }
+
+      if (
+        activeStream.terminalReason === "error" ||
+        activeStream.terminalReason === "timeout"
+      ) {
+        conversationRef.current = previousConversation;
+        setView({
+          messages: visibleMessages,
+          streamingText: "",
+          isStreaming: false,
+          error: activeStream.error ?? "The request failed. Please try again.",
+        });
+        busyRef.current = false;
+        streamRef.current = null;
+        return null;
+      }
+
+      const fullText = activeStream.text;
       const pattern = extractPattern(fullText);
       const assistantMsg: Message = {
-        id: stream?.assistantId ?? nextId(),
+        id: activeStream.assistantId,
         role: "assistant",
         content: fullText,
-        pattern: pattern || undefined,
       };
-      const final = [...updated, assistantMsg];
-      messagesRef.current = final;
-      setMessages(final);
-      setStreamingText("");
-      setIsStreaming(false);
+      const finalConversation = [...conversation, assistantMsg];
+      const finalVisibleMessages = [...visibleMessages, assistantMsg];
+      conversationRef.current = finalConversation;
+      visibleMessagesRef.current = finalVisibleMessages;
+      setView({
+        messages: finalVisibleMessages,
+        streamingText: "",
+        isStreaming: false,
+        error: null,
+      });
       busyRef.current = false;
       streamRef.current = null;
 
@@ -118,9 +268,7 @@ export function useChat() {
   );
 
   return {
-    messages,
-    streamingText,
-    isStreaming,
+    ...view,
     sendMessage,
     abortStream,
     clearChat,
