@@ -8,9 +8,17 @@ describe("visibleTextWithoutCodeBlocks", () => {
     expect(visibleTextWithoutCodeBlocks(text)).toBe("Try this pattern:");
   });
 
-  it("preserves leading whitespace in visible text", () => {
-    expect(visibleTextWithoutCodeBlocks("  Thinking out loud")).toBe(
-      "  Thinking out loud",
+  it("trims leading whitespace from visible prose", () => {
+    expect(visibleTextWithoutCodeBlocks("\n  Ready to play.")).toBe(
+      "Ready to play.",
+    );
+  });
+
+  it("does not leave a blank line when a hidden code block comes first", () => {
+    const text = '```strudel\ns("bd sd")\n```\n\nSlowed down to a deep crawl.';
+
+    expect(visibleTextWithoutCodeBlocks(text)).toBe(
+      "Slowed down to a deep crawl.",
     );
   });
 
