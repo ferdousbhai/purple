@@ -6,36 +6,33 @@ interface StreamingTextProps {
 
 const DOT_DELAYS_MS = [0, 120, 240];
 
-export function StreamingText({ text }: StreamingTextProps) {
-  if (!text) {
-    return (
-      <div className="h-5 flex items-center">
-        <span
-          aria-label="Waiting for response"
-          className="inline-flex items-center gap-1 text-neon-cyan/60"
-        >
-          {DOT_DELAYS_MS.map((delay) => (
-            <span
-              key={delay}
-              aria-hidden="true"
-              className="size-1 rounded-full bg-current animate-bounce motion-reduce:animate-none"
-              style={{ animationDelay: `${delay}ms` }}
-            />
-          ))}
-        </span>
-      </div>
-    );
-  }
+function WaitingDots() {
+  return (
+    <div className="h-5 flex items-center">
+      <span
+        aria-label="Waiting for response"
+        className="inline-flex items-center gap-1 text-neon-cyan/60"
+      >
+        {DOT_DELAYS_MS.map((delay) => (
+          <span
+            key={delay}
+            aria-hidden="true"
+            className="size-1 rounded-full bg-current animate-bounce motion-reduce:animate-none"
+            style={{ animationDelay: `${delay}ms` }}
+          />
+        ))}
+      </span>
+    </div>
+  );
+}
 
+export function StreamingText({ text }: StreamingTextProps) {
   const visibleText = visibleTextWithoutCodeBlocks(text);
+  if (!visibleText) return <WaitingDots />;
 
   return (
     <div className="whitespace-pre-wrap text-sm leading-relaxed">
-      {visibleText || (
-        <span className="font-mono text-xs uppercase tracking-widest text-neon-cyan/60">
-          Writing pattern
-        </span>
-      )}
+      {visibleText}
       <span className="inline-block w-[2px] h-[14px] bg-neon-cyan ml-0.5 animate-glow-pulse align-middle" />
     </div>
   );
