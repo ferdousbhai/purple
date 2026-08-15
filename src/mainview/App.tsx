@@ -21,6 +21,11 @@ export function App() {
   const {
     code,
     setCode,
+    patternTitle,
+    titleStatus,
+    titleError,
+    updatePatternTitle,
+    savePattern,
     requiresUserActivation,
     apiKeyStatus,
     isSettingsOpen,
@@ -38,7 +43,12 @@ export function App() {
     saveApiKey,
     clearApiKey,
     sendMessage,
+    stageNext,
+    transitionSuggestions,
+    transitionSuggestionsStatus,
+    transitionSuggestionsError,
     play,
+    transition,
   } = useRiffController();
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -48,6 +58,8 @@ export function App() {
   }
 
   const status = getStatusLedState(playbackState, isStreaming);
+  const hasPendingPattern =
+    playbackState === "playing" && Boolean(code.trim()) && code !== activeCode;
 
   return (
     <div className="h-screen bg-surface text-white relative noise grid-bg overflow-hidden">
@@ -74,7 +86,9 @@ export function App() {
           >
             KEY
           </button>
-          {playbackState === "playing" && <EqBars />}
+          {(playbackState === "playing" || playbackState === "transitioning") && (
+            <EqBars />
+          )}
           <StatusLed state={status} />
         </div>
       </div>
@@ -84,11 +98,18 @@ export function App() {
           <EditorPanel
             code={code}
             onCodeChange={setCode}
+            patternTitle={patternTitle}
+            titleStatus={titleStatus}
+            titleError={titleError}
+            onTitleChange={updatePatternTitle}
+            onSavePattern={savePattern}
             playbackState={playbackState}
             error={error}
             requiresUserActivation={requiresUserActivation}
+            hasPendingPattern={hasPendingPattern}
             activeRanges={code === activeCode ? activeRanges : EMPTY_SOURCE_RANGES}
             onPlay={play}
+            onTransition={transition}
             onStop={stop}
           />
         </Panel>
@@ -101,8 +122,18 @@ export function App() {
             streamingText={streamingText}
             isStreaming={isStreaming}
             error={chatError}
-            isInputDisabled={isStreaming || playbackState === "loading"}
+            isInputDisabled={
+              isStreaming ||
+              playbackState === "loading" ||
+              playbackState === "transitioning"
+            }
+            isTransitioning={playbackState === "transitioning"}
+            canStageNext={playbackState === "playing"}
+            transitionSuggestions={transitionSuggestions}
+            transitionSuggestionsStatus={transitionSuggestionsStatus}
+            transitionSuggestionsError={transitionSuggestionsError}
             onSendMessage={sendMessage}
+            onStageNext={stageNext}
             onClearChat={clearChat}
           />
         </Panel>
@@ -124,7 +155,9 @@ function getStatusLedState(
   playbackState: PlaybackState,
   isStreaming: boolean,
 ): StatusLedState {
-  if (playbackState === "playing") return "active";
+  if (playbackState === "playing" || playbackState === "transitioning") {
+    return "active";
+  }
   if (isStreaming) return "busy";
   return "idle";
 }

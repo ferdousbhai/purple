@@ -1,16 +1,35 @@
 import { useEffect, useReducer, useCallback, useRef } from "react";
 import { useStrudel } from "./useStrudel";
 import type { PlaybackState, EvalResult, SourceRange } from "../../shared/types";
+import {
+  buildTransitionCode,
+  DEFAULT_TRANSITION_CYCLES,
+  getTransitionStartCycle,
+} from "../transition";
 
 type AudioActivationResult =
   | { ok: true }
   | { ok: false; kind: "audio"; error: string };
 
 export function usePlayback() {
-  const { activate, evaluate, hush, getActiveSourceRanges } = useStrudel();
+  const {
+    activate,
+    evaluate,
+    hush,
+    getSchedulerPosition,
+    getActiveSourceRanges,
+  } = useStrudel();
   const [state, dispatch] = useReducer(playbackReducer, INITIAL_PLAYBACK_STATE);
+  const stateRef = useRef(state);
   const operationRef = useRef(0);
   const playQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const cancelTransitionWaitRef = useRef<(() => void) | null>(null);
+  stateRef.current = state;
+
+  const cancelTransitionWait = useCallback(() => {
+    cancelTransitionWaitRef.current?.();
+    cancelTransitionWaitRef.current = null;
+  }, []);
 
   const activateAudio = useCallback(async (): Promise<AudioActivationResult> => {
     try {
@@ -33,6 +52,7 @@ export function usePlayback() {
   const play = useCallback(
     async (code: string): Promise<EvalResult> => {
       const operation = ++operationRef.current;
+      cancelTransitionWait();
       dispatch({ type: "loading" });
 
       let releaseQueue: () => void = () => {};
@@ -66,6 +86,7 @@ export function usePlayback() {
           dispatch({ type: "playing", code });
         } else {
           if (result.kind === "cancelled") return result;
+          hush();
           dispatch({ type: "error", error: result.error });
         }
         return result;
@@ -73,14 +94,177 @@ export function usePlayback() {
         releaseQueue();
       }
     },
-    [activateAudio, evaluate, hush],
+    [activateAudio, cancelTransitionWait, evaluate, hush],
+  );
+
+  const waitForCycle = useCallback(
+    (targetCycle: number, operation: number): Promise<EvalResult> =>
+      new Promise((resolve) => {
+        let timeoutId: number | undefined;
+        let settled = false;
+
+        const finish = (result: EvalResult) => {
+          if (settled) return;
+          settled = true;
+          if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+          if (cancelTransitionWaitRef.current === cancel) {
+            cancelTransitionWaitRef.current = null;
+          }
+          resolve(result);
+        };
+
+        const cancel = () => finish({ ok: false, kind: "cancelled" });
+        const poll = () => {
+          if (operation !== operationRef.current) {
+            cancel();
+            return;
+          }
+
+          try {
+            if (getSchedulerPosition().cycle >= targetCycle) {
+              finish({ ok: true });
+              return;
+            }
+          } catch (timingError) {
+            const message =
+              timingError instanceof Error
+                ? timingError.message
+                : String(timingError);
+            finish({ ok: false, kind: "evaluation", error: message });
+            return;
+          }
+
+          timeoutId = window.setTimeout(poll, 50);
+        };
+
+        cancelTransitionWaitRef.current = cancel;
+        poll();
+      }),
+    [getSchedulerPosition],
+  );
+
+  const transition = useCallback(
+    async (
+      nextCode: string,
+      durationCycles = DEFAULT_TRANSITION_CYCLES,
+    ): Promise<EvalResult> => {
+      const current = stateRef.current;
+      if (current.playbackState !== "playing" || !current.activeCode) {
+        return play(nextCode);
+      }
+
+      const fromCode = current.activeCode;
+      const operation = ++operationRef.current;
+      cancelTransitionWait();
+      dispatch({ type: "transitioning" });
+
+      let releaseQueue: () => void = () => {};
+      const queueTurn = new Promise<void>((resolve) => {
+        releaseQueue = resolve;
+      });
+      const previousTurn = playQueueRef.current;
+      playQueueRef.current = queueTurn;
+      await previousTurn;
+
+      try {
+        if (operation !== operationRef.current) {
+          return { ok: false, kind: "cancelled" };
+        }
+
+        const activation = await activateAudio();
+        if (operation !== operationRef.current) {
+          return { ok: false, kind: "cancelled" };
+        }
+        if (!activation.ok) {
+          dispatch({ type: "error", error: activation.error });
+          return activation;
+        }
+
+        let startCycle: number;
+        let transitionCode: string;
+        try {
+          startCycle = getTransitionStartCycle(
+            getSchedulerPosition().cycle,
+          );
+          transitionCode = buildTransitionCode(
+            fromCode,
+            nextCode,
+            startCycle,
+            durationCycles,
+          );
+        } catch (timingError) {
+          const error =
+            timingError instanceof Error
+              ? timingError.message
+              : String(timingError);
+          dispatch({ type: "transitionFailed", code: fromCode, error });
+          return { ok: false, kind: "evaluation", error };
+        }
+
+        const transitionResult = await evaluate(transitionCode, {
+          hushBefore: false,
+        });
+        if (operation !== operationRef.current) {
+          hush();
+          return { ok: false, kind: "cancelled" };
+        }
+        if (!transitionResult.ok) {
+          if (transitionResult.kind === "cancelled") return transitionResult;
+          dispatch({
+            type: "transitionFailed",
+            code: fromCode,
+            error: transitionResult.error,
+          });
+          return transitionResult;
+        }
+
+        const waitResult = await waitForCycle(
+          startCycle + durationCycles,
+          operation,
+        );
+        if (!waitResult.ok) {
+          if (waitResult.kind !== "cancelled") {
+            hush();
+            dispatch({ type: "error", error: waitResult.error });
+          }
+          return waitResult;
+        }
+
+        const finalResult = await evaluate(nextCode, { hushBefore: false });
+        if (operation !== operationRef.current) {
+          hush();
+          return { ok: false, kind: "cancelled" };
+        }
+        if (finalResult.ok) {
+          dispatch({ type: "playing", code: nextCode });
+        } else if (finalResult.kind !== "cancelled") {
+          hush();
+          dispatch({ type: "error", error: finalResult.error });
+        }
+        return finalResult;
+      } finally {
+        releaseQueue();
+      }
+    },
+    [
+      activateAudio,
+      cancelTransitionWait,
+      evaluate,
+      getSchedulerPosition,
+      hush,
+      play,
+      waitForCycle,
+    ],
   );
 
   const stop = useCallback(() => {
     ++operationRef.current;
+    cancelTransitionWait();
     hush();
     dispatch({ type: "stopped" });
-  }, [hush]);
+  }, [cancelTransitionWait, hush]);
+
+  useEffect(() => cancelTransitionWait, [cancelTransitionWait]);
 
   useEffect(() => {
     if (state.playbackState !== "playing") return;
@@ -104,6 +288,7 @@ export function usePlayback() {
     ...state,
     prepareAudio,
     play,
+    transition,
     stop,
   };
 }
@@ -117,7 +302,9 @@ interface PlaybackSnapshot {
 
 type PlaybackAction =
   | { type: "loading" }
+  | { type: "transitioning" }
   | { type: "playing"; code: string }
+  | { type: "transitionFailed"; code: string; error: string }
   | { type: "error"; error: string }
   | { type: "stopped" }
   | { type: "ranges"; ranges: readonly SourceRange[] };
@@ -140,6 +327,20 @@ function playbackReducer(
       return {
         playbackState: "playing",
         error: null,
+        activeCode: action.code,
+        activeRanges: [],
+      };
+    case "transitioning":
+      return {
+        ...state,
+        playbackState: "transitioning",
+        error: null,
+        activeRanges: [],
+      };
+    case "transitionFailed":
+      return {
+        playbackState: "playing",
+        error: action.error,
         activeCode: action.code,
         activeRanges: [],
       };

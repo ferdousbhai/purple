@@ -13,7 +13,9 @@ import {
   type PromptPreset,
   type PromptModifier,
 } from "../prompt-presets";
-import type { Message } from "../../shared/types";
+import type { Message, TransitionSuggestion } from "../../shared/types";
+
+type TransitionSuggestionsStatus = "idle" | "loading" | "ready" | "error";
 
 interface ChatPanelProps {
   messages: Message[];
@@ -21,7 +23,13 @@ interface ChatPanelProps {
   error: string | null;
   isStreaming: boolean;
   isInputDisabled: boolean;
+  isTransitioning: boolean;
+  canStageNext: boolean;
+  transitionSuggestions: TransitionSuggestion[];
+  transitionSuggestionsStatus: TransitionSuggestionsStatus;
+  transitionSuggestionsError: string | null;
   onSendMessage: (text: string) => boolean;
+  onStageNext: (text: string) => boolean;
   onClearChat: () => void;
 }
 export function ChatPanel({
@@ -30,7 +38,13 @@ export function ChatPanel({
   error,
   isStreaming,
   isInputDisabled,
+  isTransitioning,
+  canStageNext,
+  transitionSuggestions,
+  transitionSuggestionsStatus,
+  transitionSuggestionsError,
   onSendMessage,
+  onStageNext,
   onClearChat,
 }: ChatPanelProps) {
   const [inputValue, setInputValue] = useState("");
@@ -56,6 +70,19 @@ export function ChatPanel({
 
     const didSend = onSendMessage(text);
     if (didSend) setInputValue("");
+  }
+
+  function handleStageNext(): void {
+    const text = inputValue.trim();
+    if (!text || isInputDisabled || !canStageNext) return;
+
+    const didSend = onStageNext(text);
+    if (didSend) setInputValue("");
+  }
+
+  function handleSuggestedNext(prompt: string): void {
+    if (isInputDisabled || !canStageNext) return;
+    onStageNext(prompt);
   }
 
   function handleSelectPreset(preset: PromptPreset): void {
@@ -233,6 +260,38 @@ export function ChatPanel({
         </div>
       )}
 
+      {canStageNext && transitionSuggestions.length > 0 && (
+        <div className="px-3 py-1.5 border-t border-neon-magenta/10 bg-surface-light/40 flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] font-mono uppercase tracking-wider text-neon-magenta/55 whitespace-nowrap mr-1">
+            Next:
+          </span>
+          {transitionSuggestions.map((suggestion) => (
+            <button
+              key={suggestion.label}
+              type="button"
+              onClick={() => handleSuggestedNext(suggestion.prompt)}
+              disabled={isInputDisabled}
+              title={suggestion.prompt}
+              className="px-2.5 py-0.5 rounded-full text-[10px] font-mono
+                border border-neon-magenta/15 bg-neon-magenta/5 text-white/70
+                hover:border-neon-magenta/45 hover:bg-neon-magenta/12 hover:text-neon-magenta
+                transition-all focus:outline-none disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              {suggestion.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {canStageNext &&
+        transitionSuggestionsStatus === "error" &&
+        transitionSuggestionsError && (
+          <div role="alert" className="px-3 py-1.5 border-t border-neon-magenta/10 bg-neon-magenta/5 text-[10px] font-mono text-neon-magenta/75">
+            <span className="mr-2 text-neon-magenta/50">NEXT ERR</span>
+            {transitionSuggestionsError}
+          </div>
+        )}
+
       <div className="border-t border-neon-magenta/10 p-3 bg-surface/60">
         <div className="flex gap-2">
           <textarea
@@ -243,17 +302,34 @@ export function ChatPanel({
             placeholder={
               isStreaming
                 ? "generating..."
+                : isTransitioning
+                  ? "mixing into the next pattern..."
                 : isInputDisabled
                   ? "starting audio..."
                   : "describe your sound..."
             }
             disabled={isInputDisabled}
             rows={1}
-            className="flex-1 bg-surface-lighter/60 border border-white/8 rounded-lg px-3 py-2
+            className="min-w-0 flex-1 bg-surface-lighter/60 border border-white/8 rounded-lg px-3 py-2
               text-sm font-mono text-white/90 placeholder-white/20 resize-none
               focus:outline-none focus:border-neon-cyan/40 focus:shadow-[0_0_8px_#00fff520]
               disabled:opacity-40 transition-all"
           />
+          {canStageNext && (
+            <button
+              type="button"
+              onClick={handleStageNext}
+              disabled={isInputDisabled || !inputValue.trim()}
+              title="Generate and stage the next pattern without interrupting playback"
+              className="flex items-center px-2.5 py-2 bg-neon-magenta/10
+                hover:bg-neon-magenta/20 text-neon-magenta border border-neon-magenta/25
+                hover:border-neon-magenta/55 rounded-lg text-[10px] font-mono font-medium
+                tracking-wider transition-all hover:shadow-[0_0_12px_#ff2d9530]
+                disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:shadow-none"
+            >
+              STAGE NEXT
+            </button>
+          )}
           <button
             type="button"
             onClick={handleSubmit}

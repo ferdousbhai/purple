@@ -23,7 +23,11 @@ interface StrudelPattern {
 }
 
 interface StrudelModule {
-  evaluate: (code: string, autoplay: boolean) => Promise<unknown>;
+  evaluate: (
+    code: string,
+    autoplay: boolean,
+    shouldHush?: boolean,
+  ) => Promise<unknown>;
   getAudioContext: () => AudioContext;
   getCps?: () => unknown;
   getTime: () => number;
@@ -35,6 +39,11 @@ interface StrudelModule {
     prebake: () => unknown;
   }) => Promise<void>;
   samples: (source: string) => unknown;
+}
+
+export interface SchedulerPosition {
+  cycle: number;
+  cps: number;
 }
 
 export function useStrudel() {
@@ -110,7 +119,10 @@ export function useStrudel() {
     console.log("[Strudel] AudioContext active, state:", ctx.state);
   }, [acquireAudioContext, init]);
 
-  const evaluate = useCallback(async (code: string): Promise<EvalResult> => {
+  const evaluate = useCallback(async (
+    code: string,
+    options: { hushBefore?: boolean } = {},
+  ): Promise<EvalResult> => {
     const strudel = strudelRef.current;
     if (!strudel) {
       return {
@@ -131,14 +143,17 @@ export function useStrudel() {
       }
 
       lastEvaluationErrorRef.current = null;
-      const pattern = await strudel.evaluate(code, true);
+      const pattern = await strudel.evaluate(
+        code,
+        true,
+        options.hushBefore ?? true,
+      );
       if (!isStrudelPattern(pattern)) {
         const evaluationError = lastEvaluationErrorRef.current;
         const message =
           evaluationError instanceof Error
             ? evaluationError.message
             : "Strudel could not evaluate this pattern.";
-        activePatternRef.current = null;
         return { ok: false, error: message, kind: "evaluation" };
       }
 
@@ -153,6 +168,19 @@ export function useStrudel() {
   const hush = useCallback(() => {
     strudelRef.current?.hush();
     activePatternRef.current = null;
+  }, []);
+
+  const getSchedulerPosition = useCallback((): SchedulerPosition => {
+    const strudel = strudelRef.current;
+    if (!strudel) throw new Error("Audio engine is not initialized.");
+
+    const cycle = strudel.getTime();
+    const cps = Number(strudel.getCps?.());
+    if (!Number.isFinite(cycle) || !Number.isFinite(cps) || cps <= 0) {
+      throw new Error("Strudel scheduler timing is unavailable.");
+    }
+
+    return { cycle, cps };
   }, []);
 
   const getActiveSourceRanges = useCallback((): SourceRange[] => {
@@ -189,6 +217,7 @@ export function useStrudel() {
     activate,
     evaluate,
     hush,
+    getSchedulerPosition,
     getActiveSourceRanges,
   };
 }

@@ -1,5 +1,10 @@
 import type { RPCSchema } from "electrobun/bun";
-import type { ApiKeyStatus, Message } from "./types";
+import type {
+  ApiKeyStatus,
+  Message,
+  SavePatternResult,
+  TransitionSuggestion,
+} from "./types";
 import type { StartupOptions } from "./cli";
 
 export type RiffRPC = {
@@ -33,6 +38,22 @@ export type RiffRPC = {
         params: Record<string, never>;
         response: StartupOptions;
       };
+      startTitleGeneration: {
+        params: { requestId: string; prompt: string };
+        response: { ok: boolean };
+      };
+      startTransitionSuggestions: {
+        params: {
+          requestId: string;
+          code: string;
+          sourcePrompt?: string;
+        };
+        response: { ok: boolean };
+      };
+      savePattern: {
+        params: { title: string; code: string };
+        response: SavePatternResult;
+      };
       log: {
         params: { level: string; message: string };
         response: { ok: boolean };
@@ -46,6 +67,13 @@ export type RiffRPC = {
       streamDelta: { requestId: string; delta: string };
       streamDone: { requestId: string };
       streamError: { requestId: string; error: string };
+      titleDone: { requestId: string; title: string };
+      titleError: { requestId: string; error: string };
+      transitionSuggestionsDone: {
+        requestId: string;
+        suggestions: TransitionSuggestion[];
+      };
+      transitionSuggestionsError: { requestId: string; error: string };
     };
   }>;
 };
