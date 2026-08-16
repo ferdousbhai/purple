@@ -307,7 +307,7 @@ export function ChatPanel({
               isStreaming
                 ? "generating..."
                 : isTransitioning
-                  ? "mixing into the next pattern..."
+                  ? "xfading into the next pattern..."
                 : isInputDisabled
                   ? "starting audio..."
                   : "describe your sound..."

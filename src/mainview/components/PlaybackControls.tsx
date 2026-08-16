@@ -32,10 +32,10 @@ export function PlaybackControls({
               bg-neon-cyan/15 hover:bg-neon-cyan/25 text-neon-cyan
               border border-neon-cyan/30 hover:border-neon-cyan/60
               rounded transition-all hover:shadow-[0_0_12px_#00fff540]"
-          title={`Update gently over ${DEFAULT_TRANSITION_CYCLES} cycles`}
+          title={`xfade over ${DEFAULT_TRANSITION_CYCLES} cycles`}
         >
           <span aria-hidden="true">↝</span>
-          UPDATE
+          XFADE
         </button>
       )}
 
@@ -44,7 +44,7 @@ export function PlaybackControls({
           role="status"
           className="px-2 py-1 text-[10px] font-mono tracking-wider text-neon-cyan"
         >
-          ↝ MIXING
+          ↝ XFADING
         </span>
       )}
 
