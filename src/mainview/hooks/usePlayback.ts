@@ -5,7 +5,7 @@ import {
   buildTransitionCode,
   DEFAULT_TRANSITION_CYCLES,
   getTransitionStartCycle,
-} from "../transition";
+} from "@riff/core/transitions";
 
 type AudioActivationResult =
   | { ok: true }

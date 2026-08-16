@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { extractPattern } from "../../shared/pattern-extractor";
+import { extractPattern } from "@riff/core/pattern";
 import { electroview, setStreamHandler } from "../rpc";
 import { MAX_CONTEXT_MESSAGES, type Message } from "../../shared/types";
 

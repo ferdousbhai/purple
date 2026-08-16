@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractPattern } from "./pattern-extractor";
+import { extractPattern } from "@riff/core/pattern";
 
 describe("extractPattern", () => {
   it("extracts code from a ```strudel block", () => {

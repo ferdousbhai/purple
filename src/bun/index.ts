@@ -20,12 +20,12 @@ import {
   type TransitionSuggestionsResult,
 } from "../shared/types";
 import { parseCliArgs, readForwardedStartupArgs } from "../shared/cli";
-import { extractPattern } from "../shared/pattern-extractor";
+import { extractPattern } from "@riff/core/pattern";
 import {
   parseGeneratedPatternTitle,
   patternFilename,
-} from "../shared/pattern-title";
-import { parseTransitionSuggestions } from "../shared/transition-suggestions";
+} from "@riff/core/pattern";
+import { parseTransitionSuggestions } from "@riff/core/pattern";
 import { SYSTEM_PROMPT } from "./system-prompt";
 import {
   TITLE_PROMPT,

@@ -3,7 +3,7 @@ import {
   parseGeneratedPatternTitle,
   patternFilename,
   validateGeneratedPatternTitle,
-} from "./pattern-title";
+} from "@riff/core/pattern";
 
 describe("patternFilename", () => {
   it("creates a portable Strudel filename", () => {
