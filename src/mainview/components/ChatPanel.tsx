@@ -90,7 +90,11 @@ export function ChatPanel({
   }
 
   function handleSelectModifier(mod: PromptModifier): void {
-    submitPrompt(mod.prompt);
+    if (canStageNext) {
+      onStageNext(mod.prompt);
+    } else {
+      submitPrompt(mod.prompt);
+    }
   }
 
   function handleSurpriseMe(): void {

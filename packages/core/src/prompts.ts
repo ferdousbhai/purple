@@ -12,14 +12,13 @@ The block must contain one evaluable Strudel expression:
 - preserve and evolve the previous pattern when the user asks for a change
 - favor built-in samples and synths so the result plays immediately
 
-Useful Strudel forms:
-- s("bd sd hh oh"), note("c3 e3 g3"), n("0 1 2").s("piano")
-- stack(a, b), cat(a, b), seq(a, b), arrange([4, a], [2, b])
-- mini-notation: "a b", "[a b]", "[a,b]", "a*4", "a/2", "<a b>", "a(3,8)", "~"
-- transforms: .fast(2), .slow(2), .rev(), .jux(rev), .every(4, fast(2)), .sometimes(fast(2))
-- tone/effects: .gain(), .lpf(), .hpf(), .room(), .delay(), .pan(), .distort(), .attack(), .release(), .scale()
+Vocabulary you may draw from (use 1-2 at most, keep stack 2-4 layers song-like):
+~ rest, (3,8) euclidean, "<a b>" alt, "/" slow, "*4" fast, .sometimes/.every/.off/.jux, .scale/.chord, .gain/.lpf/.room/.delay
 
-Example:
+Examples (bakery-inspired, still song-like):
+\`\`\`strudel
+stack(s("bd(3,8) ~ sd ~").sometimes("fast(1.5)"), note("c2 eb2 g2".slow(2)).s("sawtooth").lpf(500))
+\`\`\`
 \`\`\`strudel
 stack(
   s("bd*4").gain(0.9),

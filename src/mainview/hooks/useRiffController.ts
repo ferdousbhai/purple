@@ -149,7 +149,10 @@ export function useRiffController() {
       }
 
       setRequiresUserActivation(false);
-      const result = await playback.play(pattern);
+      const result =
+        playback.playbackState === "playing"
+          ? await playback.transition(pattern)
+          : await playback.play(pattern);
       if (!result.ok && result.kind === "audio") {
         setRequiresUserActivation(true);
         return;
@@ -175,7 +178,10 @@ export function useRiffController() {
           code: fixedPattern,
           sourcePrompt: text,
         };
-        const retryResult = await playback.play(fixedPattern);
+        const retryResult =
+          playback.playbackState === "playing"
+            ? await playback.transition(fixedPattern)
+            : await playback.play(fixedPattern);
         if (retryResult.ok) {
           nextMoves.generate({ code: fixedPattern, sourcePrompt: text });
           break;
