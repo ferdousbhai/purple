@@ -16,10 +16,7 @@
     "reinstall:linux": "scripts/reinstall-linux-user.sh",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "check": "pnpm run test && pnpm run typecheck && pnpm run build:web && pnpm --filter @riff/web check",
-    "web:dev": "pnpm --filter @riff/web dev",
-    "web:build": "pnpm --filter @riff/web build",
-    "web:deploy": "pnpm --filter @riff/web deploy"
+    "check": "pnpm run test && pnpm run typecheck && pnpm run build:web"
   },
   "dependencies": {
     "@google/genai": "^2.16.0",
