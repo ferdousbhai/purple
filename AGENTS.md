@@ -59,7 +59,12 @@ pnpm run check      # test + typecheck + build:web + web check
 
 ## Hosted split
 
-`apps/web` lives in private `ferdousbhai/riff-hosted` (fresh copy). `packages/core` is shared automatically via `vendor/riff` submodule there (`vendor/riff/packages/*` in workspace). See `riff-hosted/README.md` for `git submodule update --remote` sync.
+`apps/web` lives in private `ferdousbhai/riff-hosted` (fresh copy). `packages/core` is shared automatically — edit it here in `riff`, `riff-hosted` pulls it via `vendor/riff` submodule (`vendor/riff/packages/*` in workspace).
+
+Workflow for shared code:
+1. Edit `packages/core/src/*` in this repo (`riff`) and `pnpm run check`
+2. Commit and push to `master` (`ferdousbhai/riff`)
+3. In `ferdousbhai/riff-hosted`: `git submodule update --remote vendor/riff && pnpm install`, commit the pointer bump, deploy
 
 ## Gotchas (see code comments for details)
 
