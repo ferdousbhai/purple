@@ -22,12 +22,15 @@ interface StrudelPattern {
   ) => StrudelHap[];
 }
 
-interface StrudelModule {
+interface StrudelRepl {
   evaluate: (
     code: string,
-    autoplay: boolean,
+    autoplay?: boolean,
     shouldHush?: boolean,
   ) => Promise<unknown>;
+}
+
+interface StrudelModule {
   getAudioContext: () => AudioContext;
   getCps?: () => unknown;
   getTime: () => number;
@@ -37,7 +40,7 @@ interface StrudelModule {
     audioContext: AudioContext;
     onEvalError: (error: unknown) => void;
     prebake: () => unknown;
-  }) => Promise<void>;
+  }) => Promise<StrudelRepl>;
   samples: (source: string) => unknown;
 }
 
@@ -48,6 +51,7 @@ export interface SchedulerPosition {
 
 export function useStrudel() {
   const strudelRef = useRef<StrudelModule | null>(null);
+  const replRef = useRef<StrudelRepl | null>(null);
   const initPromiseRef = useRef<Promise<void> | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const activePatternRef = useRef<StrudelPattern | null>(null);
@@ -60,6 +64,7 @@ export function useStrudel() {
 
     if (audioCtxRef.current?.state === "closed") {
       strudelRef.current = null;
+      replRef.current = null;
       initPromiseRef.current = null;
       activePatternRef.current = null;
     }
@@ -80,7 +85,7 @@ export function useStrudel() {
         const strudel = (await import("@strudel/web/web.mjs")) as StrudelModule;
         console.log("[Strudel] Module imported");
 
-        await strudel.initStrudel({
+        const repl = await strudel.initStrudel({
           audioContext: ctx,
           onEvalError: (error) => {
             lastEvaluationErrorRef.current = error;
@@ -94,6 +99,7 @@ export function useStrudel() {
         console.log("[Strudel] initAudio done");
 
         strudelRef.current = strudel;
+        replRef.current = repl;
       })();
 
       initPromiseRef.current = promise;
@@ -124,7 +130,8 @@ export function useStrudel() {
     options: { hushBefore?: boolean } = {},
   ): Promise<EvalResult> => {
     const strudel = strudelRef.current;
-    if (!strudel) {
+    const repl = replRef.current;
+    if (!strudel || !repl) {
       return {
         ok: false,
         error: "Audio engine not initialized — click Play to retry",
@@ -143,7 +150,10 @@ export function useStrudel() {
       }
 
       lastEvaluationErrorRef.current = null;
-      const pattern = await strudel.evaluate(
+      // @strudel/web's exported evaluate() wrapper drops its third argument.
+      // Calling the initialized REPL directly is required to keep the scheduler
+      // running while a cycle-aligned crossfade replaces the active pattern.
+      const pattern = await repl.evaluate(
         code,
         true,
         options.hushBefore ?? true,
@@ -207,6 +217,7 @@ export function useStrudel() {
   useEffect(() => {
     return () => {
       strudelRef.current?.hush();
+      replRef.current = null;
       activePatternRef.current = null;
       const context = audioCtxRef.current;
       if (context && context.state !== "closed") void context.close();
