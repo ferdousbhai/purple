@@ -25,7 +25,7 @@ src/
   shared/         # Used by both bun and mainview
     types.ts, rpc-schema.ts, pattern-extractor.ts, pattern-title.ts, transition-suggestions.ts, cli.ts
 packages/
-  core/           # @riff/core — shared music logic (also vendored in riff-hosted)
+  core/           # @riff/core — shared music logic (submodule vendor/riff in riff-hosted)
     src/pattern.ts, prompts.ts, recipes.ts, transitions.ts, index.ts
 apps/             # reserved for pnpm workspace; hosted app lives in riff-hosted (see below)
 scripts/          # package-linux-user.sh etc.
@@ -59,7 +59,7 @@ pnpm run check      # test + typecheck + build:web + web check
 
 ## Hosted split
 
-`apps/web` was moved to private `ferdousbhai/riff-hosted` (fresh copy). `packages/core` is vendored there until it lands on public `master`, then it becomes a `vendor/riff` submodule. See `riff-hosted/README.md` for sync steps.
+`apps/web` lives in private `ferdousbhai/riff-hosted` (fresh copy). `packages/core` is shared automatically via `vendor/riff` submodule there (`vendor/riff/packages/*` in workspace). See `riff-hosted/README.md` for `git submodule update --remote` sync.
 
 ## Gotchas (see code comments for details)
 
