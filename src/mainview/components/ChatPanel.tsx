@@ -170,7 +170,7 @@ export function ChatPanel({
                 What do you want to create?
               </h2>
               <p className="text-[11px] font-mono text-white/40">
-                pick a starter vibe or roll the dice
+                pick a pattern — try a preset or randomize
               </p>
             </div>
 
@@ -213,7 +213,7 @@ export function ChatPanel({
                   focus:outline-none disabled:opacity-40"
               >
                 <span aria-hidden="true">🎲</span>
-                <span>Surprise Me with a Random Recipe</span>
+                <span>Random Pattern</span>
               </button>
             </div>
           </div>
@@ -244,7 +244,7 @@ export function ChatPanel({
       {!isEmpty && (
         <div className="px-3 py-1.5 border-t border-neon-cyan/10 bg-surface-light/40 flex flex-wrap items-center gap-1.5">
           <span className="text-[10px] font-mono uppercase tracking-wider text-neon-cyan/50 whitespace-nowrap mr-1">
-            Transform:
+            Effect:
           </span>
           {PROMPT_MODIFIERS.map((mod) => (
             <button
@@ -267,7 +267,7 @@ export function ChatPanel({
       {canStageNext && transitionSuggestions.length > 0 && (
         <div className="px-3 py-1.5 border-t border-neon-magenta/10 bg-surface-light/40 flex flex-wrap items-center gap-1.5">
           <span className="text-[10px] font-mono uppercase tracking-wider text-neon-magenta/55 whitespace-nowrap mr-1">
-            Next:
+            Xfade:
           </span>
           {transitionSuggestions.map((suggestion) => (
             <button
@@ -331,7 +331,7 @@ export function ChatPanel({
                 tracking-wider transition-all hover:shadow-[0_0_12px_#ff2d9530]
                 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:shadow-none"
             >
-              STAGE NEXT
+              XFADE NEXT
             </button>
           )}
           <button
