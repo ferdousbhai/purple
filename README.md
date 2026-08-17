@@ -202,6 +202,14 @@ yay -S webkit2gtk-4.1 gst-plugins-base gst-plugins-good
 
 If your system does not use `yay`, install the matching `webkit2gtk-4.1`, `gst-plugins-base`, and `gst-plugins-good` packages with your normal package manager.
 
+On some Arch/Omarchy systems with Mesa `iris` graphics, the app may show `MESA: failed to query drm device` or exit quietly. Launch with the WebKit software-render workaround (already used by `bin/riff`/`scripts/riff.sh`):
+
+```bash
+WEBKIT_DISABLE_DMABUF_RENDERER=1 LIBGL_ALWAYS_SOFTWARE=1 bin/riff
+```
+
+If the window still fails, also add `WEBKIT_DISABLE_COMPOSITING_MODE=1`.
+
 ### The app says it was rate limited
 
 The Gemini API is temporarily refusing more requests. Wait a minute and try again.

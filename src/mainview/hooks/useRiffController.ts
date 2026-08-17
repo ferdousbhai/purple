@@ -155,6 +155,8 @@ export function useRiffController() {
           : await playback.play(pattern);
       if (!result.ok && result.kind === "audio") {
         setRequiresUserActivation(true);
+        // Still generate next-step suggestions so XFADE can appear after user activates audio.
+        nextMoves.generate({ code: pattern, sourcePrompt: text });
         return;
       }
       if (result.ok) {
@@ -183,6 +185,11 @@ export function useRiffController() {
             ? await playback.transition(fixedPattern)
             : await playback.play(fixedPattern);
         if (retryResult.ok) {
+          nextMoves.generate({ code: fixedPattern, sourcePrompt: text });
+          break;
+        }
+        if (retryResult.kind === "audio") {
+          setRequiresUserActivation(true);
           nextMoves.generate({ code: fixedPattern, sourcePrompt: text });
           break;
         }
