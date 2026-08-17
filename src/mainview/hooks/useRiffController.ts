@@ -222,7 +222,8 @@ export function useRiffController() {
       }
 
       // Dispatch the model request first, then use the same input event to unlock audio.
-      const prompt = runPrompt(text);
+      // Consistent with stageNext/presets: always stage as pending, require explicit XFADE/PLAY click.
+      const prompt = runPrompt(text, "stage");
       void playback.prepareAudio();
       void prompt.catch((promptError: unknown) => {
         console.error("[Chat] Prompt failed:", promptError);
