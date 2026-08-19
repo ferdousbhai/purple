@@ -31,7 +31,7 @@ pub struct ChatMessage {
     pub content: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(
     tag = "type",
     rename_all = "camelCase",
@@ -331,16 +331,14 @@ impl StreamProgress {
                 if self.step_types.get(&index).map(String::as_str) != Some("model_output") {
                     return Ok(());
                 }
-                let delta = event.get("delta");
-                if delta
-                    .and_then(|delta| delta.get("type"))
-                    .and_then(Value::as_str)
-                    != Some("text")
-                {
+                let Some(delta) = event.get("delta") else {
+                    return Ok(());
+                };
+                if delta.get("type").and_then(Value::as_str) != Some("text") {
                     return Ok(());
                 }
                 let text = delta
-                    .and_then(|delta| delta.get("text"))
+                    .get("text")
                     .and_then(Value::as_str)
                     .unwrap_or_default();
                 if !text.is_empty() {
@@ -375,10 +373,10 @@ fn find_event_boundary(buffer: &[u8]) -> Option<(usize, usize)> {
             .position(|window| window == needle)
             .map(|index| (index, index + needle.len()))
     };
-    match (find(b"\n\n"), find(b"\r\n\r\n")) {
-        (Some(lf), Some(crlf)) => Some(if lf.0 < crlf.0 { lf } else { crlf }),
-        (found, None) | (None, found) => found,
-    }
+    [find(b"\n\n"), find(b"\r\n\r\n")]
+        .into_iter()
+        .flatten()
+        .min()
 }
 
 /// Concatenate the `data:` lines of one SSE event.

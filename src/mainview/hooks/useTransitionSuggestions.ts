@@ -34,9 +34,7 @@ export function useTransitionSuggestions() {
       if (result.ok) {
         setSuggestions(result.suggestions);
         setStatus("ready");
-        setError(null);
       } else {
-        setSuggestions([]);
         setStatus("error");
         setError(result.error);
       }

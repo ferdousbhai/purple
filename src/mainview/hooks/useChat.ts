@@ -8,7 +8,7 @@ interface StreamSession {
   firstDeltaSeen: boolean;
   frameId?: number;
   resolve?: () => void;
-  terminalReason: "streaming" | "done" | "error" | "cancelled" | "timeout";
+  terminalReason: "streaming" | "done" | "error" | "cancelled";
   text: string;
   truncated: boolean;
   error?: string;
@@ -110,7 +110,7 @@ export function useChat() {
       conversationRef.current = conversation;
       visibleMessagesRef.current = visibleMessages;
       setView({
-        messages: [...visibleMessages],
+        messages: visibleMessages,
         streamingText: "",
         isStreaming: true,
         error: null,
@@ -132,15 +132,15 @@ export function useChat() {
           return;
         }
 
+        activeStream.text += delta;
+
         // Paint the first token immediately; later ones batch on a frame.
         if (!activeStream.firstDeltaSeen) {
           activeStream.firstDeltaSeen = true;
-          activeStream.text += delta;
           setView((current) => ({ ...current, streamingText: activeStream.text }));
           return;
         }
 
-        activeStream.text += delta;
         if (activeStream.frameId !== undefined) return;
         activeStream.frameId = requestAnimationFrame(() => {
           activeStream.frameId = undefined;
@@ -164,7 +164,7 @@ export function useChat() {
           abortBackend("after a timeout");
           settleStream(
             activeStream,
-            "timeout",
+            "error",
             "The model did not finish responding. Please try again.",
           );
         }, STREAM_TIMEOUT_MS);
@@ -197,10 +197,7 @@ export function useChat() {
 
       if (activeStream.terminalReason === "cancelled") return rollback(null);
 
-      if (
-        activeStream.terminalReason === "error" ||
-        activeStream.terminalReason === "timeout"
-      ) {
+      if (activeStream.terminalReason === "error") {
         return rollback(
           activeStream.error ?? "The request failed. Please try again.",
         );

@@ -15,7 +15,7 @@ use serde::Serialize;
 const SERVICE: &str = "dev.ferdous.riff";
 const ACCOUNT: &str = "gemini-api-key";
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiKeyStatus {
     pub has_key: bool,
@@ -34,19 +34,24 @@ fn fallback_path() -> Option<PathBuf> {
     Some(config_home.join("riff").join("config.json"))
 }
 
+/// A key is only usable once trimmed, and an all-whitespace one is no key at all.
+fn usable_key(raw: &str) -> Option<String> {
+    let key = raw.trim();
+    (!key.is_empty()).then(|| key.to_owned())
+}
+
 fn read_fallback() -> Option<String> {
     let path = fallback_path()?;
     let text = fs::read_to_string(path).ok()?;
     let value: serde_json::Value = serde_json::from_str(&text).ok()?;
-    let key = value.get("googleApiKey")?.as_str()?.trim().to_owned();
-    (!key.is_empty()).then_some(key)
+    usable_key(value.get("googleApiKey")?.as_str()?)
 }
 
 fn write_fallback(key: &str) -> Result<(), String> {
     let path = fallback_path().ok_or("Could not resolve a config directory.")?;
     let dir = path.parent().ok_or("Invalid config path.")?;
     fs::create_dir_all(dir).map_err(|error| error.to_string())?;
-    set_owner_only(dir, 0o700)?;
+    restrict_to_owner(dir)?;
 
     let body = serde_json::json!({ "googleApiKey": key }).to_string();
     let temp = path.with_extension("json.tmp");
@@ -78,42 +83,32 @@ fn owner_only_file(path: &std::path::Path) -> Result<fs::File, String> {
     options.open(path).map_err(|error| error.to_string())
 }
 
-fn set_owner_only(path: impl AsRef<std::path::Path>, mode: u32) -> Result<(), String> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(mode))
-            .map_err(|error| error.to_string())?;
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = (path, mode);
-    }
+#[cfg(unix)]
+fn restrict_to_owner(dir: &std::path::Path) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(dir, fs::Permissions::from_mode(0o700)).map_err(|error| error.to_string())
+}
+
+#[cfg(not(unix))]
+fn restrict_to_owner(_dir: &std::path::Path) -> Result<(), String> {
     Ok(())
 }
 
 /// The key the user saved in Riff, from the keyring or the fallback file.
 pub fn stored_key() -> Option<String> {
-    match entry().and_then(|entry| entry.get_password()) {
-        Ok(key) => {
-            let key = key.trim().to_owned();
-            if key.is_empty() {
-                read_fallback()
-            } else {
-                Some(key)
-            }
-        }
-        Err(KeyringError::NoEntry) => read_fallback(),
+    let from_keyring = match entry().and_then(|entry| entry.get_password()) {
+        Ok(key) => usable_key(&key),
+        Err(KeyringError::NoEntry) => None,
         Err(error) => {
             log::warn!("[Secrets] Credential store unavailable: {error}");
-            read_fallback()
+            None
         }
-    }
+    };
+    from_keyring.or_else(read_fallback)
 }
 
 pub fn env_key() -> Option<String> {
-    let key = std::env::var("GEMINI_API_KEY").ok()?.trim().to_owned();
-    (!key.is_empty()).then_some(key)
+    usable_key(&std::env::var("GEMINI_API_KEY").ok()?)
 }
 
 /// The key requests should use: an explicitly saved key wins over the environment.

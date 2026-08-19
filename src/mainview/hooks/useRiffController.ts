@@ -1,9 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type {
-  ApiKeyStatus,
-  SavePatternResult,
-  TitleGenerationResult,
-} from "../../shared/types";
+import type { ApiKeyStatus, TitleGenerationResult } from "../../shared/types";
 import { getRandomStartupPattern, type StartupOptions } from "../../shared/cli";
 import {
   clearApiKey as clearBackendApiKey,
@@ -23,10 +19,10 @@ const MAX_RETRIES = 2;
 type PromptMode = "play" | "stage" | "await-activation";
 type TitleStatus = "idle" | "generating" | "ready" | "error";
 
+/** One in-flight title generation. Identity is the token: only the request that
+ * is still `titleRequestRef.current` may write title state. */
 interface TitleRequest {
-  operation: number;
   patternReady: boolean;
-  requestId: string;
   result: TitleGenerationResult | null;
 }
 
@@ -47,7 +43,6 @@ export function useRiffController() {
   const [patternTitle, setPatternTitle] = useState("Startup Pattern");
   const [titleStatus, setTitleStatus] = useState<TitleStatus>("idle");
   const [titleError, setTitleError] = useState<string | null>(null);
-  const titleOperationRef = useRef(0);
   const titleRequestRef = useRef<TitleRequest | null>(null);
   const patternContextRef = useRef<PatternContext | null>(null);
   const [requiresUserActivation, setRequiresUserActivation] = useState(false);
@@ -78,15 +73,8 @@ export function useRiffController() {
   }, []);
 
   const applyTitleResult = useCallback(
-    (requestId: string, result: TitleGenerationResult) => {
-      const request = titleRequestRef.current;
-      if (
-        !request ||
-        request.requestId !== requestId ||
-        request.operation !== titleOperationRef.current
-      ) {
-        return;
-      }
+    (request: TitleRequest, result: TitleGenerationResult) => {
+      if (titleRequestRef.current !== request) return;
 
       request.result = result;
       if (!request.patternReady) return;
@@ -103,29 +91,36 @@ export function useRiffController() {
     [],
   );
 
+  /** Ask for next moves, attributing them to the prompt that produced `patternCode`. */
+  const suggestNextMoves = useCallback(
+    (patternCode: string) => {
+      const context = patternContextRef.current;
+      nextMoves.generate({
+        code: patternCode,
+        sourcePrompt:
+          context?.code === patternCode ? context.sourcePrompt : undefined,
+      });
+    },
+    [nextMoves.generate],
+  );
+
   const runPrompt = useCallback(
     async (text: string, mode: PromptMode = "play"): Promise<void> => {
       nextMoves.clear();
-      const titleOperation = ++titleOperationRef.current;
-      const titleRequestId = crypto.randomUUID();
-      titleRequestRef.current = {
-        operation: titleOperation,
-        patternReady: false,
-        requestId: titleRequestId,
-        result: null,
-      };
+      const titleRequest: TitleRequest = { patternReady: false, result: null };
+      titleRequestRef.current = titleRequest;
 
       // sendMessage dispatches the stream synchronously before yielding. Start
       // the independent title request immediately afterward so Gemini can run
       // both requests in parallel without delaying the primary dispatch.
       const patternPromise = chat.sendMessage(text);
       void generateTitle(text).then((result) =>
-        applyTitleResult(titleRequestId, result),
+        applyTitleResult(titleRequest, result),
       );
 
       const pattern = await patternPromise;
       if (!pattern) {
-        if (titleOperation === titleOperationRef.current) {
+        if (titleRequestRef.current === titleRequest) {
           titleRequestRef.current = null;
           setTitleStatus("idle");
           setTitleError(null);
@@ -133,17 +128,14 @@ export function useRiffController() {
         return;
       }
 
-      const titleRequest = titleRequestRef.current;
-      if (titleRequest?.requestId === titleRequestId) {
-        titleRequest.patternReady = true;
-      }
+      titleRequest.patternReady = true;
       setCode(pattern);
       patternContextRef.current = { code: pattern, sourcePrompt: text };
       setPatternTitle("");
       setTitleStatus("generating");
       setTitleError(null);
-      if (titleRequest?.result) {
-        applyTitleResult(titleRequestId, titleRequest.result);
+      if (titleRequest.result) {
+        applyTitleResult(titleRequest, titleRequest.result);
       }
       if (mode !== "play") {
         setRequiresUserActivation(mode === "await-activation");
@@ -151,62 +143,44 @@ export function useRiffController() {
       }
 
       setRequiresUserActivation(false);
-      const result =
-        playback.playbackState === "playing"
-          ? await playback.transition(pattern)
-          : await playback.play(pattern);
-      if (!result.ok && result.kind === "audio") {
-        setRequiresUserActivation(true);
-        // Still generate next-step suggestions so XFADE can appear after user activates audio.
-        nextMoves.generate({ code: pattern, sourcePrompt: text });
-        return;
-      }
-      if (result.ok) {
-        nextMoves.generate({ code: pattern, sourcePrompt: text });
-        return;
-      }
-      if (result.kind !== "evaluation") return;
+      let currentCode = pattern;
+      let retriesLeft = MAX_RETRIES;
 
-      let lastError = result.error;
-      let lastCode = pattern;
+      // Play the pattern; on an evaluation error hand that error back to Gemini
+      // and play whatever it sends instead, until the retry budget runs out.
+      for (;;) {
+        // transition() falls back to play() when nothing is playing yet.
+        const result = await playback.transition(currentCode);
+        if (result.ok) {
+          suggestNextMoves(currentCode);
+          return;
+        }
+        if (result.kind === "audio") {
+          setRequiresUserActivation(true);
+          // Still suggest next moves so XFADE can appear once audio is unlocked.
+          suggestNextMoves(currentCode);
+          return;
+        }
+        if (result.kind !== "evaluation" || retriesLeft === 0) return;
+        retriesLeft--;
 
-      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
         const fixedPattern = await chat.sendMessage(
-          buildRetryMessage(lastCode, lastError),
+          buildRetryMessage(currentCode, result.error),
           { hiddenUserMessage: true },
         );
-        if (!fixedPattern) break;
+        if (!fixedPattern) return;
 
         setCode(fixedPattern);
-        patternContextRef.current = {
-          code: fixedPattern,
-          sourcePrompt: text,
-        };
-        const retryResult =
-          playback.playbackState === "playing"
-            ? await playback.transition(fixedPattern)
-            : await playback.play(fixedPattern);
-        if (retryResult.ok) {
-          nextMoves.generate({ code: fixedPattern, sourcePrompt: text });
-          break;
-        }
-        if (retryResult.kind === "audio") {
-          setRequiresUserActivation(true);
-          nextMoves.generate({ code: fixedPattern, sourcePrompt: text });
-          break;
-        }
-        if (retryResult.kind !== "evaluation") break;
-
-        lastError = retryResult.error;
-        lastCode = fixedPattern;
+        patternContextRef.current = { code: fixedPattern, sourcePrompt: text };
+        currentCode = fixedPattern;
       }
     },
     [
       applyTitleResult,
       chat.sendMessage,
       nextMoves.clear,
-      nextMoves.generate,
-      playback.play,
+      playback.transition,
+      suggestNextMoves,
     ],
   );
 
@@ -259,17 +233,10 @@ export function useRiffController() {
       setRequiresUserActivation(false);
       nextMoves.clear();
       const result = await playback.play(editorCode);
-      if (result.ok) {
-        const context = patternContextRef.current;
-        nextMoves.generate({
-          code: editorCode,
-          sourcePrompt:
-            context?.code === editorCode ? context.sourcePrompt : undefined,
-        });
-      }
+      if (result.ok) suggestNextMoves(editorCode);
       return result;
     },
-    [nextMoves.clear, nextMoves.generate, playback.play],
+    [nextMoves.clear, playback.play, suggestNextMoves],
   );
 
   const transition = useCallback(
@@ -277,17 +244,10 @@ export function useRiffController() {
       setRequiresUserActivation(false);
       nextMoves.clear();
       const result = await playback.transition(nextCode, durationCycles);
-      if (result.ok) {
-        const context = patternContextRef.current;
-        nextMoves.generate({
-          code: nextCode,
-          sourcePrompt:
-            context?.code === nextCode ? context.sourcePrompt : undefined,
-        });
-      }
+      if (result.ok) suggestNextMoves(nextCode);
       return result;
     },
-    [nextMoves.clear, nextMoves.generate, playback.transition],
+    [nextMoves.clear, playback.transition, suggestNextMoves],
   );
 
   const stop = useCallback(() => {
@@ -296,18 +256,11 @@ export function useRiffController() {
   }, [nextMoves.clear, playback.stop]);
 
   const updatePatternTitle = useCallback((title: string) => {
-    ++titleOperationRef.current;
     titleRequestRef.current = null;
     setPatternTitle(title);
     setTitleStatus(title.trim() ? "ready" : "idle");
     setTitleError(null);
   }, []);
-
-  const savePattern = useCallback(
-    (title: string, patternCode: string): Promise<SavePatternResult> =>
-      saveBackendPattern(title, patternCode),
-    [],
-  );
 
   const applyStartupOptions = useCallback(
     (options: StartupOptions, hasKey: boolean): void => {
@@ -402,7 +355,7 @@ export function useRiffController() {
     titleStatus,
     titleError,
     updatePatternTitle,
-    savePattern,
+    savePattern: saveBackendPattern,
     requiresUserActivation,
     apiKeyStatus,
     isSettingsOpen,

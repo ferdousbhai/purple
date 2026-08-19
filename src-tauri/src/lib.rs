@@ -12,9 +12,9 @@ pub const STARTUP_ARGS_EVENT: &str = "riff://startup-args";
 /// window opens fully transparent — so Riff opts out by default. `RIFF_GPU=1`
 /// asks for the accelerated path back.
 #[cfg(target_os = "linux")]
-fn prefer_a_renderer_that_paints() {
-    let opted_in = std::env::var("RIFF_GPU")
-        .is_ok_and(|value| matches!(value.trim(), "1" | "true" | "yes"));
+fn disable_dmabuf_renderer() {
+    let opted_in =
+        std::env::var("RIFF_GPU").is_ok_and(|value| matches!(value.trim(), "1" | "true" | "yes"));
     if opted_in || std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_some() {
         return;
     }
@@ -24,7 +24,7 @@ fn prefer_a_renderer_that_paints() {
 
 pub fn run() {
     #[cfg(target_os = "linux")]
-    prefer_a_renderer_that_paints();
+    disable_dmabuf_renderer();
 
     let mut builder = tauri::Builder::default();
 

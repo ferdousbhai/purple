@@ -12,9 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # No version here: the action reads it from package.json's packageManager.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10.27.0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -38,4 +37,4 @@ jobs:
       - run: pnpm run check
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
-      - run: bash -n scripts/*.sh
+      - run: bash -n scripts/*.sh packaging/PKGBUILD

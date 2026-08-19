@@ -17,14 +17,17 @@ permissions:
   contents: read
 
 jobs:
-  hosted-check:
+  # A separate job because `secrets` is not readable from a job-level `if`.
+  key:
     runs-on: ubuntu-latest
+    outputs:
+      available: ${{ steps.probe.outputs.available }}
     steps:
       # A read-only deploy key on riff-hosted, not a personal token: it grants
       # exactly this one private repo and is revoked by deleting it there.
-      # Forks cannot read it, so the job reports a skip rather than a failure
+      # Forks cannot read it, so the run reports a skip rather than a failure
       # nobody can fix.
-      - id: key
+      - id: probe
         env:
           HOSTED_REPO_SSH_KEY: ${{ secrets.HOSTED_REPO_SSH_KEY }}
         run: |
@@ -35,8 +38,15 @@ jobs:
             echo "::notice::HOSTED_REPO_SSH_KEY is not set; skipping the hosted check."
           fi
 
-      - if: steps.key.outputs.available == 'true'
-        uses: actions/checkout@v4
+  hosted-check:
+    needs: key
+    if: needs.key.outputs.available == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: hosted
+    steps:
+      - uses: actions/checkout@v4
         with:
           repository: ferdousbhai/riff-hosted
           ssh-key: ${{ secrets.HOSTED_REPO_SSH_KEY }}
@@ -44,33 +54,24 @@ jobs:
           path: hosted
 
       - name: Point the vendored core at this commit
-        if: steps.key.outputs.available == 'true'
         working-directory: hosted/vendor/riff
         run: |
           git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"
           git fetch --depth 1 origin "$GITHUB_SHA"
           git checkout --detach "$GITHUB_SHA"
 
-      - if: steps.key.outputs.available == 'true'
-        uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v4
         with:
           version: 10.27.0
 
-      - if: steps.key.outputs.available == 'true'
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
 
       # Not --frozen-lockfile: the point of this job is to test a core commit
       # the hosted lockfile has not pinned yet.
-      - if: steps.key.outputs.available == 'true'
-        working-directory: hosted
-        run: pnpm install --no-frozen-lockfile
+      - run: pnpm install --no-frozen-lockfile
 
-      - if: steps.key.outputs.available == 'true'
-        working-directory: hosted
-        run: pnpm --filter @riff/web cf-typegen
+      - run: pnpm --filter @riff/web cf-typegen
 
-      - if: steps.key.outputs.available == 'true'
-        working-directory: hosted
-        run: pnpm run check
+      - run: pnpm run check
