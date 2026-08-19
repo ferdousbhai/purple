@@ -19,7 +19,7 @@ options=('!lto')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 # Fill in with `updpkgsums` once the tag is pushed; a release tarball must not
 # be verified by SKIP.
-sha256sums=('SKIP')
+sha256sums=('69f708455fbc3d9b45ea93c72c736d05b2317ef9c6705c8fba7f8bdd2a5a3a41')
 
 build() {
   cd "$srcdir/$pkgname-$pkgver"
