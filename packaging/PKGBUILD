@@ -1,6 +1,6 @@
 # Maintainer: Ferdous Bhai <ferdousbd@gmail.com>
 pkgname=riff
-pkgver=0.3.0
+pkgver=0.3.1
 pkgrel=1
 pkgdesc="AI-powered music production: describe music in plain language and hear Strudel patterns play"
 arch=('x86_64')

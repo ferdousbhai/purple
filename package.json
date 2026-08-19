@@ -1,6 +1,6 @@
 {
   "name": "riff",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "AI-powered music production — Cursor for music",
   "license": "MIT",
   "packageManager": "pnpm@10.27.0",
