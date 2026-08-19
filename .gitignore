@@ -3,6 +3,10 @@ dist/
 out/
 build/
 artifacts/
+# updpkgsums and makepkg leave the release tarball and build dirs here
+packaging/*.tar.gz
+packaging/src/
+packaging/pkg/
 src-tauri/target/
 src-tauri/gen/
 .env
