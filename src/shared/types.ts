@@ -41,6 +41,17 @@ export type TransitionSuggestionsResult =
   | { ok: true; suggestions: TransitionSuggestion[] }
   | { ok: false; error: string };
 
+/** A desktop media-control request (MPRIS on Linux) forwarded by the shell. */
+export type MediaControlAction = "play" | "pause" | "play-pause" | "stop";
+
+/** Best-effort colors read from the Omarchy system theme, if one is active. */
+export interface SystemTheme {
+  background: string | null;
+  foreground: string | null;
+  accent: string | null;
+  mode: "light" | "dark";
+}
+
 export type SavePatternResult =
   | { ok: true; path: string }
   | { ok: false; cancelled: true }

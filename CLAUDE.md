@@ -36,6 +36,8 @@ src-tauri/                         # Rust shell — no product logic lives here
     secrets.rs                     # API key in the OS keyring, 0600 file fallback
     patterns.rs                    # Native save dialog + write
     startup.rs                     # argv passthrough, webview log forwarding
+    mpris.rs                       # MPRIS media controls over D-Bus (Linux only)
+    theme.rs                       # Best-effort Omarchy theme colors
 src/
   mainview/                        # React UI (system webview)
     index.html                     # HTML entry point
@@ -45,6 +47,7 @@ src/
     backend.ts                     # The only module that talks to Tauri
     audio-activation.ts            # User-gesture AudioContext activation
     audio-shim.ts                  # Narrow Linux WebKitGTK compatibility shim
+    system-theme.ts                # Maps Omarchy theme colors onto the CSS palette tokens
     components/                    # EditorPanel, ChatPanel, PlaybackControls, MessageBubble,
                                    # StreamingText, CodeBlockRenderer, ApiKeyDialog
     editor/playbackHighlight.ts    # Active-step decoration
@@ -83,6 +86,8 @@ User types message → ChatPanel → backend.streamPattern() → invoke("stream_
 | `save_pattern` | Native save dialog, writes the pattern |
 | `startup_args` | Raw argv for `parseCliArgs` in TypeScript |
 | `log_message` | Webview `console.warn`/`error` into the shell log |
+| `set_playback_state` | Playback status + pattern title for the MPRIS desktop controls (no-op off Linux) |
+| `get_system_theme` | Background/foreground/accent from the active Omarchy theme, or `null` |
 
 ## Key Patterns
 
@@ -97,6 +102,9 @@ User types message → ChatPanel → backend.streamPattern() → invoke("stream_
 - **Dirt-Samples**: `samples("github:tidalcycles/Dirt-Samples/master")` must be called in `initStrudel({ prebake })` to load bd/sd/hh/cp etc. Without this, `s()` patterns produce no sound.
 - **Secrets**: the key lives in the OS credential store (Secret Service). A pre-0.3 `~/.config/riff/config.json` is migrated into the keyring at startup and deleted; machines without a secret service fall back to that `0600` file.
 - **Single instance**: a second `riff …` focuses the running window and forwards its arguments over the `riff://startup-args` event.
+- **MPRIS**: `mpris.rs` registers `org.mpris.MediaPlayer2.Riff` (crate `mpris-server`) and only bridges D-Bus: media-key requests become `riff://media-control` events (`"play"`/`"pause"`/`"play-pause"`/`"stop"`) that `useRiffController` interprets, and the webview reports state back via `set_playback_state`. A media key can stop playback any time but only *start* it if a user gesture already unlocked audio (`isAudioReady`) — a D-Bus event is not a gesture, so the request is otherwise ignored.
+- **PipeWire/Pulse client name**: `PULSE_PROP_application.name=Riff` (+ icon/media name) is set in `run()` before the webview spawns; WebKitGTK's WebProcess inherits it, so mixers show "Riff" instead of a generic WebKit client.
+- **Omarchy theming**: `get_system_theme` reads `omarchy/current/theme` (`~/.local/state`, then `~/.config`) — `colors.toml` first, `alacritty.toml` as fallback — and `system-theme.ts` overrides the `@theme` CSS tokens (`--color-surface*`, `--color-text`, `--color-neon-cyan`) at startup. Best-effort only: no theme dir, hex-invalid colors, or non-Linux keeps the built-in dark palette.
 - **Keyboard shortcuts**: Ctrl+. stops playback, Escape cancels stream, Enter sends messages, Ctrl+Enter evaluates code in editor.
 
 ## Strudel API (webview context)

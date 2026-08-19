@@ -16,6 +16,7 @@ export function usePlayback() {
     activate,
     evaluate,
     hush,
+    isAudioReady,
     getSchedulerPosition,
     getActiveSourceRanges,
   } = useStrudel();
@@ -287,6 +288,7 @@ export function usePlayback() {
   return {
     ...state,
     prepareAudio,
+    isAudioReady,
     play,
     transition,
     stop,

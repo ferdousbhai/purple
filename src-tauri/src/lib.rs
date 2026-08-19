@@ -1,7 +1,9 @@
 mod gemini;
+mod mpris;
 mod patterns;
 mod secrets;
 mod startup;
+mod theme;
 
 use tauri::{Emitter, Manager};
 
@@ -22,9 +24,30 @@ fn disable_dmabuf_renderer() {
     std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
 }
 
+/// WebKitGTK's audio runs in a child WebProcess that shows up in
+/// PipeWire/PulseAudio as a generic WebKit client. libpulse (and PipeWire's
+/// pulse compatibility layer) read `PULSE_PROP_*` from the environment, which
+/// the WebProcess inherits, so mixers show "Riff" instead.
+#[cfg(target_os = "linux")]
+fn name_audio_streams() {
+    for (key, value) in [
+        ("PULSE_PROP_application.name", "Riff"),
+        ("PULSE_PROP_application.icon_name", "riff"),
+        ("PULSE_PROP_media.name", "Riff"),
+    ] {
+        if std::env::var_os(key).is_none() {
+            // Safe here: this runs before any window, plugin or thread exists.
+            std::env::set_var(key, value);
+        }
+    }
+}
+
 pub fn run() {
     #[cfg(target_os = "linux")]
-    disable_dmabuf_renderer();
+    {
+        disable_dmabuf_renderer();
+        name_audio_streams();
+    }
 
     let mut builder = tauri::Builder::default();
 
@@ -58,8 +81,15 @@ pub fn run() {
         )
         .plugin(tauri_plugin_dialog::init())
         .manage(gemini::GeminiState::default())
-        .setup(|_app| {
+        .setup(|app| {
             secrets::migrate_legacy_file();
+            #[cfg(target_os = "linux")]
+            {
+                app.manage(mpris::MprisState::default());
+                mpris::init(app.handle());
+            }
+            #[cfg(not(target_os = "linux"))]
+            let _ = app;
             log::info!("Riff started");
             Ok(())
         })
@@ -73,6 +103,8 @@ pub fn run() {
             patterns::save_pattern,
             startup::startup_args,
             startup::log_message,
+            mpris::set_playback_state,
+            theme::get_system_theme,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Riff");

@@ -21,14 +21,20 @@ import {
 import { parseCliArgs, type StartupOptions } from "../shared/cli";
 import type {
   ApiKeyStatus,
+  MediaControlAction,
   Message,
+  PlaybackState,
   SavePatternResult,
+  SystemTheme,
   TitleGenerationResult,
   TransitionSuggestionsResult,
 } from "../shared/types";
 
 /** Emitted by the Rust shell when a second `riff …` invocation is forwarded here. */
 const STARTUP_ARGS_EVENT = "riff://startup-args";
+
+/** Emitted by the Rust shell when a desktop media control (MPRIS) asks for something. */
+const MEDIA_CONTROL_EVENT = "riff://media-control";
 
 type StreamEvent =
   | { type: "delta"; text: string }
@@ -228,6 +234,37 @@ export async function savePattern(
     suggestedName: patternFilename(title),
     code,
   });
+}
+
+/**
+ * Report the current playback status and pattern title so the desktop's media
+ * controls (MPRIS) stay in sync. Fire-and-forget: the desktop integration is
+ * cosmetic and must never disturb playback.
+ */
+export function setPlaybackState(status: PlaybackState, title: string): void {
+  void invoke("set_playback_state", { status, title }).catch(() => {});
+}
+
+const MEDIA_CONTROL_ACTIONS: readonly MediaControlAction[] = [
+  "play",
+  "pause",
+  "play-pause",
+  "stop",
+];
+
+/** Run `handler` when a desktop media control asks to play, pause or stop. */
+export function onMediaControl(
+  handler: (action: MediaControlAction) => void,
+): Promise<UnlistenFn> {
+  return listen<string>(MEDIA_CONTROL_EVENT, (event) => {
+    const action = MEDIA_CONTROL_ACTIONS.find((known) => known === event.payload);
+    if (action) handler(action);
+  });
+}
+
+/** The active Omarchy system theme, or null on machines without one. */
+export async function getSystemTheme(): Promise<SystemTheme | null> {
+  return invoke<SystemTheme | null>("get_system_theme");
 }
 
 export function log(level: "warn" | "error", message: string): void {
