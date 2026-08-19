@@ -92,7 +92,7 @@ User types message → ChatPanel → backend.streamPattern() → invoke("stream_
 - **Channels, not events**: streaming uses `tauri::ipc::Channel`, which guarantees ordered delivery, so the UI does not need to filter stale chunks.
 - **Interactions API**: requests go to `POST /v1beta/interactions` with `input` as `user_input`/`model_output` steps, `stream: true`, `store: false`. Text deltas only count when their step is `model_output` — reasoning steps stream their own deltas. `status: "incomplete"` means the model hit its output limit.
 - **busyRef in useChat**: `useRef` guards against concurrent `sendMessage` calls (closures capture stale state).
-- **Auto-retry**: If generated Strudel code fails evaluation, the error is sent back to Gemini (max 2 retries).
+- **Staged playback**: a prompt never plays on its own. The generated pattern lands in the editor and waits for XFADE or PLAY, because a webview only starts audio inside a user gesture. `runPrompt`'s `"play"` mode and the retry loop behind it are currently unreachable — see issue #14.
 - **Strudel audio init**: AudioContext creation/resume starts synchronously inside a user gesture, then the same context is passed to `initStrudel()`.
 - **Dirt-Samples**: `samples("github:tidalcycles/Dirt-Samples/master")` must be called in `initStrudel({ prebake })` to load bd/sd/hh/cp etc. Without this, `s()` patterns produce no sound.
 - **Secrets**: the key lives in the OS credential store (Secret Service). A pre-0.3 `~/.config/riff/config.json` is migrated into the keyring at startup and deleted; machines without a secret service fall back to that `0600` file.
