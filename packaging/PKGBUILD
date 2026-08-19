@@ -1,6 +1,6 @@
 # Maintainer: Ferdous Bhai <ferdousbd@gmail.com>
 pkgname=riff
-pkgver=0.2.0
+pkgver=0.3.0
 pkgrel=1
 pkgdesc="AI-powered music production: describe music in plain language and hear Strudel patterns play"
 arch=('x86_64')
@@ -17,6 +17,8 @@ depends=(
 makedepends=('rust' 'nodejs' 'pnpm')
 options=('!lto')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+# Fill in with `updpkgsums` once the tag is pushed; a release tarball must not
+# be verified by SKIP.
 sha256sums=('SKIP')
 
 build() {
