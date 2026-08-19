@@ -55,8 +55,8 @@ pnpm run check      # test + test:rust + typecheck + build:web
 
 - Code explains itself — name things clearly, keep functions small. Add comments only for non-obvious behavior or workarounds.
 - Prefer existing libraries and official docs patterns over custom implementations.
-- `pnpm` workspaces (`apps/*`, `packages/*`). `@riff/core` is `workspace:*`.
-- Do not commit `node_modules`, `dist`, `.wrangler`, `worker-configuration.d.ts`, `.env`/`.dev.vars`.
+- `pnpm` workspace is `packages/*`; `@riff/core` is `workspace:*`.
+- Do not commit `node_modules`, `dist`, `src-tauri/target`, `.env`.
 
 ## Hosted split
 
