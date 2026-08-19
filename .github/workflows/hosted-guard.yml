@@ -1,8 +1,9 @@
 name: Hosted guard
 
-# @riff/core is consumed by the private hosted build (ferdousbhai/riff-hosted)
-# through a submodule it pins by commit. Without this job a core change only
-# surfaces there whenever someone next bumps that pin. This runs the hosted
+# @riff/core and @riff/ui are consumed by the private hosted build
+# (ferdousbhai/riff-hosted) through a submodule it pins by commit. Without this
+# job a shared-package change only surfaces there whenever someone next bumps
+# that pin. This runs the hosted
 # checks against the core commit that just landed, so a break is reported by the
 # commit that caused it.
 
@@ -10,7 +11,7 @@ on:
   push:
     branches: [master]
     paths:
-      - "packages/core/**"
+      - "packages/**"
   workflow_dispatch:
 
 permissions:

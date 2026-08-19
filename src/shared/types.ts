@@ -1,25 +1,24 @@
-export interface Message {
+// The webview-layer types shared with the hosted app live in @riff/core;
+// re-exported here so desktop modules keep one import site for both.
+export type {
+  ChatMessage,
+  EvalResult,
+  PlaybackState,
+  RiffBackend,
+  SourceRange,
+  StreamOutcome,
+  TitleGenerationResult,
+  TransitionSuggestion,
+  TransitionSuggestionsResult,
+} from "@riff/core/types";
+export { MAX_CONTEXT_MESSAGES } from "@riff/core/types";
+
+import type { ChatMessage } from "@riff/core/types";
+
+/** A chat turn as the desktop transcript renders it. */
+export interface Message extends ChatMessage {
   id: string;
-  role: "user" | "assistant";
-  content: string;
 }
-
-// An odd limit preserves user/model pairs when the newest turn is a user message.
-export const MAX_CONTEXT_MESSAGES = 13;
-
-export type PlaybackState =
-  | "stopped"
-  | "playing"
-  | "loading"
-  | "transitioning"
-  | "error";
-
-export type SourceRange = readonly [from: number, to: number];
-
-export type EvalResult =
-  | { ok: true }
-  | { ok: false; kind: "audio" | "evaluation"; error: string }
-  | { ok: false; kind: "cancelled" };
 
 export type ApiKeySource = "app" | "env" | "missing";
 
@@ -27,19 +26,6 @@ export interface ApiKeyStatus {
   hasKey: boolean;
   source: ApiKeySource;
 }
-
-export type TitleGenerationResult =
-  | { ok: true; title: string }
-  | { ok: false; error: string };
-
-export interface TransitionSuggestion {
-  label: string;
-  prompt: string;
-}
-
-export type TransitionSuggestionsResult =
-  | { ok: true; suggestions: TransitionSuggestion[] }
-  | { ok: false; error: string };
 
 /** A desktop media-control request (MPRIS on Linux) forwarded by the shell. */
 export type MediaControlAction = "play" | "pause" | "play-pause" | "stop";

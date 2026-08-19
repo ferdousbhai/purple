@@ -1,11 +1,12 @@
+/// <reference path="./strudel-web.d.ts" />
+
 import { useRef, useCallback, useEffect } from "react";
 import type {
   StrudelHap,
   StrudelPattern,
   StrudelRepl,
 } from "@strudel/web/web.mjs";
-import type { EvalResult, SourceRange } from "../../shared/types";
-import { requireRunningAudioContext } from "../audio-activation";
+import type { EvalResult, SourceRange } from "@riff/core/types";
 
 type StrudelModule = typeof import("@strudel/web/web.mjs");
 
@@ -14,13 +15,46 @@ export interface SchedulerPosition {
   cps: number;
 }
 
-export function useStrudel() {
+export interface StrudelAudioOptions {
+  /**
+   * Ensure `context` may produce sound, resuming it if needed. Called inside
+   * the user gesture — before the hook's first await, so the browser's user
+   * activation is preserved — and again after Strudel initializes. Throw to
+   * fail activation with a user-facing message.
+   *
+   * The default resumes the context and verifies it reports `running`. Hosts
+   * with engine quirks inject their own: the desktop passes its WebKitGTK
+   * implementation, which also primes the output with a silent buffer.
+   */
+  ensureRunningContext?: (context: AudioContext) => Promise<void>;
+}
+
+async function defaultEnsureRunningContext(context: AudioContext): Promise<void> {
+  const state = String(context.state);
+  if (state === "closed") {
+    throw new Error("Audio output is closed. Reload Riff and try again.");
+  }
+  if (state !== "running") await context.resume();
+  const resumedState = String(context.state);
+  if (resumedState !== "running") {
+    throw new Error(
+      `Audio output is blocked (${resumedState}). Click Play to enable sound.`,
+    );
+  }
+}
+
+export function useStrudel(options: StrudelAudioOptions = {}) {
   const strudelRef = useRef<StrudelModule | null>(null);
   const replRef = useRef<StrudelRepl | null>(null);
   const initPromiseRef = useRef<Promise<void> | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const activePatternRef = useRef<StrudelPattern | null>(null);
   const lastEvaluationErrorRef = useRef<Error | null>(null);
+  // A ref keeps activate() stable even when the caller passes a fresh options
+  // object each render.
+  const ensureRunningRef = useRef(defaultEnsureRunningContext);
+  ensureRunningRef.current =
+    options.ensureRunningContext ?? defaultEnsureRunningContext;
 
   const acquireAudioContext = useCallback(() => {
     if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
@@ -77,13 +111,13 @@ export function useStrudel() {
     [],
   );
 
-  // Call from a click or key handler. requireRunningAudioContext invokes
-  // resume() before its first await, preserving the browser's user activation.
+  // Call from a click or key handler. ensureRunningContext invokes resume()
+  // before its first await, preserving the browser's user activation.
   const activate = useCallback(async () => {
     const ctx = acquireAudioContext();
-    await requireRunningAudioContext(ctx);
+    await ensureRunningRef.current(ctx);
     await init(ctx);
-    await requireRunningAudioContext(ctx);
+    await ensureRunningRef.current(ctx);
   }, [acquireAudioContext, init]);
 
   const evaluate = useCallback(async (

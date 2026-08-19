@@ -21,12 +21,13 @@ src/
     backend.ts    # the only module that imports @tauri-apps/api
     audio-activation.ts, audio-shim.ts
     components/   # EditorPanel, ChatPanel, PlaybackControls, MessageBubble, StreamingText, CodeBlockRenderer, ApiKeyDialog
-    hooks/        # useChat, useRiffController, useStrudel, usePlayback, useKeyboardShortcuts, useTransitionSuggestions
-    editor/       # playbackHighlight
-  shared/         # types.ts, cli.ts (+ parser tests)
+    hooks/        # useChat, useRiffController, useKeyboardShortcuts, useTransitionSuggestions
+  shared/         # desktop-only types.ts, cli.ts (+ parser tests)
 packages/
-  core/           # @riff/core — shared music logic (submodule vendor/riff in riff-hosted)
-    src/pattern.ts, prompts.ts, recipes.ts, transitions.ts, index.ts
+  core/           # @riff/core — shared, dependency-free (submodule vendor/riff in riff-hosted)
+    src/pattern.ts, prompts.ts, recipes.ts, transitions.ts, types.ts, index.ts
+  ui/             # @riff/ui — shared webview modules (React/CodeMirror/@strudel/web)
+    src/use-strudel.ts, use-playback.ts, playback-highlight.ts, strudel-web.d.ts
 packaging/        # PKGBUILD + riff.desktop
 scripts/          # install-user.sh
 ```
@@ -48,21 +49,21 @@ pnpm run check      # test + test:rust + typecheck + build:web
 
 - `src/mainview/backend.ts` + `src-tauri/src/gemini.rs` — the whole backend contract: `stream_pattern` over a `tauri::ipc::Channel`, `generate_json` for structured output (the caller passes the prompt and schema, so Rust stays generic)
 - `src/mainview/hooks/useChat.ts` — `busyRef` guard, auto-retry (max 2) on eval failure
-- `src/mainview/hooks/useStrudel.ts` + `src/mainview/audio-activation.ts` — AudioContext must be created synchronously in user gesture, then passed to `initStrudel({ prebake })` with `samples("github:tidalcycles/Dirt-Samples/master")`
+- `packages/ui/src/use-strudel.ts` + `src/mainview/audio-activation.ts` — AudioContext must be created synchronously in user gesture, then passed to `initStrudel({ prebake })` with `samples("github:tidalcycles/Dirt-Samples/master")`; the desktop injects `requireRunningAudioContext` via `StrudelAudioOptions`
 - `packages/core/src/*` — pattern/recipes/transitions, self-contained; tests in `core.test.ts`
 
 ## Conventions
 
 - Code explains itself — name things clearly, keep functions small. Add comments only for non-obvious behavior or workarounds.
 - Prefer existing libraries and official docs patterns over custom implementations.
-- `pnpm` workspace is `packages/*`; `@riff/core` is `workspace:*`.
+- `pnpm` workspace is `packages/*`; `@riff/core` and `@riff/ui` are `workspace:*`.
 - Do not commit `node_modules`, `dist`, `src-tauri/target`, `.env`.
 
 ## Hosted split
 
-`apps/web` lives in private `ferdousbhai/riff-hosted`. `packages/core` is the only shared code: `riff-hosted` consumes it through the `vendor/riff` submodule, which points at **one frozen commit of this repo** and stays there until someone moves it.
+`apps/web` lives in private `ferdousbhai/riff-hosted`. `packages/core` and `packages/ui` are the only shared code: `riff-hosted` consumes them through the `vendor/riff` submodule, which points at **one frozen commit of this repo** and stays there until someone moves it.
 
-**A change under `packages/core/**` is a two-repo change.** It is not finished when `riff` is pushed — it is finished when `riff-hosted`'s pin moves onto that commit. Everything else in this repo (the shell, the desktop UI, packaging) touches nothing hosted uses, so it needs no coordination.
+**A change under `packages/**` is a two-repo change.** It is not finished when `riff` is pushed — it is finished when `riff-hosted`'s pin moves onto that commit. Everything else in this repo (the shell, the desktop UI, packaging) touches nothing hosted uses, so it needs no coordination.
 
 That matters because core is mostly *prompts*. A stale pin does not break a build or fail a test; it just means the hosted product keeps serving the previous `SYSTEM_PROMPT` to paying users.
 
