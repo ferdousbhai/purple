@@ -50,17 +50,18 @@ src/
     system-theme.ts                # Maps Omarchy theme colors onto the CSS palette tokens
     components/                    # EditorPanel, ChatPanel, PlaybackControls, MessageBubble,
                                    # StreamingText, CodeBlockRenderer, ApiKeyDialog
-    editor/playbackHighlight.ts    # Active-step decoration
     hooks/
       useChat.ts                   # Streaming chat state
       useRiffController.ts         # Prompt, playback, startup, and settings orchestration
-      useStrudel.ts                # Direct @strudel/web wrapper
-      usePlayback.ts               # Wraps useStrudel with state
       useTransitionSuggestions.ts  # Next-move suggestions
       useKeyboardShortcuts.ts      # Ctrl+., Escape handlers
-  shared/                          # Types and CLI grammar
+  shared/                          # Desktop-only types and CLI grammar
     types.ts, cli.ts
-packages/core/                     # @riff/core — shared with the hosted app (prompts, parsers, recipes)
+packages/core/                     # @riff/core — shared with the hosted app; dependency-free
+                                   # (prompts, parsers, recipes, shared types, RiffBackend)
+packages/ui/                       # @riff/ui — shared webview modules that need React/CodeMirror/
+                                   # @strudel/web: use-strudel, use-playback, playback-highlight,
+                                   # plus the hand-written @strudel/web type declarations
 packaging/                         # PKGBUILD + desktop entry
 ```
 
@@ -91,9 +92,10 @@ User types message → ChatPanel → backend.streamPattern() → invoke("stream_
 
 ## Key Patterns
 
-- **`packages/core` is a two-repo change**: the private `riff-hosted` build consumes it through a submodule pinned to one commit of this repo, so a core edit is only finished once that pin moves. CI guards both directions — see the Hosted split section in `AGENTS.md`. Nothing else here needs coordinating.
+- **`packages/*` is a two-repo change**: the private `riff-hosted` build consumes `@riff/core` and `@riff/ui` through a submodule pinned to one commit of this repo, so an edit under `packages/` is only finished once that pin moves. CI guards both directions — see the Hosted split section in `AGENTS.md`. Nothing else here needs coordinating.
+- **`@riff/core` stays dependency-free** (it is bundled into a Cloudflare Worker); anything that imports React, CodeMirror or `@strudel/web` belongs in `@riff/ui`. The shared engine (`useStrudel`/`usePlayback`) takes a `StrudelAudioOptions` capability: the desktop injects `requireRunningAudioContext` from `audio-activation.ts` so the WebKitGTK quirks (non-standard "interrupted" state, silent-buffer priming) stay desktop-side instead of shipping to the hosted app. `audio-shim.ts` likewise stays desktop-only.
 - **Rust holds no product logic**: prompts, JSON schemas, parsers, retry policy and argument parsing all live in TypeScript (`@riff/core`, `src/shared`), because the hosted app at `ferdousbhai/riff-hosted` shares them. `generate_json` takes the system instruction and schema as parameters for exactly this reason.
-- **One adapter**: `src/mainview/backend.ts` is the only module importing `@tauri-apps/api`. Hooks talk to it, never to `invoke` directly.
+- **One adapter**: `src/mainview/backend.ts` is the only module importing `@tauri-apps/api`. Hooks talk to it, never to `invoke` directly. It implements the shared `RiffBackend` interface from `@riff/core/types` (`stream`/`abortStream`/`generateTitle`/`suggestTransitions`); the hosted app provides its own implementation over its agent/BYOK paths.
 - **Channels, not events**: streaming uses `tauri::ipc::Channel`, which guarantees ordered delivery, so the UI does not need to filter stale chunks.
 - **Interactions API**: requests go to `POST /v1beta/interactions` with `input` as `user_input`/`model_output` steps, `stream: true`, `store: false`. Text deltas only count when their step is `model_output` — reasoning steps stream their own deltas. `status: "incomplete"` means the model hit its output limit.
 - **busyRef in useChat**: `useRef` guards against concurrent `sendMessage` calls (closures capture stale state).

@@ -21,10 +21,12 @@ import {
 import { parseCliArgs, type StartupOptions } from "../shared/cli";
 import type {
   ApiKeyStatus,
+  ChatMessage,
   MediaControlAction,
-  Message,
   PlaybackState,
+  RiffBackend,
   SavePatternResult,
+  StreamOutcome,
   SystemTheme,
   TitleGenerationResult,
   TransitionSuggestionsResult,
@@ -39,11 +41,6 @@ const MEDIA_CONTROL_EVENT = "riff://media-control";
 type StreamEvent =
   | { type: "delta"; text: string }
   | { type: "done"; truncated: boolean };
-
-export interface StreamOutcome {
-  /** The model stopped at its output limit rather than finishing. */
-  truncated: boolean;
-}
 
 /** The JSON Schema subset the Rust `generate_json` command forwards to Gemini. */
 interface ResponseSchema {
@@ -108,7 +105,7 @@ export function errorMessage(error: unknown): string {
  * when the model finishes, and rejects with a user-facing message on failure.
  */
 export function streamPattern(
-  messages: Message[],
+  messages: readonly ChatMessage[],
   onDelta: (text: string) => void,
 ): Promise<StreamOutcome> {
   const channel = new Channel<StreamEvent>();
@@ -270,3 +267,15 @@ export async function getSystemTheme(): Promise<SystemTheme | null> {
 export function log(level: "warn" | "error", message: string): void {
   void invoke("log_message", { level, message }).catch(() => {});
 }
+
+/**
+ * The desktop implementation of the shared `RiffBackend` adapter. `satisfies`
+ * keeps the individual functions above exported under their existing names
+ * while proving they add up to the interface the shared UI expects.
+ */
+export const backend = {
+  stream: streamPattern,
+  abortStream,
+  generateTitle,
+  suggestTransitions,
+} satisfies RiffBackend;

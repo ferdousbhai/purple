@@ -8,7 +8,8 @@
     "./pattern": "./src/pattern.ts",
     "./prompts": "./src/prompts.ts",
     "./recipes": "./src/recipes.ts",
-    "./transitions": "./src/transitions.ts"
+    "./transitions": "./src/transitions.ts",
+    "./types": "./src/types.ts"
   },
   "scripts": {
     "test": "vitest run",

@@ -1,6 +1,6 @@
 import { useEffect, useReducer, useCallback, useRef } from "react";
-import { useStrudel } from "./useStrudel";
-import type { PlaybackState, EvalResult, SourceRange } from "../../shared/types";
+import { useStrudel, type StrudelAudioOptions } from "./use-strudel";
+import type { PlaybackState, EvalResult, SourceRange } from "@riff/core/types";
 import {
   buildTransitionCode,
   DEFAULT_TRANSITION_CYCLES,
@@ -11,7 +11,7 @@ type AudioActivationResult =
   | { ok: true }
   | { ok: false; kind: "audio"; error: string };
 
-export function usePlayback() {
+export function usePlayback(options: StrudelAudioOptions = {}) {
   const {
     activate,
     evaluate,
@@ -19,7 +19,7 @@ export function usePlayback() {
     isAudioReady,
     getSchedulerPosition,
     getActiveSourceRanges,
-  } = useStrudel();
+  } = useStrudel(options);
   const [state, dispatch] = useReducer(playbackReducer, INITIAL_PLAYBACK_STATE);
   const stateRef = useRef(state);
   const operationRef = useRef(0);

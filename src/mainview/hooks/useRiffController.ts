@@ -20,10 +20,15 @@ import {
 import { attemptWithRepair } from "./patternRepair";
 import { useChat } from "./useChat";
 import { useKeyboardShortcuts } from "./useKeyboardShortcuts";
-import { usePlayback } from "./usePlayback";
+import { usePlayback } from "@riff/ui/use-playback";
+import { requireRunningAudioContext } from "../audio-activation";
 import { useTransitionSuggestions } from "./useTransitionSuggestions";
 
 type PromptMode = "stage" | "await-activation";
+
+const DESKTOP_AUDIO_OPTIONS = {
+  ensureRunningContext: requireRunningAudioContext,
+};
 type TitleStatus = "idle" | "generating" | "ready" | "error";
 
 /** One in-flight title generation. Identity is the token: only the request that
@@ -57,7 +62,9 @@ export function useRiffController() {
   apiKeyStatusRef.current = apiKeyStatus;
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const chat = useChat();
-  const playback = usePlayback();
+  // The WebKitGTK activation quirks (non-standard "interrupted" state, silent
+  // output until primed) stay desktop-side, injected into the shared engine.
+  const playback = usePlayback(DESKTOP_AUDIO_OPTIONS);
   // The repair loop below reads playback state between async steps.
   const playbackStateRef = useRef(playback.playbackState);
   playbackStateRef.current = playback.playbackState;
