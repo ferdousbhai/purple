@@ -1,7 +1,17 @@
 import { useState, useCallback, useRef, useEffect } from "react";
+import {
+  buildContextWindow,
+  planCompaction,
+  type CompactionArtifact,
+} from "@riff/core/compaction";
 import { extractPattern } from "@riff/core/pattern";
-import { abortStream as abortBackendStream, errorMessage, streamPattern } from "../backend";
-import { MAX_CONTEXT_MESSAGES, type Message } from "../../shared/types";
+import {
+  abortStream as abortBackendStream,
+  errorMessage,
+  generateCompactionSummary,
+  streamPattern,
+} from "../backend";
+import type { Message } from "../../shared/types";
 
 interface StreamSession {
   assistantId: string;
@@ -43,6 +53,21 @@ interface ChatView {
   error: string | null;
 }
 
+/**
+ * The rolling state for background compaction. `artifact` covers the first
+ * `coveredCount` messages of `conversationRef.current`; `inFlight` keeps at
+ * most one summarizer call running at a time.
+ */
+interface CompactionState {
+  artifact: CompactionArtifact | null;
+  coveredCount: number;
+  inFlight: boolean;
+}
+
+function freshCompactionState(): CompactionState {
+  return { artifact: null, coveredCount: 0, inFlight: false };
+}
+
 export function useChat() {
   const [view, setView] = useState<ChatView>({
     messages: [],
@@ -55,6 +80,48 @@ export function useChat() {
   const busyRef = useRef(false);
   const idCounter = useRef(0);
   const streamRef = useRef<StreamSession | null>(null);
+  const compactionRef = useRef<CompactionState>(freshCompactionState());
+
+  /**
+   * Fold older history into the rolling summary in the background. Never
+   * blocks a send: a send that happens mid-flight simply uses the previous
+   * summary state, and `buildContextWindow` caps the uncovered tail.
+   */
+  const maybeCompact = useCallback((conversation: Message[]): void => {
+    const state = compactionRef.current;
+    if (state.inFlight) return;
+
+    const plan = planCompaction(conversation.length, state.coveredCount);
+    if (!plan.fold) return;
+
+    const startCovered = state.coveredCount;
+    const folded = conversation.slice(0, plan.foldEnd);
+    state.inFlight = true;
+    void generateCompactionSummary(
+      state.artifact,
+      folded.slice(startCovered),
+    ).then((result) => {
+      state.inFlight = false;
+      if (!result.ok) {
+        console.warn("[Chat] Background compaction failed:", result.error);
+        return;
+      }
+
+      // Accept the summary only if the messages it covers are still a
+      // prefix of the live conversation (clearChat swaps the state object
+      // and empties the history, so a stale result lands nowhere).
+      if (compactionRef.current !== state) return;
+      if (state.coveredCount !== startCovered) return;
+      const live = conversationRef.current;
+      if (live.length < folded.length) return;
+      for (let index = 0; index < folded.length; index += 1) {
+        if (live[index]?.id !== folded[index]?.id) return;
+      }
+
+      state.artifact = result.artifact;
+      state.coveredCount = folded.length;
+    });
+  }, []);
 
   function nextId(): string {
     return String(++idCounter.current);
@@ -89,6 +156,9 @@ export function useChat() {
 
     visibleMessagesRef.current = [];
     conversationRef.current = [];
+    // A fresh object: an in-flight summarizer call holds the old one and
+    // its result is discarded against this new state.
+    compactionRef.current = freshCompactionState();
     setView({ messages: [], streamingText: "", isStreaming: false, error: null });
     busyRef.current = false;
   }, []);
@@ -169,7 +239,11 @@ export function useChat() {
           );
         }, STREAM_TIMEOUT_MS);
 
-        void streamPattern(conversation.slice(-MAX_CONTEXT_MESSAGES), appendDelta)
+        const { artifact, coveredCount } = compactionRef.current;
+        void streamPattern(
+          buildContextWindow(artifact, coveredCount, conversation),
+          appendDelta,
+        )
           .then(({ truncated }) => {
             activeStream.truncated = truncated;
             settleStream(activeStream, "done");
@@ -231,9 +305,11 @@ export function useChat() {
       busyRef.current = false;
       streamRef.current = null;
 
+      maybeCompact(finalConversation);
+
       return pattern;
     },
-    [],
+    [maybeCompact],
   );
 
   return {

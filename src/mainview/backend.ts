@@ -9,6 +9,14 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
+  buildCompactionRequest,
+  COMPACTION_PROMPT,
+  COMPACTION_SCHEMA,
+  parseCompactionSummary,
+  type CompactionArtifact,
+  type CompactionSummaryResult,
+} from "@riff/core/compaction";
+import {
   parseGeneratedPatternTitle,
   parseTransitionSuggestions,
   patternFilename,
@@ -182,6 +190,31 @@ export async function suggestTransitions(
       };
     }
     return { ok: true, suggestions };
+  } catch (error) {
+    return { ok: false, error: errorMessage(error) };
+  }
+}
+
+/**
+ * Fold older chat messages into a rolling session summary. Runs in the
+ * background after a send settles; the caller keeps its previous state when
+ * this reports failure.
+ */
+export async function generateCompactionSummary(
+  previous: CompactionArtifact | null,
+  messages: readonly ChatMessage[],
+): Promise<CompactionSummaryResult> {
+  try {
+    const raw = await generateJson(
+      COMPACTION_PROMPT,
+      buildCompactionRequest(previous, messages),
+      COMPACTION_SCHEMA,
+    );
+    const artifact = parseCompactionSummary(raw);
+    if (!artifact) {
+      return { ok: false, error: "Gemini returned an invalid session summary." };
+    }
+    return { ok: true, artifact };
   } catch (error) {
     return { ok: false, error: errorMessage(error) };
   }

@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./compaction": "./src/compaction.ts",
     "./pattern": "./src/pattern.ts",
     "./prompts": "./src/prompts.ts",
     "./recipes": "./src/recipes.ts",
