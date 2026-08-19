@@ -1,48 +1,13 @@
 import { useRef, useCallback, useEffect } from "react";
+import type {
+  StrudelHap,
+  StrudelPattern,
+  StrudelRepl,
+} from "@strudel/web/web.mjs";
 import type { EvalResult, SourceRange } from "../../shared/types";
 import { requireRunningAudioContext } from "../audio-activation";
 
-interface StrudelLocation {
-  start: number;
-  end: number;
-}
-
-interface StrudelHap {
-  context?: {
-    locations?: StrudelLocation[];
-  };
-  isActive?: (time: number) => boolean;
-}
-
-interface StrudelPattern {
-  queryArc: (
-    begin: number,
-    end: number,
-    controls?: Record<string, unknown>,
-  ) => StrudelHap[];
-}
-
-interface StrudelRepl {
-  evaluate: (
-    code: string,
-    autoplay?: boolean,
-    shouldHush?: boolean,
-  ) => Promise<unknown>;
-}
-
-interface StrudelModule {
-  getAudioContext: () => AudioContext;
-  getCps?: () => unknown;
-  getTime: () => number;
-  hush: () => void;
-  initAudio: () => Promise<void>;
-  initStrudel: (options: {
-    audioContext: AudioContext;
-    onEvalError: (error: unknown) => void;
-    prebake: () => unknown;
-  }) => Promise<StrudelRepl>;
-  samples: (source: string) => unknown;
-}
+type StrudelModule = typeof import("@strudel/web/web.mjs");
 
 export interface SchedulerPosition {
   cycle: number;
@@ -55,7 +20,7 @@ export function useStrudel() {
   const initPromiseRef = useRef<Promise<void> | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const activePatternRef = useRef<StrudelPattern | null>(null);
-  const lastEvaluationErrorRef = useRef<unknown>(null);
+  const lastEvaluationErrorRef = useRef<Error | null>(null);
 
   const acquireAudioContext = useCallback(() => {
     if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
@@ -71,7 +36,6 @@ export function useStrudel() {
 
     const ctx = new AudioContext();
     audioCtxRef.current = ctx;
-    console.log("[Strudel] AudioContext created, initial state:", ctx.state);
     return ctx;
   }, []);
 
@@ -81,22 +45,20 @@ export function useStrudel() {
       if (initPromiseRef.current) return initPromiseRef.current;
 
       const promise = (async () => {
-        console.log("[Strudel] Starting init...");
-        const strudel = (await import("@strudel/web/web.mjs")) as StrudelModule;
-        console.log("[Strudel] Module imported");
+        const strudel = await import("@strudel/web/web.mjs");
 
         const repl = await strudel.initStrudel({
           audioContext: ctx,
           onEvalError: (error) => {
             lastEvaluationErrorRef.current = error;
           },
+          // defaultPrebake() registers synths only, so the Dirt-Samples bank
+          // has to be loaded explicitly for sample-based patterns to play.
           prebake: () =>
             strudel.samples("github:tidalcycles/Dirt-Samples/master"),
         });
-        console.log("[Strudel] initStrudel done");
 
         await strudel.initAudio();
-        console.log("[Strudel] initAudio done");
 
         strudelRef.current = strudel;
         replRef.current = repl;
@@ -122,7 +84,6 @@ export function useStrudel() {
     await requireRunningAudioContext(ctx);
     await init(ctx);
     await requireRunningAudioContext(ctx);
-    console.log("[Strudel] AudioContext active, state:", ctx.state);
   }, [acquireAudioContext, init]);
 
   const evaluate = useCallback(async (
@@ -159,11 +120,9 @@ export function useStrudel() {
         options.hushBefore ?? true,
       );
       if (!isStrudelPattern(pattern)) {
-        const evaluationError = lastEvaluationErrorRef.current;
-        const message =
-          evaluationError instanceof Error
-            ? evaluationError.message
-            : "Strudel could not evaluate this pattern.";
+        // Read through a helper: onEvalError writes this ref from Strudel's own
+        // callback, so the reset above does not describe its current value.
+        const message = evaluationErrorMessage(lastEvaluationErrorRef.current);
         return { ok: false, error: message, kind: "evaluation" };
       }
 
@@ -185,7 +144,7 @@ export function useStrudel() {
     if (!strudel) throw new Error("Audio engine is not initialized.");
 
     const cycle = strudel.getTime();
-    const cps = Number(strudel.getCps?.());
+    const cps = Number(strudel.getCps());
     if (!Number.isFinite(cycle) || !Number.isFinite(cps) || cps <= 0) {
       throw new Error("Strudel scheduler timing is unavailable.");
     }
@@ -202,7 +161,7 @@ export function useStrudel() {
       const time = strudel.getTime();
       const haps = pattern
         .queryArc(time - 1, time + 1, {
-          _cps: strudel.getCps?.(),
+          _cps: strudel.getCps(),
           cyclist: "riff-highlight",
         })
         .filter((hap) => hap.isActive?.(time));
@@ -233,13 +192,14 @@ export function useStrudel() {
   };
 }
 
-function isStrudelPattern(value: unknown): value is StrudelPattern {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "queryArc" in value &&
-    typeof value.queryArc === "function"
-  );
+function evaluationErrorMessage(error: Error | null): string {
+  return error?.message ?? "Strudel could not evaluate this pattern.";
+}
+
+function isStrudelPattern(
+  value: StrudelPattern | undefined,
+): value is StrudelPattern {
+  return value != null && typeof value.queryArc === "function";
 }
 
 function sourceRangesFromHaps(haps: readonly StrudelHap[]): SourceRange[] {

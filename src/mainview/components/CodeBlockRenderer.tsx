@@ -4,8 +4,6 @@ interface CodeBlockRendererProps {
   text: string;
 }
 
-export { visibleTextWithoutCodeBlocks } from "@riff/core/pattern";
-
 export function CodeBlockRenderer({ text }: CodeBlockRendererProps) {
   return (
     <span className="whitespace-pre-wrap">

@@ -69,16 +69,14 @@ export function getRandomStartupPattern(random = Math.random): string {
 
 export function isStrudelCode(text: string): boolean {
   const trimmed = text.trim();
-  return /^(s|note|n|stack|cat|seq|arrange|setcps|silence|pure|fast|slow)\s*[\(\.\`]/i.test(
+  return /^(s|note|n|stack|cat|seq|arrange|setcps|silence|pure|fast|slow)\s*[(.`]/i.test(
     trimmed,
   );
 }
 
-function getPreset(key: string): string | undefined {
-  return Object.prototype.hasOwnProperty.call(PRESET_PATTERNS, key)
-    ? PRESET_PATTERNS[key as keyof typeof PRESET_PATTERNS]
-    : undefined;
-}
+// A Map keyed by preset name: arbitrary user input can be looked up directly,
+// with no cast and no risk of resolving an inherited Object member.
+const PRESET_BY_NAME = new Map(Object.entries(PRESET_PATTERNS));
 
 export function parseCliArgs(
   argv: string[],
@@ -104,7 +102,7 @@ export function parseCliArgs(
     if (rest.length !== 1) {
       return { error: `${first} requires exactly one preset name.` };
     }
-    const preset = getPreset(rest[0].toLowerCase());
+    const preset = PRESET_BY_NAME.get(rest[0].toLowerCase());
     return preset
       ? { initialCode: preset, requestPlayback: true }
       : {
@@ -126,7 +124,7 @@ export function parseCliArgs(
   const lower = positional.toLowerCase();
 
   // 1. Direct preset name match (e.g. 'lofi', 'basic', 'techno', 'dnb')
-  const preset = getPreset(lower);
+  const preset = PRESET_BY_NAME.get(lower);
   if (preset) {
     return { initialCode: preset, requestPlayback: true };
   }
@@ -138,16 +136,4 @@ export function parseCliArgs(
 
   // 3. Natural language prompt
   return { initialPrompt: positional, requestPlayback: true };
-}
-
-export function readForwardedStartupArgs(
-  env: Readonly<Record<string, string | undefined>>,
-): string[] | null {
-  const count = Number.parseInt(env.RIFF_STARTUP_ARGC ?? "", 10);
-  if (!Number.isInteger(count) || count < 0) return null;
-
-  return Array.from(
-    { length: count },
-    (_, index) => env[`RIFF_STARTUP_ARG_${index}`] ?? "",
-  );
 }

@@ -4,7 +4,16 @@ import type {
   SavePatternResult,
   TitleGenerationResult,
 } from "../../shared/types";
-import { electroview, setTitleHandler } from "../rpc";
+import { getRandomStartupPattern, type StartupOptions } from "../../shared/cli";
+import {
+  clearApiKey as clearBackendApiKey,
+  generateTitle,
+  getApiKeyStatus,
+  getStartupOptions,
+  onStartupArgs,
+  savePattern as saveBackendPattern,
+  saveApiKey as saveBackendApiKey,
+} from "../backend";
 import { buildRetryMessage, useChat } from "./useChat";
 import { useKeyboardShortcuts } from "./useKeyboardShortcuts";
 import { usePlayback } from "./usePlayback";
@@ -26,6 +35,13 @@ interface PatternContext {
   sourcePrompt?: string;
 }
 
+/** Let a prompt run finish on its own, logging the rejection reason under `context`. */
+function runInBackground(prompt: Promise<void>, context: string): void {
+  void prompt.catch((promptError: unknown) => {
+    console.error(`${context}:`, promptError);
+  });
+}
+
 export function useRiffController() {
   const [code, setCode] = useState("");
   const [patternTitle, setPatternTitle] = useState("Startup Pattern");
@@ -39,6 +55,9 @@ export function useRiffController() {
     hasKey: false,
     source: "missing",
   });
+  // Event listeners registered once still need the current key state.
+  const apiKeyStatusRef = useRef(apiKeyStatus);
+  apiKeyStatusRef.current = apiKeyStatus;
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const chat = useChat();
   const playback = usePlayback();
@@ -51,13 +70,11 @@ export function useRiffController() {
   });
 
   const saveApiKey = useCallback(async (apiKey: string) => {
-    const status = await electroview.rpc!.request.saveApiKey({ apiKey });
-    setApiKeyStatus(status);
+    setApiKeyStatus(await saveBackendApiKey(apiKey));
   }, []);
 
   const clearApiKey = useCallback(async () => {
-    const status = await electroview.rpc!.request.clearApiKey({});
-    setApiKeyStatus(status);
+    setApiKeyStatus(await clearBackendApiKey());
   }, []);
 
   const applyTitleResult = useCallback(
@@ -86,16 +103,6 @@ export function useRiffController() {
     [],
   );
 
-  useEffect(() => {
-    setTitleHandler({
-      onDone: (requestId, title) =>
-        applyTitleResult(requestId, { ok: true, title }),
-      onError: (requestId, error) =>
-        applyTitleResult(requestId, { ok: false, error }),
-    });
-    return () => setTitleHandler({});
-  }, [applyTitleResult]);
-
   const runPrompt = useCallback(
     async (text: string, mode: PromptMode = "play"): Promise<void> => {
       nextMoves.clear();
@@ -108,18 +115,13 @@ export function useRiffController() {
         result: null,
       };
 
-      // sendMessage dispatches startStream synchronously before yielding. Start
+      // sendMessage dispatches the stream synchronously before yielding. Start
       // the independent title request immediately afterward so Gemini can run
       // both requests in parallel without delaying the primary dispatch.
       const patternPromise = chat.sendMessage(text);
-      void electroview.rpc!.request
-        .startTitleGeneration({ requestId: titleRequestId, prompt: text })
-        .catch((error: unknown) => {
-          applyTitleResult(titleRequestId, {
-            ok: false,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        });
+      void generateTitle(text).then((result) =>
+        applyTitleResult(titleRequestId, result),
+      );
 
       const pattern = await patternPromise;
       if (!pattern) {
@@ -225,9 +227,7 @@ export function useRiffController() {
       // Consistent with stageNext/presets: always stage as pending, require explicit XFADE/PLAY click.
       const prompt = runPrompt(text, "stage");
       void playback.prepareAudio();
-      void prompt.catch((promptError: unknown) => {
-        console.error("[Chat] Prompt failed:", promptError);
-      });
+      runInBackground(prompt, "[Chat] Prompt failed");
       return true;
     },
     [
@@ -246,9 +246,10 @@ export function useRiffController() {
       }
       if (playback.playbackState !== "playing") return false;
 
-      void runPrompt(text, "stage").catch((promptError: unknown) => {
-        console.error("[Chat] Could not stage next pattern:", promptError);
-      });
+      runInBackground(
+        runPrompt(text, "stage"),
+        "[Chat] Could not stage next pattern",
+      );
       return true;
     }, [apiKeyStatus.hasKey, playback.playbackState, runPrompt],
   );
@@ -304,11 +305,44 @@ export function useRiffController() {
 
   const savePattern = useCallback(
     (title: string, patternCode: string): Promise<SavePatternResult> =>
-      electroview.rpc!.request.savePattern({
-        title,
-        code: patternCode,
-      }),
+      saveBackendPattern(title, patternCode),
     [],
+  );
+
+  const applyStartupOptions = useCallback(
+    (options: StartupOptions, hasKey: boolean): void => {
+      if (options.error) {
+        // The window is already open by the time arguments are parsed, so a bad
+        // invocation cannot abort startup. Report it and open on a preset
+        // instead of an empty editor.
+        console.error(`[Startup] ${options.error}`);
+        setCode(getRandomStartupPattern());
+        setRequiresUserActivation(true);
+        return;
+      }
+      if (options.initialCode) {
+        setCode(options.initialCode);
+        patternContextRef.current = { code: options.initialCode };
+        setPatternTitle("Startup Pattern");
+        setTitleStatus("ready");
+        // Do not call playback.play() here. WebKitGTK does not opt this view
+        // into audible autoplay, so AudioContext.resume() stays pending until a
+        // trusted user gesture; awaiting it would deadlock playback in the
+        // disabled "INIT..." state. Keep START enabled instead.
+        setRequiresUserActivation(Boolean(options.requestPlayback));
+        return;
+      }
+      if (!options.initialPrompt) return;
+      if (!hasKey) {
+        setIsSettingsOpen(true);
+        return;
+      }
+      runInBackground(
+        runPrompt(options.initialPrompt, "await-activation"),
+        "[Startup] Initial prompt failed",
+      );
+    },
+    [runPrompt],
   );
 
   useEffect(() => {
@@ -317,36 +351,13 @@ export function useRiffController() {
     async function loadStartupState(): Promise<void> {
       try {
         const [status, options] = await Promise.all([
-          electroview.rpc!.request.getApiKeyStatus({}),
-          electroview.rpc!.request.getStartupOptions({}),
+          getApiKeyStatus(),
+          getStartupOptions(),
         ]);
         if (!active) return;
 
         setApiKeyStatus(status);
-        if (options.initialCode) {
-          setCode(options.initialCode);
-          patternContextRef.current = { code: options.initialCode };
-          setPatternTitle("Startup Pattern");
-          setTitleStatus("ready");
-          // Do not call playback.play() during startup. On Linux, Electrobun's
-          // WebKitGTK host does not opt this local view into audible autoplay,
-          // so AudioContext.resume() remains pending until a trusted user
-          // gesture. Awaiting it here deadlocks playback in the disabled
-          // "INIT..." state. Keep START enabled instead. True zero-click
-          // playback requires Electrobun to expose WebKit's native autoplay
-          // policy, not a renderer-side timeout or retry.
-          setRequiresUserActivation(Boolean(options.requestPlayback));
-        } else if (options.initialPrompt) {
-          if (!status.hasKey) {
-            setIsSettingsOpen(true);
-            return;
-          }
-          void runPrompt(options.initialPrompt, "await-activation").catch(
-            (promptError: unknown) => {
-              console.error("[Startup] Initial prompt failed:", promptError);
-            },
-          );
-        }
+        applyStartupOptions(options, status.hasKey);
       } catch (startupError) {
         console.error("[Startup] Could not load startup state:", startupError);
       }
@@ -356,7 +367,21 @@ export function useRiffController() {
     return () => {
       active = false;
     };
-  }, [runPrompt]);
+  }, [applyStartupOptions]);
+
+  // A second `riff …` invocation focuses this window and forwards its arguments.
+  useEffect(() => {
+    let active = true;
+    const unlisten = onStartupArgs((options) => {
+      if (!active) return;
+      applyStartupOptions(options, apiKeyStatusRef.current.hasKey);
+    });
+
+    return () => {
+      active = false;
+      void unlisten.then((stop) => stop()).catch(() => {});
+    };
+  }, [applyStartupOptions]);
 
   return {
     messages: chat.messages,

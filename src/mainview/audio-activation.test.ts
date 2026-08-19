@@ -26,6 +26,8 @@ function createContext(state: string): FakeAudioContext {
 }
 
 function asAudioContext(context: FakeAudioContext): AudioContext {
+  // SAFETY: requireRunningAudioContext only touches state, resume, createBuffer,
+  // createBufferSource and destination — every member FakeAudioContext defines.
   return context as unknown as AudioContext;
 }
 

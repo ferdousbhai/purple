@@ -3,14 +3,14 @@ import { applyWebAudioShim } from "./audio-shim";
 // Apply WebKitGTK / Linux Web Audio fixes before any audio code runs
 applyWebAudioShim();
 
-import { electroview } from "./rpc"; // Initialize Electrobun RPC before React renders
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
+import { log as reportRendererLog } from "./backend";
 import "./app.css";
 
-// Forward actionable renderer diagnostics without mirroring Strudel's very noisy
-// informational logs across the RPC boundary.
+// Forward actionable renderer diagnostics to the shell's log without mirroring
+// Strudel's very noisy informational logs.
 for (const level of ["warn", "error"] as const) {
   const orig = console[level];
   console[level] = (...args: unknown[]) => {
@@ -27,10 +27,6 @@ function formatLogValue(value: unknown): string {
   } catch {
     return Object.prototype.toString.call(value);
   }
-}
-
-function reportRendererLog(level: "warn" | "error", message: string): void {
-  void electroview.rpc?.request.log({ level, message }).catch(() => {});
 }
 
 window.addEventListener("error", (event) => {

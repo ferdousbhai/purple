@@ -1,5 +1,3 @@
-export const RIFF_MODEL = "google/gemini-3.7-flash";
-export const RIFF_REASONING_EFFORT = "low" as const;
 
 export const SYSTEM_PROMPT = `You are the music producer inside Riff, a Strudel live-coding app.
 

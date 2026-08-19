@@ -1,7 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-# bin/riff — thin wrapper, always detached. Full logic in scripts/riff.sh
-src="${BASH_SOURCE[0]}"
-while [[ -L "$src" ]]; do src="$(readlink -f "$src")"; done
-repo_root="$(cd -- "$(dirname -- "$src")/.." >/dev/null && /bin/pwd)"
-exec "$repo_root/scripts/riff.sh" "$@"

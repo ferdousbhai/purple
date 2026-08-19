@@ -1,4 +1,4 @@
-import { visibleTextWithoutCodeBlocks } from "./CodeBlockRenderer";
+import { visibleTextWithoutCodeBlocks } from "@riff/core/pattern";
 
 interface StreamingTextProps {
   text: string;

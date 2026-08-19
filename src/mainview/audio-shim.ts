@@ -1,9 +1,8 @@
 /**
- * WebKitGTK WebAudio Shim for Linux/Omarchy:
- * In WebKitGTK:
- * ChannelMergerNode / ChannelSplitterNode with 0 channels throws DOMException
- * on affected WebKitGTK builds. Normalize only that invalid constructor input;
- * do not mask the device's real channel capabilities or setter failures.
+ * Linux WebKitGTK Web Audio shim. Affected builds throw a DOMException when a
+ * ChannelMergerNode / ChannelSplitterNode is constructed with 0 channels.
+ * Normalize only that invalid constructor input; do not mask the device's real
+ * channel capabilities or setter failures.
  */
 
 export function applyWebAudioShim(): void {
@@ -20,7 +19,7 @@ export function applyWebAudioShim(): void {
         const count = normalizeWebAudioChannelCount(options?.numberOfInputs);
         super(context, { ...options, numberOfInputs: count });
       }
-    } as typeof ChannelMergerNode;
+    };
   }
 
   // Wrap ChannelSplitterNode constructor & createChannelSplitter
@@ -31,33 +30,33 @@ export function applyWebAudioShim(): void {
         const count = normalizeWebAudioChannelCount(options?.numberOfOutputs);
         super(context, { ...options, numberOfOutputs: count });
       }
-    } as typeof ChannelSplitterNode;
+    };
   }
 
-  // Wrap BaseAudioContext factory methods
-  const proto = BaseAudioContext.prototype as unknown as {
-    createChannelMerger?: (numberOfInputs?: number) => ChannelMergerNode;
-    createChannelSplitter?: (numberOfOutputs?: number) => ChannelSplitterNode;
-  };
-  if (proto) {
-    if (proto.createChannelMerger) {
-      const origCreateMerger = proto.createChannelMerger;
-      proto.createChannelMerger = function (numberOfInputs?: number) {
-        const count = normalizeWebAudioChannelCount(numberOfInputs);
-        return origCreateMerger.call(this, count);
-      };
-    }
-    if (proto.createChannelSplitter) {
-      const origCreateSplitter = proto.createChannelSplitter;
-      proto.createChannelSplitter = function (numberOfOutputs?: number) {
-        const count = normalizeWebAudioChannelCount(numberOfOutputs);
-        return origCreateSplitter.call(this, count);
-      };
-    }
+  // Wrap BaseAudioContext factory methods. Typed with optional members because
+  // older WebKitGTK builds may not expose them at all.
+  const proto: ChannelNodeFactories = BaseAudioContext.prototype;
+  if (proto.createChannelMerger) {
+    const origCreateMerger = proto.createChannelMerger;
+    proto.createChannelMerger = function (numberOfInputs?: number) {
+      const count = normalizeWebAudioChannelCount(numberOfInputs);
+      return origCreateMerger.call(this, count);
+    };
+  }
+  if (proto.createChannelSplitter) {
+    const origCreateSplitter = proto.createChannelSplitter;
+    proto.createChannelSplitter = function (numberOfOutputs?: number) {
+      const count = normalizeWebAudioChannelCount(numberOfOutputs);
+      return origCreateSplitter.call(this, count);
+    };
   }
 
   patchZeroChannelDestination();
+}
 
+interface ChannelNodeFactories {
+  createChannelMerger?: (numberOfInputs?: number) => ChannelMergerNode;
+  createChannelSplitter?: (numberOfOutputs?: number) => ChannelSplitterNode;
 }
 
 function patchZeroChannelDestination(): void {
@@ -81,30 +80,32 @@ function patchZeroChannelDestination(): void {
     return;
   }
 
-  const getNativeMaxChannelCount = maxChannelDescriptor.get;
-  const getNativeChannelCount = channelDescriptor.get;
-  const setNativeChannelCount = channelDescriptor.set;
+  // PropertyDescriptor types accessors as `any`; name their real signatures
+  // once here so the wrappers below need no casts.
+  const getNativeMaxChannelCount: () => number = maxChannelDescriptor.get;
+  const getNativeChannelCount: () => number = channelDescriptor.get;
+  const setNativeChannelCount: (value: number) => void = channelDescriptor.set;
   let reportedCompatibilityMode = false;
 
   Object.defineProperty(destinationPrototype, "maxChannelCount", {
     ...maxChannelDescriptor,
     get() {
-      const reported = getNativeMaxChannelCount.call(this) as number;
-      return normalizeDestinationChannelCount(reported);
+      return normalizeDestinationChannelCount(
+        getNativeMaxChannelCount.call(this),
+      );
     },
   });
 
   Object.defineProperty(destinationPrototype, "channelCount", {
     ...channelDescriptor,
     get() {
-      const reported = getNativeChannelCount.call(this) as number;
-      return normalizeDestinationChannelCount(reported);
+      return normalizeDestinationChannelCount(getNativeChannelCount.call(this));
     },
     set(value: number) {
       try {
         setNativeChannelCount.call(this, value);
       } catch (error) {
-        const nativeMaximum = getNativeMaxChannelCount.call(this) as number;
+        const nativeMaximum = getNativeMaxChannelCount.call(this);
         if (!isKnownWebKitStereoAssignment(nativeMaximum, value)) throw error;
         if (!reportedCompatibilityMode) {
           reportedCompatibilityMode = true;

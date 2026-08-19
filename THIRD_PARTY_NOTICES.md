@@ -6,6 +6,7 @@ packages are licensed under the GNU Affero General Public License,
 version 3 or later. Their source is available from the
 [Strudel repository](https://codeberg.org/uzu/strudel).
 
-The release archive includes the applicable AGPL license text as
-`STRUDEL-AGPL-3.0.txt`. Other JavaScript dependencies retain the licenses
-declared by their respective packages.
+Riff ships these packages inside the application bundle, so the applicable AGPL
+license text is installed with the app. Other JavaScript dependencies, and the
+Rust crates the Tauri shell links against, retain the licenses declared by their
+respective packages.

@@ -4,7 +4,7 @@ import type { SourceRange } from "../../shared/types";
 
 const setPlaybackRanges = StateEffect.define<readonly SourceRange[]>();
 
-const playbackRanges = StateField.define({
+export const playbackHighlightExtension = StateField.define({
   create() {
     return Decoration.none;
   },
@@ -32,8 +32,6 @@ const playbackRanges = StateField.define({
   },
   provide: (field) => EditorView.decorations.from(field),
 });
-
-export const playbackHighlightExtension = playbackRanges;
 
 export function updatePlaybackHighlights(
   view: EditorView,

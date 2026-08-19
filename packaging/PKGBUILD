@@ -1,0 +1,49 @@
+# Maintainer: Ferdous Bhai <ferdousbd@gmail.com>
+pkgname=riff
+pkgver=0.2.0
+pkgrel=1
+pkgdesc="AI-powered music production: describe music in plain language and hear Strudel patterns play"
+arch=('x86_64')
+url="https://github.com/ferdousbhai/riff"
+license=('MIT')
+depends=(
+  'webkit2gtk-4.1'
+  'gtk3'
+  'gst-plugins-base'
+  'gst-plugins-good'
+  'libsecret'
+  'hicolor-icon-theme'
+)
+makedepends=('rust' 'nodejs' 'pnpm')
+options=('!lto')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cd "$srcdir/$pkgname-$pkgver"
+  pnpm install --frozen-lockfile
+  pnpm run build:web
+  cargo build --release --locked --manifest-path src-tauri/Cargo.toml
+}
+
+check() {
+  cd "$srcdir/$pkgname-$pkgver"
+  pnpm run test
+  cargo test --release --locked --manifest-path src-tauri/Cargo.toml
+}
+
+package() {
+  cd "$srcdir/$pkgname-$pkgver"
+
+  install -Dm755 src-tauri/target/release/riff "$pkgdir/usr/bin/riff"
+  install -Dm644 packaging/riff.desktop "$pkgdir/usr/share/applications/riff.desktop"
+  install -Dm644 assets/riff.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/riff.svg"
+
+  install -Dm644 src-tauri/icons/32x32.png "$pkgdir/usr/share/icons/hicolor/32x32/apps/riff.png"
+  install -Dm644 src-tauri/icons/64x64.png "$pkgdir/usr/share/icons/hicolor/64x64/apps/riff.png"
+  install -Dm644 src-tauri/icons/128x128.png "$pkgdir/usr/share/icons/hicolor/128x128/apps/riff.png"
+  install -Dm644 "src-tauri/icons/128x128@2x.png" "$pkgdir/usr/share/icons/hicolor/256x256/apps/riff.png"
+
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 THIRD_PARTY_NOTICES.md "$pkgdir/usr/share/licenses/$pkgname/THIRD_PARTY_NOTICES.md"
+}

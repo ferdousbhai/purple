@@ -2,9 +2,13 @@ import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
+// Tauri drives this build: it starts `vite` for development and consumes
+// `dist/` for release, so keep the dev server fixed and quiet.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   root: "src/mainview",
+  clearScreen: false,
+  envPrefix: ["VITE_", "TAURI_ENV_"],
   build: {
     outDir: "../../dist",
     emptyOutDir: true,
@@ -60,6 +64,9 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    watch: {
+      ignored: ["**/src-tauri/**"],
+    },
   },
   test: {
     root: ".",

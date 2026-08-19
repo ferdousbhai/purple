@@ -4,7 +4,6 @@ import {
   parseCliArgs,
   isStrudelCode,
   PRESET_PATTERNS,
-  readForwardedStartupArgs,
 } from "./cli";
 
 describe("cli parser", () => {
@@ -87,21 +86,5 @@ describe("cli parser", () => {
     expect(parseCliArgs(["--code"]).error).toContain("requires exactly one");
     expect(parseCliArgs(["--prompt"]).error).toContain("requires a prompt");
     expect(parseCliArgs(["--unknown"]).error).toContain("Unknown option");
-  });
-});
-
-describe("forwarded startup args", () => {
-  it("preserves argument boundaries", () => {
-    expect(
-      readForwardedStartupArgs({
-        RIFF_STARTUP_ARGC: "2",
-        RIFF_STARTUP_ARG_0: "--prompt",
-        RIFF_STARTUP_ARG_1: "make a house beat",
-      }),
-    ).toEqual(["--prompt", "make a house beat"]);
-  });
-
-  it("falls back when no forwarded argument count is present", () => {
-    expect(readForwardedStartupArgs({})).toBeNull();
   });
 });

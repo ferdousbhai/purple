@@ -49,8 +49,8 @@ export function validateGeneratedPatternTitle(value: unknown): string | null {
   return title;
 }
 
-export function parseGeneratedPatternTitle(value: unknown): string | null {
-  if (typeof value !== "string") return null;
+/** Parse the raw JSON response produced under the title schema. */
+export function parseGeneratedPatternTitle(value: string): string | null {
   try {
     const parsed: unknown = JSON.parse(value);
     if (
@@ -68,11 +68,10 @@ export function parseGeneratedPatternTitle(value: unknown): string | null {
   }
 }
 
+/** Parse the raw JSON response produced under the transition-suggestions schema. */
 export function parseTransitionSuggestions(
-  value: unknown,
+  value: string,
 ): TransitionSuggestion[] | null {
-  if (typeof value !== "string") return null;
-
   try {
     const parsed: unknown = JSON.parse(value);
     if (

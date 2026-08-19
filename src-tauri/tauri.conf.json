@@ -1,0 +1,45 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Riff",
+  "mainBinaryName": "riff",
+  "version": "0.2.0",
+  "identifier": "dev.ferdous.riff",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "pnpm run dev:web",
+    "beforeBuildCommand": "pnpm run build:web"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Riff",
+        "width": 1200,
+        "height": 800,
+        "x": 200,
+        "y": 100,
+        "minWidth": 720,
+        "minHeight": 480,
+        "backgroundColor": "#0a0a0a",
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "csp": null
+    },
+    "withGlobalTauri": false
+  },
+  "bundle": {
+    "active": false,
+    "category": "Music",
+    "shortDescription": "AI-powered music production",
+    "longDescription": "Describe music in plain language; Riff writes and plays Strudel patterns.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.png"
+    ]
+  }
+}

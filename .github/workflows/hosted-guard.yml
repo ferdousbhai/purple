@@ -1,0 +1,73 @@
+name: Hosted guard
+
+# @riff/core is consumed by the private hosted build (ferdousbhai/riff-hosted)
+# through a submodule it pins by commit. Without this job a core change only
+# surfaces there whenever someone next bumps that pin. This runs the hosted
+# checks against the core commit that just landed, so a break is reported by the
+# commit that caused it.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "packages/core/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hosted-check:
+    runs-on: ubuntu-latest
+    steps:
+      # Forks and PRs from forks cannot read the token, so the job reports a
+      # skip instead of a failure nobody can fix.
+      - id: token
+        env:
+          HOSTED_REPO_TOKEN: ${{ secrets.HOSTED_REPO_TOKEN }}
+        run: |
+          if [ -n "$HOSTED_REPO_TOKEN" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::HOSTED_REPO_TOKEN is not set; skipping the hosted check."
+          fi
+
+      - if: steps.token.outputs.available == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: ferdousbhai/riff-hosted
+          token: ${{ secrets.HOSTED_REPO_TOKEN }}
+          submodules: recursive
+          path: hosted
+
+      - name: Point the vendored core at this commit
+        if: steps.token.outputs.available == 'true'
+        working-directory: hosted/vendor/riff
+        run: |
+          git fetch --depth 1 origin "$GITHUB_SHA"
+          git checkout --detach "$GITHUB_SHA"
+
+      - if: steps.token.outputs.available == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.27.0
+
+      - if: steps.token.outputs.available == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Not --frozen-lockfile: the point of this job is to test a core commit
+      # the hosted lockfile has not pinned yet.
+      - if: steps.token.outputs.available == 'true'
+        working-directory: hosted
+        run: pnpm install --no-frozen-lockfile
+
+      - if: steps.token.outputs.available == 'true'
+        working-directory: hosted
+        run: pnpm --filter @riff/web cf-typegen
+
+      - if: steps.token.outputs.available == 'true'
+        working-directory: hosted
+        run: pnpm run check

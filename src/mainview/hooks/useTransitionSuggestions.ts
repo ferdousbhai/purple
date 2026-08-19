@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { TransitionSuggestion } from "../../shared/types";
-import { electroview, setTransitionSuggestionsHandler } from "../rpc";
+import { suggestTransitions } from "../backend";
 
 type SuggestionsStatus = "idle" | "loading" | "ready" | "error";
 
@@ -13,51 +13,34 @@ export function useTransitionSuggestions() {
   const [suggestions, setSuggestions] = useState<TransitionSuggestion[]>([]);
   const [status, setStatus] = useState<SuggestionsStatus>("idle");
   const [error, setError] = useState<string | null>(null);
-  const requestIdRef = useRef<string | null>(null);
+  // Only the newest request may write state; older ones resolve into the void.
+  const requestRef = useRef(0);
 
   const clear = useCallback(() => {
-    requestIdRef.current = null;
+    requestRef.current++;
     setSuggestions([]);
     setStatus("idle");
     setError(null);
   }, []);
 
-  useEffect(() => {
-    setTransitionSuggestionsHandler({
-      onDone: (requestId, nextSuggestions) => {
-        if (requestIdRef.current !== requestId) return;
-        setSuggestions(nextSuggestions);
-        setStatus("ready");
-        setError(null);
-      },
-      onError: (requestId, nextError) => {
-        if (requestIdRef.current !== requestId) return;
-        setSuggestions([]);
-        setStatus("error");
-        setError(nextError);
-      },
-    });
-    return () => setTransitionSuggestionsHandler({});
-  }, []);
-
   const generate = useCallback(({ code, sourcePrompt }: MusicContext) => {
-    const requestId = crypto.randomUUID();
-    requestIdRef.current = requestId;
+    const request = ++requestRef.current;
     setSuggestions([]);
     setStatus("loading");
     setError(null);
 
-    void electroview.rpc!.request
-      .startTransitionSuggestions({ requestId, code, sourcePrompt })
-      .catch((requestError: unknown) => {
-        if (requestIdRef.current !== requestId) return;
+    void suggestTransitions(code, sourcePrompt).then((result) => {
+      if (requestRef.current !== request) return;
+      if (result.ok) {
+        setSuggestions(result.suggestions);
+        setStatus("ready");
+        setError(null);
+      } else {
+        setSuggestions([]);
         setStatus("error");
-        setError(
-          requestError instanceof Error
-            ? requestError.message
-            : String(requestError),
-        );
-      });
+        setError(result.error);
+      }
+    });
   }, []);
 
   return { suggestions, status, error, generate, clear };
