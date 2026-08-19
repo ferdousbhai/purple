@@ -10,13 +10,14 @@ import {
   savePattern as saveBackendPattern,
   saveApiKey as saveBackendApiKey,
 } from "../backend";
-import { buildRetryMessage, useChat } from "./useChat";
+import type { EvalResult } from "../../shared/types";
+import { attemptWithRepair } from "./patternRepair";
+import { useChat } from "./useChat";
 import { useKeyboardShortcuts } from "./useKeyboardShortcuts";
 import { usePlayback } from "./usePlayback";
 import { useTransitionSuggestions } from "./useTransitionSuggestions";
 
-const MAX_RETRIES = 2;
-type PromptMode = "play" | "stage" | "await-activation";
+type PromptMode = "stage" | "await-activation";
 type TitleStatus = "idle" | "generating" | "ready" | "error";
 
 /** One in-flight title generation. Identity is the token: only the request that
@@ -56,6 +57,9 @@ export function useRiffController() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const chat = useChat();
   const playback = usePlayback();
+  // The repair loop below reads playback state between async steps.
+  const playbackStateRef = useRef(playback.playbackState);
+  playbackStateRef.current = playback.playbackState;
   const nextMoves = useTransitionSuggestions();
 
   useKeyboardShortcuts({
@@ -105,7 +109,7 @@ export function useRiffController() {
   );
 
   const runPrompt = useCallback(
-    async (text: string, mode: PromptMode = "play"): Promise<void> => {
+    async (text: string, mode: PromptMode): Promise<void> => {
       nextMoves.clear();
       const titleRequest: TitleRequest = { patternReady: false, result: null };
       titleRequestRef.current = titleRequest;
@@ -137,51 +141,40 @@ export function useRiffController() {
       if (titleRequest.result) {
         applyTitleResult(titleRequest, titleRequest.result);
       }
-      if (mode !== "play") {
-        setRequiresUserActivation(mode === "await-activation");
-        return;
-      }
-
-      setRequiresUserActivation(false);
-      let currentCode = pattern;
-      let retriesLeft = MAX_RETRIES;
-
-      // Play the pattern; on an evaluation error hand that error back to Gemini
-      // and play whatever it sends instead, until the retry budget runs out.
-      for (;;) {
-        // transition() falls back to play() when nothing is playing yet.
-        const result = await playback.transition(currentCode);
-        if (result.ok) {
-          suggestNextMoves(currentCode);
-          return;
-        }
-        if (result.kind === "audio") {
-          setRequiresUserActivation(true);
-          // Still suggest next moves so XFADE can appear once audio is unlocked.
-          suggestNextMoves(currentCode);
-          return;
-        }
-        if (result.kind !== "evaluation" || retriesLeft === 0) return;
-        retriesLeft--;
-
-        const fixedPattern = await chat.sendMessage(
-          buildRetryMessage(currentCode, result.error),
-          { hiddenUserMessage: true },
-        );
-        if (!fixedPattern) return;
-
-        setCode(fixedPattern);
-        patternContextRef.current = { code: fixedPattern, sourcePrompt: text };
-        currentCode = fixedPattern;
-      }
+      setRequiresUserActivation(mode === "await-activation");
     },
-    [
-      applyTitleResult,
-      chat.sendMessage,
-      nextMoves.clear,
-      playback.transition,
-      suggestNextMoves,
-    ],
+    [applyTitleResult, chat.sendMessage, nextMoves.clear],
+  );
+
+  /** Play or transition, repairing a generated pattern that fails to evaluate:
+   * the error goes back to Gemini as a hidden message and each fix replays, up
+   * to MAX_RETRIES times. This runs inside the user's PLAY/XFADE gesture, so
+   * the audio context is already unlocked when a fix replays. */
+  const runWithRepair = useCallback(
+    async (
+      code: string,
+      attempt: (candidate: string) => Promise<EvalResult>,
+    ): Promise<EvalResult> => {
+      let context = patternContextRef.current;
+      const outcome = await attemptWithRepair(code, {
+        attempt,
+        // Hand-edited code is not repaired; its error surfaces in the UI.
+        isGeneratedPattern: (candidate) => context?.code === candidate,
+        requestFix: (message) =>
+          chat.sendMessage(message, { hiddenUserMessage: true }),
+        applyFix: (fixed) => {
+          context = { code: fixed, sourcePrompt: context?.sourcePrompt };
+          patternContextRef.current = context;
+          setCode(fixed);
+        },
+        // A newer prompt owns the editor now; leave its pattern alone.
+        isStale: () => patternContextRef.current !== context,
+        isStopped: () => playbackStateRef.current === "stopped",
+      });
+      if (outcome.result.ok) suggestNextMoves(outcome.code);
+      return outcome.result;
+    },
+    [chat.sendMessage, suggestNextMoves],
   );
 
   const sendMessage = useCallback(
@@ -232,22 +225,23 @@ export function useRiffController() {
     async (editorCode: string) => {
       setRequiresUserActivation(false);
       nextMoves.clear();
-      const result = await playback.play(editorCode);
-      if (result.ok) suggestNextMoves(editorCode);
-      return result;
+      return runWithRepair(editorCode, playback.play);
     },
-    [nextMoves.clear, playback.play, suggestNextMoves],
+    [nextMoves.clear, playback.play, runWithRepair],
   );
 
   const transition = useCallback(
     async (nextCode: string, durationCycles: number) => {
       setRequiresUserActivation(false);
       nextMoves.clear();
-      const result = await playback.transition(nextCode, durationCycles);
-      if (result.ok) suggestNextMoves(nextCode);
-      return result;
+      // transition() falls back to play() when nothing is playing yet, and a
+      // failed transition lands back in "playing", so a repaired pattern can
+      // re-attempt the same crossfade.
+      return runWithRepair(nextCode, (candidate) =>
+        playback.transition(candidate, durationCycles),
+      );
     },
-    [nextMoves.clear, playback.transition, suggestNextMoves],
+    [nextMoves.clear, playback.transition, runWithRepair],
   );
 
   const stop = useCallback(() => {
