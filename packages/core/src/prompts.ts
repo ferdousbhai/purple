@@ -13,6 +13,10 @@ The block must contain one evaluable Strudel expression:
 Vocabulary you may draw from (use 1-2 at most, keep stack 2-4 layers song-like):
 ~ rest, (3,8) euclidean, "<a b>" alt, "/" slow, "*4" fast, .sometimes/.every/.off/.jux, .scale/.chord, .gain/.lpf/.room/.delay
 
+Drum sounds come from Dirt-Samples only: bd, sd, hh, oh (open hat), clap, cp,
+perc, arpy. Names like rim, ride, crash, shaker, or tom do not exist here —
+pick from the list above instead.
+
 Examples (bakery-inspired, still song-like):
 \`\`\`strudel
 stack(s("bd(3,8) ~ sd ~").sometimes("fast(1.5)"), note("c2 eb2 g2".slow(2)).s("sawtooth").lpf(500))

@@ -88,8 +88,14 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
           },
           // defaultPrebake() registers synths only, so the Dirt-Samples bank
           // has to be loaded explicitly for sample-based patterns to play.
-          prebake: () =>
-            strudel.samples("github:tidalcycles/Dirt-Samples/master"),
+          prebake: async () => {
+            await strudel.samples("github:tidalcycles/Dirt-Samples/master");
+            // Dirt-Samples names these ho/cp, but the model vocabulary (and
+            // Strudel's own default prebake) says oh/clap; without the alias
+            // those hits are silently dropped.
+            strudel.soundAlias("ho", "oh");
+            strudel.soundAlias("cp", "clap");
+          },
         });
 
         await strudel.initAudio();
@@ -240,10 +246,14 @@ function evaluationErrorMessage(error: Error | null): string {
   return error?.message ?? "Strudel could not evaluate this pattern.";
 }
 
+/**
+ * Strudel is untyped JavaScript, so the value `evaluate` resolves with is
+ * verified to carry a pattern's query interface before it is treated as one.
+ */
 function isStrudelPattern(
   value: StrudelPattern | undefined,
 ): value is StrudelPattern {
-  return value != null && typeof value.queryArc === "function";
+  return value != null && value.queryArc instanceof Function;
 }
 
 function sourceRangesFromHaps(haps: readonly StrudelHap[]): SourceRange[] {

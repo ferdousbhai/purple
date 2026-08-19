@@ -60,4 +60,6 @@ declare module "@strudel/web/web.mjs" {
     options: InitStrudelOptions,
   ): Promise<StrudelRepl>;
   export function samples(source: string): Promise<void>;
+  /** Register `alias` as another name for the already-loaded sound `original`. */
+  export function soundAlias(original: string, alias: string): void;
 }
