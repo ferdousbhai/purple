@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   ApiKeyStatus,
+  EvalResult,
   PatternContext,
   TitleGenerationResult,
 } from "../../shared/types";
@@ -14,7 +15,6 @@ import {
   savePattern as saveBackendPattern,
   saveApiKey as saveBackendApiKey,
 } from "../backend";
-import type { EvalResult } from "../../shared/types";
 import { attemptWithRepair } from "./patternRepair";
 import { useChat } from "./useChat";
 import { useKeyboardShortcuts } from "./useKeyboardShortcuts";
