@@ -19,7 +19,7 @@ options=('!lto')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 # Refresh with `updpkgsums` after pushing the tag for a new pkgver. A release
 # tarball must never be verified by SKIP.
-sha256sums=('69f708455fbc3d9b45ea93c72c736d05b2317ef9c6705c8fba7f8bdd2a5a3a41')
+sha256sums=('7efd4d5c0c4826ecc8afb7a3db7daf8809761a784fdc44c97873b90db1596293')
 
 build() {
   cd "$srcdir/$pkgname-$pkgver"
