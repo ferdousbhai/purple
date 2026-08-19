@@ -68,7 +68,7 @@ User types message → ChatPanel → backend.streamPattern() → invoke("stream_
   Rust: POST /v1beta/interactions (stream) →
   Channel<StreamEvent> delta per token → ChatPanel renders streaming text →
   done → extractPattern() → auto-populate EditorPanel →
-  User sends a prompt or clicks START AUDIO → useStrudel.evaluate(code) →
+  User sends a prompt or clicks START → useStrudel.evaluate(code) →
   @strudel/web plays audio natively in webview
 ```
 

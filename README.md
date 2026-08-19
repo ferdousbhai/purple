@@ -99,11 +99,11 @@ Make the drums simpler and the chords darker.
 ## Command Line Usage
 
 With no arguments, Riff opens a random built-in musical recipe. It waits for
-your click before playing, because the webview only starts audio after a user
-action.
+you to click `START`, because a webview only lets sound begin after a real
+click or keypress.
 
 ```bash
-# Direct Strudel live-coding pattern (click START AUDIO after launch)
+# Direct Strudel live-coding pattern (click START after launch)
 riff 's("bd hh sd hh")'
 riff 'note("c3 e3 g3 b3").s("sawtooth").lpf(800).room(0.5)'
 
@@ -146,7 +146,7 @@ it again.
 
 - Make sure your computer volume is up.
 - Make sure the correct speakers or headphones are selected.
-- For a pattern loaded from the command line, click `START AUDIO`. Webviews require a user action before audio can start.
+- For a pattern loaded from the command line, click `START`. Webviews only let sound begin after a real click or keypress.
 - Try a simple prompt such as `make a basic drum beat`.
 
 ### Linux: the window is blank or transparent
