@@ -63,7 +63,7 @@ pub async fn save_pattern(
     let code = code.trim().to_owned();
     if code.is_empty() {
         return Ok(SavePatternResult::failed(
-            "A title and pattern code are required.".to_owned(),
+            "Pattern code is required.".to_owned(),
         ));
     }
 

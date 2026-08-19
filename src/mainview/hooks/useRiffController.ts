@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ApiKeyStatus, TitleGenerationResult } from "../../shared/types";
+import type {
+  ApiKeyStatus,
+  PatternContext,
+  TitleGenerationResult,
+} from "../../shared/types";
 import { getRandomStartupPattern, type StartupOptions } from "../../shared/cli";
 import {
   clearApiKey as clearBackendApiKey,
@@ -24,11 +28,6 @@ type TitleStatus = "idle" | "generating" | "ready" | "error";
 interface TitleRequest {
   patternReady: boolean;
   result: TitleGenerationResult | null;
-}
-
-interface PatternContext {
-  code: string;
-  sourcePrompt?: string;
 }
 
 /** Let a prompt run finish on its own, logging the rejection reason under `context`. */

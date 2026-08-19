@@ -45,3 +45,9 @@ export type SavePatternResult =
   | { ok: true; path: string }
   | { ok: false; cancelled: true }
   | { ok: false; cancelled: false; error: string };
+
+/** A pattern plus the prompt that produced it, when known. */
+export interface PatternContext {
+  code: string;
+  sourcePrompt?: string;
+}

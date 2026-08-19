@@ -1,13 +1,8 @@
 import { useCallback, useRef, useState } from "react";
-import type { TransitionSuggestion } from "../../shared/types";
+import type { PatternContext, TransitionSuggestion } from "../../shared/types";
 import { suggestTransitions } from "../backend";
 
 type SuggestionsStatus = "idle" | "loading" | "ready" | "error";
-
-interface MusicContext {
-  code: string;
-  sourcePrompt?: string;
-}
 
 export function useTransitionSuggestions() {
   const [suggestions, setSuggestions] = useState<TransitionSuggestion[]>([]);
@@ -23,7 +18,7 @@ export function useTransitionSuggestions() {
     setError(null);
   }, []);
 
-  const generate = useCallback(({ code, sourcePrompt }: MusicContext) => {
+  const generate = useCallback(({ code, sourcePrompt }: PatternContext) => {
     const request = ++requestRef.current;
     setSuggestions([]);
     setStatus("loading");
