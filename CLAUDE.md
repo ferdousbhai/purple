@@ -86,6 +86,7 @@ User types message → ChatPanel → backend.streamPattern() → invoke("stream_
 
 ## Key Patterns
 
+- **`packages/core` is a two-repo change**: the private `riff-hosted` build consumes it through a submodule pinned to one commit of this repo, so a core edit is only finished once that pin moves. CI guards both directions — see the Hosted split section in `AGENTS.md`. Nothing else here needs coordinating.
 - **Rust holds no product logic**: prompts, JSON schemas, parsers, retry policy and argument parsing all live in TypeScript (`@riff/core`, `src/shared`), because the hosted app at `ferdousbhai/riff-hosted` shares them. `generate_json` takes the system instruction and schema as parameters for exactly this reason.
 - **One adapter**: `src/mainview/backend.ts` is the only module importing `@tauri-apps/api`. Hooks talk to it, never to `invoke` directly.
 - **Channels, not events**: streaming uses `tauri::ipc::Channel`, which guarantees ordered delivery, so the UI does not need to filter stale chunks.

@@ -60,12 +60,22 @@ pnpm run check      # test + test:rust + typecheck + build:web
 
 ## Hosted split
 
-`apps/web` lives in private `ferdousbhai/riff-hosted` (fresh copy). `packages/core` is shared automatically — edit it here in `riff`, `riff-hosted` pulls it via `vendor/riff` submodule (`vendor/riff/packages/*` in workspace).
+`apps/web` lives in private `ferdousbhai/riff-hosted`. `packages/core` is the only shared code: `riff-hosted` consumes it through the `vendor/riff` submodule, which points at **one frozen commit of this repo** and stays there until someone moves it.
 
-Workflow for shared code:
-1. Edit `packages/core/src/*` in this repo (`riff`) and `pnpm run check`
-2. Commit and push to `master` (`ferdousbhai/riff`)
-3. In `ferdousbhai/riff-hosted`: `git submodule update --remote vendor/riff && pnpm install`, commit the pointer bump, deploy
+**A change under `packages/core/**` is a two-repo change.** It is not finished when `riff` is pushed — it is finished when `riff-hosted`'s pin moves onto that commit. Everything else in this repo (the shell, the desktop UI, packaging) touches nothing hosted uses, so it needs no coordination.
+
+That matters because core is mostly *prompts*. A stale pin does not break a build or fail a test; it just means the hosted product keeps serving the previous `SYSTEM_PROMPT` to paying users.
+
+What is automated, so it does not depend on anyone remembering:
+- `.github/workflows/hosted-guard.yml` here runs `riff-hosted`'s checks against a core commit as it lands, so a break is reported by the commit that caused it (needs the `HOSTED_REPO_TOKEN` secret).
+- `.github/workflows/core-bump.yml` there opens a pull request each Monday moving the pin to core tip, but only when the hosted checks pass against it.
+- `pnpm run build:ci` there prints how far the pin is behind on every deploy build.
+
+To move it now rather than waiting for Monday, in `ferdousbhai/riff-hosted`:
+```
+git submodule update --remote vendor/riff && pnpm install
+pnpm run check        # then commit the pointer bump
+```
 
 ## Gotchas (see code comments for details)
 
