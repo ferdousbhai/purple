@@ -4,6 +4,7 @@
   --color-surface: #0a0a0f;
   --color-surface-light: #12121c;
   --color-surface-lighter: #1a1a2a;
+  --color-text: #e0e0e8;
   --color-neon-cyan: #00fff5;
   --color-neon-magenta: #ff2d95;
   --color-neon-lime: #39ff14;
@@ -41,8 +42,9 @@ body,
   margin: 0;
   padding: 0;
   overflow: hidden;
-  background-color: #0a0a0f;
-  color: #e0e0e8;
+  /* Palette tokens so a system theme (Omarchy) can override them at runtime. */
+  background-color: var(--color-surface);
+  color: var(--color-text);
   font-family: "Outfit", sans-serif;
 }
 

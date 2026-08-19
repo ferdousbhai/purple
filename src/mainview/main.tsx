@@ -6,8 +6,16 @@ applyWebAudioShim();
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
-import { log as reportRendererLog } from "./backend";
+import { getSystemTheme, log as reportRendererLog } from "./backend";
+import { applySystemTheme } from "./system-theme";
 import "./app.css";
+
+// Best-effort: tint the palette from the active Omarchy theme. Machines
+// without one (or browser-only dev, where there is no shell) keep the
+// built-in dark palette.
+void getSystemTheme()
+  .then(applySystemTheme)
+  .catch(() => {});
 
 // Forward actionable renderer diagnostics to the shell's log without mirroring
 // Strudel's very noisy informational logs.

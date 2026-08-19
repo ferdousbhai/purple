@@ -139,6 +139,15 @@ export function useStrudel() {
     activePatternRef.current = null;
   }, []);
 
+  // Whether a user gesture has already unlocked audio output. Events that
+  // arrive outside a gesture (MPRIS media keys) may only start playback when
+  // this is true; activate() would otherwise leave the context suspended.
+  const isAudioReady = useCallback(
+    () =>
+      audioCtxRef.current?.state === "running" && replRef.current !== null,
+    [],
+  );
+
   const getSchedulerPosition = useCallback((): SchedulerPosition => {
     const strudel = strudelRef.current;
     if (!strudel) throw new Error("Audio engine is not initialized.");
@@ -187,6 +196,7 @@ export function useStrudel() {
     activate,
     evaluate,
     hush,
+    isAudioReady,
     getSchedulerPosition,
     getActiveSourceRanges,
   };

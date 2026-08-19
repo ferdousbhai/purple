@@ -6,9 +6,11 @@ import {
   generateTitle,
   getApiKeyStatus,
   getStartupOptions,
+  onMediaControl,
   onStartupArgs,
   savePattern as saveBackendPattern,
   saveApiKey as saveBackendApiKey,
+  setPlaybackState as reportPlaybackState,
 } from "../backend";
 import { buildRetryMessage, useChat } from "./useChat";
 import { useKeyboardShortcuts } from "./useKeyboardShortcuts";
@@ -321,6 +323,51 @@ export function useRiffController() {
       active = false;
     };
   }, [applyStartupOptions]);
+
+  // Keep the desktop's media controls (MPRIS) in sync with playback.
+  useEffect(() => {
+    reportPlaybackState(playback.playbackState, patternTitle);
+  }, [playback.playbackState, patternTitle]);
+
+  // Event listeners registered once still need the current editor/playback state.
+  const codeRef = useRef(code);
+  codeRef.current = code;
+  const playbackStateRef = useRef(playback.playbackState);
+  playbackStateRef.current = playback.playbackState;
+
+  // Desktop media keys (MPRIS) arrive outside any user gesture. They can stop
+  // playback at any time, but may only *start* it once a real gesture has
+  // already unlocked audio — otherwise the request is silently ignored,
+  // because resuming a never-activated AudioContext would just fail.
+  useEffect(() => {
+    let active = true;
+    const unlisten = onMediaControl((action) => {
+      if (!active) return;
+      const engaged =
+        playbackStateRef.current === "playing" ||
+        playbackStateRef.current === "transitioning";
+
+      if (action === "stop" || action === "pause") {
+        if (engaged) stop();
+        return;
+      }
+      if (engaged) {
+        if (action === "play-pause") stop();
+        return;
+      }
+      const editorCode = codeRef.current;
+      if (!playback.isAudioReady() || !editorCode.trim()) return;
+      runInBackground(
+        play(editorCode).then(() => undefined),
+        "[MPRIS] Could not start playback",
+      );
+    });
+
+    return () => {
+      active = false;
+      void unlisten.then((dispose) => dispose()).catch(() => {});
+    };
+  }, [play, playback.isAudioReady, stop]);
 
   // A second `riff …` invocation focuses this window and forwards its arguments.
   useEffect(() => {
