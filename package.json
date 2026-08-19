@@ -15,7 +15,8 @@
     "test": "vitest run",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "typecheck": "tsc --noEmit",
-    "check": "pnpm run test && pnpm run test:rust && pnpm run typecheck && pnpm run build:web"
+    "check": "pnpm run test && pnpm run test:rust && pnpm run typecheck && pnpm run build:web",
+    "lint": "oxlint"
   },
   "dependencies": {
     "@riff/core": "workspace:*",

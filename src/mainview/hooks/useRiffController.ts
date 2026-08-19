@@ -322,11 +322,9 @@ export function useRiffController() {
     reportPlaybackState(playback.playbackState, patternTitle);
   }, [playback.playbackState, patternTitle]);
 
-  // Event listeners registered once still need the current editor/playback state.
+  // Event listeners registered once still need the current editor state.
   const codeRef = useRef(code);
   codeRef.current = code;
-  const playbackStateRef = useRef(playback.playbackState);
-  playbackStateRef.current = playback.playbackState;
 
   // Desktop media keys (MPRIS) arrive outside any user gesture. They can stop
   // playback at any time, but may only *start* it once a real gesture has
