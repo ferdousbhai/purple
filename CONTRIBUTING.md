@@ -36,7 +36,7 @@ See [AGENTS.md](./AGENTS.md) for file-by-file guidance.
 1. `pnpm run check` must be green
 2. `cargo fmt --manifest-path src-tauri/Cargo.toml --check` and
    `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`
-3. `bash -n scripts/*.sh` (CI does this)
+3. `bash -n scripts/*.sh`
 4. Don't commit `node_modules/ dist/ src-tauri/target/ .env` — they're in `.gitignore`
 
 `pnpm run check` covers both apps, so a `packages/*` change that breaks the

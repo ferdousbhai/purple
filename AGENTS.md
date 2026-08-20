@@ -55,12 +55,15 @@ pnpm run typecheck    # tsc --noEmit
 pnpm run check        # lint + test + test:rust + typecheck + build:webview + web:check
 ```
 
-## Deployment
+## CI and deployment
 
-Cloudflare **Workers Builds** deploys `apps/web` on every push to `master`:
-build command `pnpm run web:check`, deploy command
+There is no GitHub Actions workflow — Cloudflare **Workers Builds** is the
+only automated gate. It deploys `apps/web` on every push to `master`: build
+command `pnpm run web:check`, deploy command
 `pnpm --filter @riff/web exec wrangler deploy`. `web:check` fails the build
-before the deploy command runs when a test or typecheck breaks.
+before the deploy command runs when a test or typecheck breaks. Everything
+else (desktop tests, cargo, lint) is covered by running `pnpm run check`
+locally before pushing.
 
 ## Key files to read before changing
 
