@@ -12,11 +12,21 @@ import type { SystemTheme } from "../shared/types";
 // A neutral mix partner when the theme has no foreground to lean on.
 const FALLBACK_MIX = "#808080";
 
+/**
+ * The palette tokens a system theme may override. Each is present only when the
+ * theme supplies the color it is derived from.
+ */
+export type SystemThemeVariables = {
+  "--color-surface"?: string;
+  "--color-surface-light"?: string;
+  "--color-surface-lighter"?: string;
+  "--color-text"?: string;
+  "--color-neon-cyan"?: string;
+};
+
 /** The CSS custom properties a system theme overrides, as name → value. */
-export function systemThemeVariables(
-  theme: SystemTheme,
-): Record<string, string> {
-  const variables: Record<string, string> = {};
+export function systemThemeVariables(theme: SystemTheme): SystemThemeVariables {
+  const variables: SystemThemeVariables = {};
   if (theme.background) {
     const mix = theme.foreground ?? FALLBACK_MIX;
     variables["--color-surface"] = theme.background;
@@ -42,6 +52,6 @@ export function applySystemTheme(theme: SystemTheme | null): void {
   if (!theme) return;
   const style = document.documentElement.style;
   for (const [name, value] of Object.entries(systemThemeVariables(theme))) {
-    style.setProperty(name, value);
+    if (value !== undefined) style.setProperty(name, value);
   }
 }

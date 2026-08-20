@@ -1,5 +1,5 @@
+import { buildRetryMessage } from "@riff/core/prompts";
 import type { EvalResult } from "../../shared/types";
-import { buildRetryMessage } from "./useChat";
 
 export const MAX_RETRIES = 2;
 

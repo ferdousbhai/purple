@@ -8,6 +8,7 @@
 
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { errorMessage } from "@riff/core/error";
 import {
   buildCompactionRequest,
   COMPACTION_PROMPT,
@@ -25,6 +26,9 @@ import {
   SYSTEM_PROMPT,
   TITLE_PROMPT,
   TRANSITION_SUGGESTIONS_PROMPT,
+  TRANSITION_SUGGESTIONS_SCHEMA,
+  buildTransitionSuggestionsRequest,
+  type ResponseSchema,
 } from "@riff/core/prompts";
 import { parseCliArgs, type StartupOptions } from "../shared/cli";
 import type {
@@ -50,18 +54,6 @@ type StreamEvent =
   | { type: "delta"; text: string }
   | { type: "done"; truncated: boolean };
 
-/** The JSON Schema subset the Rust `generate_json` command forwards to Gemini. */
-interface ResponseSchema {
-  type: "object" | "array" | "string";
-  description?: string;
-  properties?: Record<string, ResponseSchema>;
-  items?: ResponseSchema;
-  required?: readonly string[];
-  additionalProperties?: boolean;
-  minItems?: number;
-  maxItems?: number;
-}
-
 const TITLE_SCHEMA = {
   type: "object",
   properties: {
@@ -74,39 +66,7 @@ const TITLE_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-const TRANSITION_SUGGESTIONS_SCHEMA = {
-  type: "object",
-  properties: {
-    suggestions: {
-      type: "array",
-      minItems: 3,
-      maxItems: 3,
-      items: {
-        type: "object",
-        properties: {
-          label: {
-            type: "string",
-            description: "An inviting 2 to 5 word next-move label",
-          },
-          prompt: {
-            type: "string",
-            description:
-              "A standalone prompt for generating the next music pattern",
-          },
-        },
-        required: ["label", "prompt"],
-        additionalProperties: false,
-      },
-    },
-  },
-  required: ["suggestions"],
-  additionalProperties: false,
-} as const;
-
-export function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return String(error);
-}
+export { errorMessage };
 
 /**
  * Stream a pattern response. Deltas arrive on `onDelta`; the promise settles
@@ -176,10 +136,7 @@ export async function suggestTransitions(
   try {
     const raw = await generateJson(
       TRANSITION_SUGGESTIONS_PROMPT,
-      JSON.stringify({
-        currentMusicPrompt: sourcePrompt?.trim() || null,
-        currentStrudelPattern: code.trim(),
-      }),
+      buildTransitionSuggestionsRequest(code, sourcePrompt),
       TRANSITION_SUGGESTIONS_SCHEMA,
     );
     const suggestions = parseTransitionSuggestions(raw);

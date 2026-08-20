@@ -40,10 +40,17 @@ function settleStream(
   stream.resolve?.();
 }
 
+/** Fire-and-forget abort; a failed abort is only worth a diagnostic. */
 function abortBackend(context: string): void {
-  void abortBackendStream().catch((error: unknown) => {
+  void reportFailedAbort(context);
+}
+
+async function reportFailedAbort(context: string): Promise<void> {
+  try {
+    await abortBackendStream();
+  } catch (error) {
     console.error(`[Chat] Could not abort stream ${context}:`, error);
-  });
+  }
 }
 
 interface ChatView {
@@ -226,6 +233,23 @@ export function useChat() {
         });
       };
 
+      // Decoding a rejection reason happens here, at the `catch` that produced
+      // it; the session only ever carries the finished message.
+      const runStream = async (): Promise<void> => {
+        try {
+          const { artifact, coveredCount } = compactionRef.current;
+          const { truncated } = await streamPattern(
+            buildContextWindow(artifact, coveredCount, conversation),
+            appendDelta,
+          );
+          activeStream.truncated = truncated;
+          settleStream(activeStream, "done");
+        } catch (error) {
+          if (streamRef.current !== activeStream) return;
+          settleStream(activeStream, "error", errorMessage(error));
+        }
+      };
+
       await new Promise<void>((resolve) => {
         activeStream.resolve = resolve;
         activeStream.timeoutId = setTimeout(() => {
@@ -239,19 +263,9 @@ export function useChat() {
           );
         }, STREAM_TIMEOUT_MS);
 
-        const { artifact, coveredCount } = compactionRef.current;
-        void streamPattern(
-          buildContextWindow(artifact, coveredCount, conversation),
-          appendDelta,
-        )
-          .then(({ truncated }) => {
-            activeStream.truncated = truncated;
-            settleStream(activeStream, "done");
-          })
-          .catch((err: unknown) => {
-            if (streamRef.current !== activeStream) return;
-            settleStream(activeStream, "error", errorMessage(err));
-          });
+        // Dispatched synchronously: the async body runs up to its first await
+        // before returning, so the request leaves before this executor yields.
+        void runStream();
       });
 
       if (streamRef.current !== activeStream) return null;
@@ -320,6 +334,4 @@ export function useChat() {
   };
 }
 
-export function buildRetryMessage(code: string, error: string): string {
-  return `The pattern you generated failed to evaluate with this error:\n\`\`\`\n${error}\n\`\`\`\nOriginal code:\n\`\`\`strudel\n${code}\n\`\`\`\nPlease fix the code. Remember: no variable declarations, no .play(), just a single Strudel expression.`;
-}
+

@@ -1,41 +1,28 @@
 import { describe, expect, it, vi } from "vitest";
 import { requireRunningAudioContext } from "./audio-activation";
 
-interface FakeAudioContext {
-  state: string;
-  resume: ReturnType<typeof vi.fn>;
-  createBuffer: ReturnType<typeof vi.fn>;
-  createBufferSource: ReturnType<typeof vi.fn>;
-  destination: object;
-}
-
-function createContext(state: string): FakeAudioContext {
+/** A double for the slice of `AudioContext` that activation actually touches. */
+function createContext(state: string) {
   const source = {
     buffer: null,
-    connect: vi.fn(),
-    start: vi.fn(),
+    connect: vi.fn(() => {}),
+    start: vi.fn(() => {}),
   };
 
   return {
     state,
-    resume: vi.fn().mockResolvedValue(undefined),
-    createBuffer: vi.fn().mockReturnValue({}),
-    createBufferSource: vi.fn().mockReturnValue(source),
-    destination: {},
+    resume: vi.fn(async () => {}),
+    createBuffer: vi.fn(() => ({ length: 1 })),
+    createBufferSource: vi.fn(() => source),
+    destination: { channelCount: 2 },
   };
-}
-
-function asAudioContext(context: FakeAudioContext): AudioContext {
-  // SAFETY: requireRunningAudioContext only touches state, resume, createBuffer,
-  // createBufferSource and destination — every member FakeAudioContext defines.
-  return context as unknown as AudioContext;
 }
 
 describe("requireRunningAudioContext", () => {
   it("does not resume an already running context", async () => {
     const context = createContext("running");
 
-    await requireRunningAudioContext(asAudioContext(context));
+    await requireRunningAudioContext(context);
 
     expect(context.resume).not.toHaveBeenCalled();
     expect(context.createBufferSource).toHaveBeenCalledOnce();
@@ -47,7 +34,7 @@ describe("requireRunningAudioContext", () => {
       context.state = "running";
     });
 
-    await requireRunningAudioContext(asAudioContext(context));
+    await requireRunningAudioContext(context);
 
     expect(context.resume).toHaveBeenCalledOnce();
   });
@@ -56,7 +43,7 @@ describe("requireRunningAudioContext", () => {
     const context = createContext("interrupted");
 
     await expect(
-      requireRunningAudioContext(asAudioContext(context)),
+      requireRunningAudioContext(context),
     ).rejects.toThrow("Audio output is blocked (interrupted)");
     expect(context.createBufferSource).not.toHaveBeenCalled();
   });
@@ -66,7 +53,7 @@ describe("requireRunningAudioContext", () => {
     context.resume.mockRejectedValue(new Error("permission denied"));
 
     await expect(
-      requireRunningAudioContext(asAudioContext(context)),
+      requireRunningAudioContext(context),
     ).rejects.toThrow("permission denied");
   });
 });

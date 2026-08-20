@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./compaction": "./src/compaction.ts",
+    "./error": "./src/error.ts",
     "./pattern": "./src/pattern.ts",
     "./prompts": "./src/prompts.ts",
     "./recipes": "./src/recipes.ts",

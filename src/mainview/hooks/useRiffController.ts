@@ -40,9 +40,18 @@ interface TitleRequest {
 
 /** Let a prompt run finish on its own, logging the rejection reason under `context`. */
 function runInBackground(prompt: Promise<void>, context: string): void {
-  void prompt.catch((promptError: unknown) => {
-    console.error(`${context}:`, promptError);
-  });
+  void reportRejection(prompt, context);
+}
+
+async function reportRejection(
+  prompt: Promise<void>,
+  context: string,
+): Promise<void> {
+  try {
+    await prompt;
+  } catch (error) {
+    console.error(`${context}:`, error);
+  }
 }
 
 export function useRiffController() {

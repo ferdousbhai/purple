@@ -11,6 +11,7 @@
  * model transport.
  */
 
+import { jsonText, parseJsonMembers } from "./json";
 import { extractPattern } from "./pattern";
 import { MAX_CONTEXT_MESSAGES, type ChatMessage } from "./types";
 
@@ -145,33 +146,21 @@ export function buildContextWindow(
 export function parseCompactionSummary(
   value: string,
 ): CompactionArtifact | null {
-  try {
-    const parsed: unknown = JSON.parse(value);
-    if (
-      typeof parsed !== "object" ||
-      parsed === null ||
-      Array.isArray(parsed) ||
-      Object.keys(parsed).length !== 2 ||
-      !("summary" in parsed) ||
-      !("latestPattern" in parsed) ||
-      typeof parsed.summary !== "string" ||
-      typeof parsed.latestPattern !== "string"
-    ) {
-      return null;
-    }
+  const members = parseJsonMembers(value);
+  if (members === null || members.size !== 2) return null;
+  const rawSummary = jsonText(members.get("summary"));
+  const rawPattern = jsonText(members.get("latestPattern"));
+  if (rawSummary === null || rawPattern === null) return null;
 
-    const summary = parsed.summary.trim();
-    if (!summary || summary.includes("```")) return null;
+  const summary = rawSummary.trim();
+  if (!summary || summary.includes("```")) return null;
 
-    // The pattern is asked for unfenced; if the model fenced it anyway,
-    // unwrap rather than fail the whole fold.
-    let latestPattern = parsed.latestPattern.trim();
-    if (latestPattern.includes("```")) {
-      latestPattern = extractPattern(latestPattern) ?? "";
-    }
-
-    return { summary, latestPattern };
-  } catch {
-    return null;
+  // The pattern is asked for unfenced; if the model fenced it anyway,
+  // unwrap rather than fail the whole fold.
+  let latestPattern = rawPattern.trim();
+  if (latestPattern.includes("```")) {
+    latestPattern = extractPattern(latestPattern) ?? "";
   }
+
+  return { summary, latestPattern };
 }

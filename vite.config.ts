@@ -70,6 +70,10 @@ export default defineConfig({
   },
   test: {
     root: ".",
-    include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    // apps/web runs its own vitest (web:check); everything else runs here.
+    include: [
+      "src/**/*.{test,spec}.{ts,tsx}",
+      "packages/*/src/**/*.{test,spec}.{ts,tsx}",
+    ],
   },
 });

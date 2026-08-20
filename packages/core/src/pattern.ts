@@ -1,3 +1,5 @@
+import { jsonMembers, jsonText, parseJsonMembers } from "./json";
+
 export interface TransitionSuggestion {
   label: string;
   prompt: string;
@@ -34,8 +36,7 @@ export function patternFilename(title: string): string {
   return `${slug || "riff-pattern"}.strudel`;
 }
 
-export function validateGeneratedPatternTitle(value: unknown): string | null {
-  if (typeof value !== "string") return null;
+export function validateGeneratedPatternTitle(value: string): string | null {
   const title = value.trim();
   if (
     !title ||
@@ -51,76 +52,46 @@ export function validateGeneratedPatternTitle(value: unknown): string | null {
 
 /** Parse the raw JSON response produced under the title schema. */
 export function parseGeneratedPatternTitle(value: string): string | null {
-  try {
-    const parsed: unknown = JSON.parse(value);
-    if (
-      typeof parsed !== "object" ||
-      parsed === null ||
-      Array.isArray(parsed) ||
-      Object.keys(parsed).length !== 1 ||
-      !("title" in parsed)
-    ) {
-      return null;
-    }
-    return validateGeneratedPatternTitle(parsed.title);
-  } catch {
-    return null;
-  }
+  const members = parseJsonMembers(value);
+  if (members === null || members.size !== 1) return null;
+  const title = jsonText(members.get("title"));
+  return title === null ? null : validateGeneratedPatternTitle(title);
 }
 
 /** Parse the raw JSON response produced under the transition-suggestions schema. */
 export function parseTransitionSuggestions(
   value: string,
 ): TransitionSuggestion[] | null {
-  try {
-    const parsed: unknown = JSON.parse(value);
+  const members = parseJsonMembers(value);
+  if (members === null || members.size !== 1) return null;
+  const candidates = members.get("suggestions");
+  if (!Array.isArray(candidates) || candidates.length !== 3) return null;
+
+  const suggestions: TransitionSuggestion[] = [];
+  for (const candidate of candidates) {
+    const fields = jsonMembers(candidate);
+    if (fields === null || fields.size !== 2) return null;
+
+    const rawLabel = jsonText(fields.get("label"));
+    const rawPrompt = jsonText(fields.get("prompt"));
+    if (rawLabel === null || rawPrompt === null) return null;
+
+    const label = rawLabel.trim();
+    const prompt = rawPrompt.trim();
     if (
-      typeof parsed !== "object" ||
-      parsed === null ||
-      Array.isArray(parsed) ||
-      Object.keys(parsed).length !== 1 ||
-      !("suggestions" in parsed) ||
-      !Array.isArray(parsed.suggestions) ||
-      parsed.suggestions.length !== 3
+      !label ||
+      label.length > 60 ||
+      label.includes("\n") ||
+      !prompt ||
+      prompt.length > 1000 ||
+      prompt.includes("\n")
     ) {
       return null;
     }
-
-    const suggestions: TransitionSuggestion[] = [];
-    for (const candidate of parsed.suggestions) {
-      if (
-        typeof candidate !== "object" ||
-        candidate === null ||
-        Array.isArray(candidate) ||
-        Object.keys(candidate).length !== 2 ||
-        !("label" in candidate) ||
-        !("prompt" in candidate) ||
-        typeof candidate.label !== "string" ||
-        typeof candidate.prompt !== "string"
-      ) {
-        return null;
-      }
-
-      const label = candidate.label.trim();
-      const prompt = candidate.prompt.trim();
-      if (
-        !label ||
-        label.length > 60 ||
-        label.includes("\n") ||
-        !prompt ||
-        prompt.length > 1000 ||
-        prompt.includes("\n")
-      ) {
-        return null;
-      }
-      suggestions.push({ label, prompt });
-    }
-
-    return new Set(suggestions.map(({ label }) => label.toLowerCase())).size ===
-      3
-      ? suggestions
-      : null;
-  } catch {
-    return null;
+    suggestions.push({ label, prompt });
   }
+
+  return new Set(suggestions.map(({ label }) => label.toLowerCase())).size === 3
+    ? suggestions
+    : null;
 }

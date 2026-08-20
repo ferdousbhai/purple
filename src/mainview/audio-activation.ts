@@ -1,5 +1,39 @@
+/** The context's audio output, which the priming source connects to. */
+export interface OutputNode {
+  readonly channelCount: number;
+}
+
+/** The silent buffer that primes the output. */
+export interface PrimingBuffer {
+  readonly length: number;
+}
+
+/** The one-shot source that plays the priming buffer. */
+export interface PrimingSource {
+  buffer: PrimingBuffer | null;
+  connect(destination: OutputNode): void;
+  start(): void;
+}
+
+/**
+ * The slice of `AudioContext` that activation touches. `state` is a plain
+ * string rather than `AudioContextState` on purpose: WebKit reports the
+ * non-standard "interrupted" state, which the standard union does not admit.
+ */
+export interface ActivatableAudioContext {
+  readonly state: string;
+  resume(): Promise<void>;
+  createBuffer(
+    numberOfChannels: number,
+    length: number,
+    sampleRate: number,
+  ): PrimingBuffer;
+  createBufferSource(): PrimingSource;
+  readonly destination: OutputNode;
+}
+
 const RUNNING_STATE = "running";
-const primedContexts = new WeakSet<AudioContext>();
+const primedContexts = new WeakSet<ActivatableAudioContext>();
 
 /**
  * Resume Web Audio while the caller is still handling a user gesture and fail
@@ -7,9 +41,9 @@ const primedContexts = new WeakSet<AudioContext>();
  * "interrupted" state when its autoplay policy prevents output.
  */
 export async function requireRunningAudioContext(
-  context: AudioContext,
+  context: ActivatableAudioContext,
 ): Promise<void> {
-  const initialState = String(context.state);
+  const initialState = context.state;
   if (initialState === "closed") {
     throw new Error("Audio output is closed. Reload Riff and try again.");
   }
@@ -25,7 +59,7 @@ export async function requireRunningAudioContext(
     }
   }
 
-  const resumedState = String(context.state);
+  const resumedState = context.state;
   if (resumedState !== RUNNING_STATE) {
     throw new Error(
       `Audio output is blocked (${resumedState}). Click Play to enable sound.`,
@@ -35,7 +69,7 @@ export async function requireRunningAudioContext(
   primeAudioOutput(context);
 }
 
-function primeAudioOutput(context: AudioContext): void {
+function primeAudioOutput(context: ActivatableAudioContext): void {
   if (primedContexts.has(context)) return;
   try {
     const buffer = context.createBuffer(1, 1, 22050);

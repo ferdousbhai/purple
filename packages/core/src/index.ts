@@ -1,4 +1,5 @@
 export * from "./compaction";
+export * from "./error";
 export * from "./pattern";
 export * from "./types";
 export * from "./prompts";

@@ -5,8 +5,11 @@
  * channel capabilities or setter failures.
  */
 
+/** Browser-only globals are absent outside a webview, so resolve the capability once. */
+const hasWindow = "window" in globalThis;
+
 export function applyWebAudioShim(): void {
-  if (typeof window === "undefined" || !window.AudioContext) return;
+  if (!hasWindow || !window.AudioContext) return;
   if (!isLinuxWebKitUserAgent(navigator.userAgent) || window.__riffAudioShimApplied)
     return;
   window.__riffAudioShimApplied = true;

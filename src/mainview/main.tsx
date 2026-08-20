@@ -23,18 +23,31 @@ for (const level of ["warn", "error"] as const) {
   const orig = console[level];
   console[level] = (...args: unknown[]) => {
     orig.apply(console, args);
-    reportRendererLog(level, args.map(formatLogValue).join(" "));
+    reportRendererLog(level, formatLogArguments(args));
   };
 }
 
-function formatLogValue(value: unknown): string {
-  if (value instanceof Error) return value.stack ?? value.message;
-  if (typeof value !== "object" || value === null) return String(value);
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return Object.prototype.toString.call(value);
-  }
+/**
+ * Render one intercepted `console` call as the line the shell log should carry.
+ * This is the boundary: console hands over values of every shape, and nothing
+ * downstream sees anything but the finished text.
+ */
+function formatLogArguments(args: readonly unknown[]): string {
+  return args
+    .map((value) => {
+      if (value instanceof Error) return value.stack ?? value.message;
+      // Only values with object identity are worth serializing; primitives and
+      // functions read better through String().
+      if (Object(value) !== value || value instanceof Function) {
+        return String(value);
+      }
+      try {
+        return JSON.stringify(value);
+      } catch {
+        return Object.prototype.toString.call(value);
+      }
+    })
+    .join(" ");
 }
 
 window.addEventListener("error", (event) => {
@@ -47,7 +60,7 @@ window.addEventListener("error", (event) => {
 window.addEventListener("unhandledrejection", (event) => {
   reportRendererLog(
     "error",
-    `Unhandled rejection: ${formatLogValue(event.reason)}`,
+    `Unhandled rejection: ${formatLogArguments([event.reason])}`,
   );
 });
 
