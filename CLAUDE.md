@@ -1,6 +1,6 @@
 # Purple
 
-AI-powered music production. Users describe music in natural language, Gemini generates Strudel live-coding patterns, audio plays natively in the webview. Split-pane layout: editable code editor (left) + chat (right). One repo, two apps sharing `packages/*`: the Tauri desktop app (root) and a local-first web app (`apps/web`, deployed as the `riff-web` Cloudflare Worker).
+AI-powered music production. Users describe music in natural language, Gemini generates Strudel live-coding patterns, audio plays natively in the webview. Split-pane layout: editable code editor (left) + chat (right). One repo, two apps sharing `packages/*`: the Tauri desktop app (root) and a local-first web app (`apps/web`, deployed as the `purple-web` Cloudflare Worker at soundspurple.com).
 
 ## Stack
 
@@ -19,7 +19,7 @@ AI-powered music production. Users describe music in natural language, Gemini ge
 - `pnpm run build` — release binary at `src-tauri/target/release/purple`
 - `pnpm run build:webview` — Vite build into `dist/`
 - `pnpm run web:dev` — web app dev server (localhost:3000)
-- `pnpm run web:deploy` — build + `wrangler deploy` the riff-web Worker
+- `pnpm run web:deploy` — build + `wrangler deploy` the purple-web Worker
 - `pnpm run web:check` — web test/typecheck/build
 - `pnpm run test` — vitest suite (desktop + packages)
 - `pnpm run test:rust` — cargo test for the shell
@@ -67,7 +67,7 @@ apps/web/                          # @purple/web — local-first web app on Clou
   src/components/purple-studio.tsx   # The whole web UI
   src/lib/byok.ts                  # Browser → Google inference + chat persistence/compaction
   src/db-collections/              # TanStack DB localStorage collection (saved patterns)
-  wrangler.jsonc                   # No bindings; keeps the retired RiffAgent DO migration history
+  wrangler.jsonc                   # No bindings; custom domains soundspurple.com + www
 packages/core/                     # @purple/core — shared between both apps; dependency-free
                                    # (prompts, parsers, recipes, shared types, PurpleBackend)
 packages/ui/                       # @purple/ui — shared webview modules that need React/CodeMirror/

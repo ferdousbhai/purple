@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import {
   buildContextWindow,
-  planCompaction,
+  createFoldScheduler,
   type CompactionArtifact,
 } from "@purple/core/compaction";
 import { extractPattern } from "@purple/core/pattern";
@@ -61,18 +61,18 @@ interface ChatView {
 }
 
 /**
- * The rolling state for background compaction. `artifact` covers the first
- * `coveredCount` messages of `conversationRef.current`; `inFlight` keeps at
- * most one summarizer call running at a time.
+ * The rolling state for background compaction: `artifact` covers the first
+ * `coveredCount` messages of `conversationRef.current`. The fold protocol
+ * itself (one summarizer call in flight, failure breaker, stale-result
+ * checks) lives in the shared scheduler from `@purple/core/compaction`.
  */
 interface CompactionState {
   artifact: CompactionArtifact | null;
   coveredCount: number;
-  inFlight: boolean;
 }
 
 function freshCompactionState(): CompactionState {
-  return { artifact: null, coveredCount: 0, inFlight: false };
+  return { artifact: null, coveredCount: 0 };
 }
 
 export function useChat() {
@@ -88,47 +88,38 @@ export function useChat() {
   const idCounter = useRef(0);
   const streamRef = useRef<StreamSession | null>(null);
   const compactionRef = useRef<CompactionState>(freshCompactionState());
+  // Message ids are monotonic and never reset, so the prefix check rejects a
+  // fold that settles after clearChat emptied and rebuilt the history.
+  const [foldScheduler] = useState(() =>
+    createFoldScheduler<Message>({
+      summarize: generateCompactionSummary,
+      isSameMessage: (a, b) => a.id === b.id,
+      commit: (accept) => {
+        const next = accept({
+          messages: conversationRef.current,
+          ...compactionRef.current,
+        });
+        if (next) compactionRef.current = next;
+      },
+      onFoldFailed: (error) =>
+        console.warn("[Chat] Background compaction failed:", error),
+    }),
+  );
 
   /**
    * Fold older history into the rolling summary in the background. Never
    * blocks a send: a send that happens mid-flight simply uses the previous
    * summary state, and `buildContextWindow` caps the uncovered tail.
    */
-  const maybeCompact = useCallback((conversation: Message[]): void => {
-    const state = compactionRef.current;
-    if (state.inFlight) return;
-
-    const plan = planCompaction(conversation.length, state.coveredCount);
-    if (!plan.fold) return;
-
-    const startCovered = state.coveredCount;
-    const folded = conversation.slice(0, plan.foldEnd);
-    state.inFlight = true;
-    void generateCompactionSummary(
-      state.artifact,
-      folded.slice(startCovered),
-    ).then((result) => {
-      state.inFlight = false;
-      if (!result.ok) {
-        console.warn("[Chat] Background compaction failed:", result.error);
-        return;
-      }
-
-      // Accept the summary only if the messages it covers are still a
-      // prefix of the live conversation (clearChat swaps the state object
-      // and empties the history, so a stale result lands nowhere).
-      if (compactionRef.current !== state) return;
-      if (state.coveredCount !== startCovered) return;
-      const live = conversationRef.current;
-      if (live.length < folded.length) return;
-      for (let index = 0; index < folded.length; index += 1) {
-        if (live[index]?.id !== folded[index]?.id) return;
-      }
-
-      state.artifact = result.artifact;
-      state.coveredCount = folded.length;
-    });
-  }, []);
+  const maybeCompact = useCallback(
+    (conversation: Message[]): void => {
+      foldScheduler.maybeFold({
+        messages: conversation,
+        ...compactionRef.current,
+      });
+    },
+    [foldScheduler],
+  );
 
   function nextId(): string {
     return String(++idCounter.current);
@@ -163,12 +154,11 @@ export function useChat() {
 
     visibleMessagesRef.current = [];
     conversationRef.current = [];
-    // A fresh object: an in-flight summarizer call holds the old one and
-    // its result is discarded against this new state.
     compactionRef.current = freshCompactionState();
+    foldScheduler.reset();
     setView({ messages: [], streamingText: "", isStreaming: false, error: null });
     busyRef.current = false;
-  }, []);
+  }, [foldScheduler]);
 
   const sendMessage = useCallback(
     async (

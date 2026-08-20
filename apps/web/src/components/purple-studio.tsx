@@ -3,13 +3,16 @@ import {
   PROMPT_MODIFIERS,
   PROMPT_PRESETS,
   TRANSITION_CYCLE_OPTIONS,
+  attemptWithRepair,
+  buildContextWindow,
+  createFoldScheduler,
   errorMessage,
   extractPattern,
   generateRandomPrompt,
   patternFilename,
-  planCompaction,
   visibleTextWithoutCodeBlocks,
   type TransitionSuggestion,
+  type TransitionSuggestionsResult,
 } from '@purple/core'
 import { javascript } from '@codemirror/lang-javascript'
 import { Prec } from '@codemirror/state'
@@ -19,11 +22,8 @@ import CodeMirror from '@uiw/react-codemirror'
 import { useLiveQuery } from '@tanstack/react-db'
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import {
-  byokGeneratePattern,
-  byokRepairPattern,
-  byokSuggestTransitions,
   clearByokChat,
-  generateCompactionSummary,
+  createByokBackend,
   getByokKey,
   loadByokChat,
   saveByokChat,
@@ -36,7 +36,7 @@ import {
   playbackHighlightExtension,
   updatePlaybackHighlights,
 } from '@purple/ui/playback-highlight'
-import type { SourceRange } from '@purple/core/types'
+import type { ChatMessage, SourceRange } from '@purple/core/types'
 
 const STARTER_PATTERNS = [
   's("bd*4").gain(0.8)',
@@ -378,25 +378,27 @@ function usePatternFlow(deps: {
   setCode: (code: string) => void
   setCustomTitle: (title: string | null) => void
   setSourcePrompt: (prompt: string | undefined) => void
-  repair: (code: string, error: string) => Promise<string>
-  suggest: (code: string, sourcePrompt?: string) => Promise<TransitionSuggestion[]>
+  /** Send the prepared repair message; the fixed pattern, or null on failure. */
+  requestFix: (message: string) => Promise<string | null>
+  suggest: (code: string, sourcePrompt?: string) => Promise<TransitionSuggestionsResult>
 }) {
   const [uiError, setUiError] = useState<string | null>(null)
   const [stagedCode, setStagedCode] = useState<string | null>(null)
   const [suggestions, setSuggestions] = useState<TransitionSuggestion[]>([])
   const lastPromptRef = useRef('')
+  // The repair loop reads playback state between async steps.
+  const playbackStateRef = useRef(deps.playback.playbackState)
+  playbackStateRef.current = deps.playback.playbackState
 
   const refreshSuggestions = async (pattern: string, prompt?: string) => {
-    try {
-      setSuggestions(await deps.suggest(pattern, prompt))
-    } catch (cause) {
-      setUiError(errorMessage(cause))
-    }
+    const result = await deps.suggest(pattern, prompt)
+    if (result.ok) setSuggestions(result.suggestions)
+    else setUiError(result.error)
   }
 
   const acceptPattern = async (raw: string, mode: PatternMode) => {
     const sourcePrompt = lastPromptRef.current
-    let pattern = extractPattern(raw)
+    const pattern = extractPattern(raw)
     if (!pattern) {
       setUiError('Gemini did not return a Strudel pattern.')
       return
@@ -414,31 +416,24 @@ function usePatternFlow(deps: {
       return
     }
 
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      const result = await deps.playback.play(pattern)
-      if (result.ok) {
-        setStagedCode(null)
-        setUiError(null)
-        void refreshSuggestions(pattern, sourcePrompt)
-        return
-      }
-      if (result.kind !== 'evaluation' || attempt === 2) {
-        if (result.kind !== 'cancelled') setUiError(result.error)
-        return
-      }
-      let repaired: string
-      try {
-        repaired = await deps.repair(pattern, result.error)
-      } catch (cause) {
-        setUiError(errorMessage(cause))
-        return
-      }
-      pattern = extractPattern(repaired) ?? ''
-      if (!pattern) {
-        setUiError('Gemini returned an invalid repaired pattern.')
-        return
-      }
-      deps.setCode(pattern)
+    const outcome = await attemptWithRepair(pattern, {
+      attempt: deps.playback.play,
+      // Every pattern reaching this path came from the model; hand edits
+      // play through the transport button, never through acceptPattern.
+      isGeneratedPattern: () => true,
+      requestFix: deps.requestFix,
+      applyFix: deps.setCode,
+      // Sends are disabled while a generation (repairs included) is in
+      // flight, so no newer prompt can replace the pattern mid-fix.
+      isStale: () => false,
+      isStopped: () => playbackStateRef.current === 'stopped',
+    })
+    if (outcome.result.ok) {
+      setStagedCode(null)
+      setUiError(null)
+      void refreshSuggestions(outcome.code, sourcePrompt)
+    } else if (outcome.result.kind !== 'cancelled') {
+      setUiError(outcome.result.error)
     }
   }
 
@@ -468,19 +463,39 @@ function Composer(props: {
     () => loadByokChat() ?? { messages: [], artifact: null, coveredCount: 0 },
   )
   const [isGenerating, setIsGenerating] = useState(false)
-  const compactionInFlight = useRef(false)
-  // Consecutive fold failures; after 3 the effect stops retrying so a
-  // persistently failing summarizer can't spend the visitor's key on every
-  // message. A successful fold resets it.
-  const compactionFailures = useRef(0)
+  const backend = useMemo(() => createByokBackend(props.byokKey), [props.byokKey])
+  // The fold scheduler is created once; reach the current backend through a ref
+  // so a re-saved key applies to folds already scheduled.
+  const backendRef = useRef(backend)
+  backendRef.current = backend
+  const [foldScheduler] = useState(() =>
+    createFoldScheduler<ChatMessage>({
+      summarize: (previous, batch) =>
+        backendRef.current.generateCompactionSummary(previous, batch),
+      // Message objects are stable across appends.
+      isSameMessage: (a, b) => a === b,
+      commit: (accept) =>
+        setChat((current) => {
+          const next = accept(current)
+          return next ? { ...current, ...next } : current
+        }),
+    }),
+  )
   const transcriptRef = useRef<HTMLDivElement | null>(null)
   const flow = usePatternFlow({
     playback: props.playback,
     setCode: props.setCode,
     setCustomTitle: props.setCustomTitle,
     setSourcePrompt: props.setSourcePrompt,
-    repair: (code, error) => byokRepairPattern(props.byokKey, code, error),
-    suggest: (code, sourcePrompt) => byokSuggestTransitions(props.byokKey, code, sourcePrompt),
+    requestFix: async (message) => {
+      try {
+        return extractPattern(await backend.repairPattern(message))
+      } catch {
+        // The evaluation error the fix was for surfaces instead.
+        return null
+      }
+    },
+    suggest: backend.suggestTransitions,
   })
 
   // Persist every change, then fold older history into the rolling summary in
@@ -489,36 +504,8 @@ function Composer(props: {
   // state, and buildContextWindow caps the uncovered tail regardless.
   useEffect(() => {
     saveByokChat(chat)
-    if (compactionInFlight.current) return
-    if (compactionFailures.current >= 3) return
-    const plan = planCompaction(chat.messages.length, chat.coveredCount)
-    if (!plan.fold) return
-
-    const folded = chat.messages.slice(0, plan.foldEnd)
-    const startCovered = chat.coveredCount
-    compactionInFlight.current = true
-    void generateCompactionSummary(props.byokKey, chat.artifact, folded.slice(startCovered))
-      .then((artifact) => {
-        setChat((current) => {
-          // Accept only if the folded messages are still a prefix of the
-          // live conversation; message objects are stable across appends.
-          if (current.coveredCount !== startCovered) return current
-          if (current.messages.length < folded.length) return current
-          for (let index = 0; index < folded.length; index += 1) {
-            if (current.messages[index] !== folded[index]) return current
-          }
-          return { ...current, artifact, coveredCount: folded.length }
-        })
-        compactionFailures.current = 0
-      })
-      .catch(() => {
-        // A failed fold keeps the previous state; the plain trim still applies.
-        compactionFailures.current += 1
-      })
-      .finally(() => {
-        compactionInFlight.current = false
-      })
-  }, [chat, props.byokKey])
+    foldScheduler.maybeFold(chat)
+  }, [chat, foldScheduler])
 
   useEffect(() => {
     const transcript = transcriptRef.current
@@ -530,19 +517,19 @@ function Composer(props: {
   const send = (text: string, mode: PatternMode = 'play') => {
     const prompt = text.trim()
     if (!prompt || busy) return
-    const history = [...chat.messages, { role: 'user' as const, text: prompt }]
-    const compaction = { artifact: chat.artifact, coveredCount: chat.coveredCount }
+    const history = [...chat.messages, { role: 'user' as const, content: prompt }]
+    const contextWindow = buildContextWindow(chat.artifact, chat.coveredCount, history)
     setChat((current) => ({ ...current, messages: history }))
     flow.lastPromptRef.current = prompt
     flow.setUiError(null)
     setIsGenerating(true)
     void props.playback.prepareAudio()
     setInput('')
-    void byokGeneratePattern(props.byokKey, history, compaction)
+    void backend.generatePattern(contextWindow)
       .then(async (raw) => {
         setChat((current) => ({
           ...current,
-          messages: [...history, { role: 'assistant', text: raw }],
+          messages: [...history, { role: 'assistant', content: raw }],
         }))
         // isGenerating stays true through acceptPattern's repair round-trips.
         await flow.acceptPattern(raw, mode)
@@ -554,6 +541,7 @@ function Composer(props: {
   const clearSession = () => {
     clearByokChat()
     setChat({ messages: [], artifact: null, coveredCount: 0 })
+    foldScheduler.reset()
     flow.setUiError(null)
     flow.setStagedCode(null)
     setInput('')
@@ -574,7 +562,7 @@ function Composer(props: {
       chat.messages.map((message, index) => ({
         key: index,
         role: message.role,
-        prose: visibleTextWithoutCodeBlocks(message.text),
+        prose: visibleTextWithoutCodeBlocks(message.content),
       })),
     [chat.messages],
   )

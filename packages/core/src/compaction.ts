@@ -11,6 +11,7 @@
  * model transport.
  */
 
+import { errorMessage } from "./error";
 import { jsonText, parseJsonMembers } from "./json";
 import { extractPattern } from "./pattern";
 import { MAX_CONTEXT_MESSAGES, type ChatMessage } from "./types";
@@ -58,6 +59,18 @@ export interface CompactionArtifact {
 export type CompactionSummaryResult =
   | { ok: true; artifact: CompactionArtifact }
   | { ok: false; error: string };
+
+/** The backend capability the fold scheduler runs on. */
+export interface CompactionSummarizer {
+  /**
+   * Fold older chat messages into a rolling session summary. A failure
+   * result keeps the caller's previous compaction state.
+   */
+  generateCompactionSummary(
+    previous: CompactionArtifact | null,
+    messages: readonly ChatMessage[],
+  ): Promise<CompactionSummaryResult>;
+}
 
 export interface CompactionPlan {
   /** A background fold is due. */
@@ -140,6 +153,100 @@ export function buildContextWindow(
       ? uncovered.slice(-MAX_CONTEXT_MESSAGES)
       : uncovered;
   return [artifactMessage(summary, artifact.latestPattern), ...tail];
+}
+
+/** Stop folding after this many consecutive summarizer failures, so a
+ * persistently failing summarizer cannot spend the user's key on every send.
+ * A successful fold (or `reset`) re-arms the scheduler. */
+export const MAX_FOLD_FAILURES = 3;
+
+/** The compaction view of a conversation: the artifact plus what it covers. */
+export interface FoldSnapshot<Message> {
+  messages: readonly Message[];
+  artifact: CompactionArtifact | null;
+  coveredCount: number;
+}
+
+export interface AcceptedFold {
+  artifact: CompactionArtifact;
+  coveredCount: number;
+}
+
+export interface FoldScheduler<Message> {
+  /** Run a background fold when one is due. Never blocks the caller. */
+  maybeFold(snapshot: FoldSnapshot<Message>): void;
+  /** Re-arm the failure circuit breaker (a fresh session, say). */
+  reset(): void;
+}
+
+/**
+ * The background-fold protocol shared by the desktop chat hook and the web
+ * composer: at most one summarizer call in flight, a consecutive-failure
+ * circuit breaker, and acceptance only while the folded slice is still a
+ * prefix of the live conversation. The caller owns persistence — `commit`
+ * receives an acceptance function to apply against its live state (a ref
+ * mutation on desktop, a functional setState on the web), which returns
+ * null when the result arrived stale and must be discarded.
+ */
+export function createFoldScheduler<Message>(options: {
+  summarize: (
+    previous: CompactionArtifact | null,
+    batch: readonly Message[],
+  ) => Promise<CompactionSummaryResult>;
+  commit: (
+    accept: (live: FoldSnapshot<Message>) => AcceptedFold | null,
+  ) => void;
+  /** Message identity for the prefix check: `id` equality on desktop, object
+   * identity on the web (message objects are stable across appends). */
+  isSameMessage: (a: Message, b: Message) => boolean;
+  onFoldFailed?: (error: string) => void;
+}): FoldScheduler<Message> {
+  let inFlight = false;
+  let consecutiveFailures = 0;
+
+  const fail = (error: string): void => {
+    consecutiveFailures += 1;
+    options.onFoldFailed?.(error);
+  };
+
+  return {
+    maybeFold(snapshot) {
+      if (inFlight || consecutiveFailures >= MAX_FOLD_FAILURES) return;
+      const plan = planCompaction(snapshot.messages.length, snapshot.coveredCount);
+      if (!plan.fold) return;
+
+      const folded = snapshot.messages.slice(0, plan.foldEnd);
+      const startCovered = snapshot.coveredCount;
+      inFlight = true;
+      void options
+        .summarize(snapshot.artifact, folded.slice(startCovered))
+        .then((result) => {
+          if (!result.ok) {
+            fail(result.error);
+            return;
+          }
+          consecutiveFailures = 0;
+          options.commit((live) => {
+            if (live.coveredCount !== startCovered) return null;
+            if (live.messages.length < folded.length) return null;
+            for (let index = 0; index < folded.length; index += 1) {
+              const a = live.messages[index];
+              const b = folded[index];
+              if (a === undefined || b === undefined) return null;
+              if (!options.isSameMessage(a, b)) return null;
+            }
+            return { artifact: result.artifact, coveredCount: folded.length };
+          });
+        })
+        .catch((cause: unknown) => fail(errorMessage(cause)))
+        .finally(() => {
+          inFlight = false;
+        });
+    },
+    reset() {
+      consecutiveFailures = 0;
+    },
+  };
 }
 
 /** Parse the raw JSON response produced under the compaction schema. */

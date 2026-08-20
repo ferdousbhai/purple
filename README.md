@@ -1,6 +1,6 @@
 # Purple
 
-Purple is an app for making music with AI. It ships two ways: a native desktop app, and a web app at [riff-web.ferdousbd.workers.dev](https://riff-web.ferdousbd.workers.dev) — same instrument, same shared engine.
+Purple is an app for making music with AI. It ships two ways: a native desktop app, and a web app at [soundspurple.com](https://soundspurple.com) — same instrument, same shared engine.
 
 You type a plain-English music idea, such as "make a slow lo-fi drum loop with warm chords." Purple asks Gemini to write a Strudel music pattern, puts that pattern in the editor, and plays it through your computer speakers.
 

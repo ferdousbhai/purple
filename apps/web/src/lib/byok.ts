@@ -14,16 +14,19 @@ import {
   TRANSITION_SUGGESTIONS_PROMPT,
   TRANSITION_SUGGESTIONS_SCHEMA,
   buildCompactionRequest,
-  buildContextWindow,
-  buildRetryMessage,
   buildTransitionSuggestionsRequest,
+  errorMessage,
   parseCompactionSummary,
   parseTransitionSuggestions,
   type CompactionArtifact,
+  type CompactionSummarizer,
   type ResponseSchema,
-  type TransitionSuggestion,
 } from '@purple/core'
-import type { ChatMessage } from '@purple/core/types'
+import type {
+  ChatMessage,
+  PatternGenerator,
+  TransitionSuggester,
+} from '@purple/core/types'
 import { z } from 'zod'
 
 const STORAGE_KEY = 'purple.byok.gemini-key'
@@ -57,26 +60,13 @@ try {
 const MAX_STORED_MESSAGES = 200
 const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${DEFAULT_GEMINI_MODEL}:generateContent`
 
-export interface ByokMessage {
-  role: 'user' | 'assistant'
-  text: string
-}
-
 /** The BYOK chat a browser carries across reloads. */
 export interface ByokChatState {
-  messages: ByokMessage[]
+  messages: ChatMessage[]
   /** Rolling compaction summary, or null before the first fold. */
   artifact: CompactionArtifact | null
   /** How many leading messages the artifact covers. */
   coveredCount: number
-}
-
-function toChatMessage({ role, text }: ByokMessage): ChatMessage {
-  return { role, content: text }
-}
-
-function toByokMessage({ role, content }: ChatMessage): ByokMessage {
-  return { role, text: content }
 }
 
 /** The generation knobs this client sets on Gemini's generateContent call. */
@@ -128,7 +118,7 @@ export function setByokKey(key: string | null): void {
 
 const storedMessageSchema = z.object({
   role: z.enum(['user', 'assistant']),
-  text: z.string(),
+  content: z.string(),
 })
 
 const storedArtifactSchema = z.object({
@@ -138,8 +128,19 @@ const storedArtifactSchema = z.object({
 
 /** Versioned envelope: anything that does not match is discarded silently. */
 const chatEnvelopeSchema = z.object({
-  v: z.literal(1),
+  v: z.literal(2),
   messages: z.array(storedMessageSchema),
+  artifact: storedArtifactSchema.nullable(),
+  coveredCount: z.number().int().min(0),
+})
+
+/** The v1 envelope stored messages as `{role, text}` before the app unified
+ * on core's `ChatMessage`; parsing migrates it in place of discarding. */
+const legacyChatEnvelopeSchema = z.object({
+  v: z.literal(1),
+  messages: z.array(
+    z.object({ role: z.enum(['user', 'assistant']), text: z.string() }),
+  ),
   artifact: storedArtifactSchema.nullable(),
   coveredCount: z.number().int().min(0),
 })
@@ -156,7 +157,7 @@ export function toChatEnvelope(state: ByokChatState): ByokChatEnvelope {
   const dropped = Math.max(0, state.messages.length - MAX_STORED_MESSAGES)
   const covered = Math.min(Math.max(state.coveredCount, 0), state.messages.length)
   return {
-    v: 1,
+    v: 2,
     messages: state.messages.slice(dropped),
     artifact: state.artifact,
     coveredCount: Math.max(0, covered - dropped),
@@ -172,9 +173,21 @@ export function parseChatEnvelope(raw: string): ByokChatState | null {
     return null
   }
   const parsed = chatEnvelopeSchema.safeParse(value)
-  if (!parsed.success) return null
-  const { messages, artifact, coveredCount } = parsed.data
-  return { messages, artifact, coveredCount: Math.min(coveredCount, messages.length) }
+  if (parsed.success) {
+    const { messages, artifact, coveredCount } = parsed.data
+    return { messages, artifact, coveredCount: Math.min(coveredCount, messages.length) }
+  }
+  const legacy = legacyChatEnvelopeSchema.safeParse(value)
+  if (!legacy.success) return null
+  const messages = legacy.data.messages.map(({ role, text }) => ({
+    role,
+    content: text,
+  }))
+  return {
+    messages,
+    artifact: legacy.data.artifact,
+    coveredCount: Math.min(legacy.data.coveredCount, messages.length),
+  }
 }
 
 export function loadByokChat(): ByokChatState | null {
@@ -209,80 +222,78 @@ export function clearByokChat(): void {
   }
 }
 
-export async function byokGeneratePattern(
-  key: string,
-  history: readonly ByokMessage[],
-  compaction?: Pick<ByokChatState, 'artifact' | 'coveredCount'>,
-): Promise<string> {
-  const contextWindow = buildContextWindow(
-    compaction?.artifact ?? null,
-    compaction?.coveredCount ?? 0,
-    history.map(toChatMessage),
-  )
-  return callGemini(key, SYSTEM_PROMPT, contextWindow.map(toByokMessage))
-}
-
 /**
- * Fold older chat messages into a rolling session summary. Runs in the
- * background after a generation settles; the caller keeps its previous
- * compaction state when this throws.
+ * The web app's backend: the shared capability interfaces it implements,
+ * plus the repair round-trip the shared repair loop plugs into.
  */
-export async function generateCompactionSummary(
-  key: string,
-  previous: CompactionArtifact | null,
-  messages: readonly ByokMessage[],
-): Promise<CompactionArtifact> {
-  const raw = await callGemini(
-    key,
-    COMPACTION_PROMPT,
-    [{ role: 'user', text: buildCompactionRequest(previous, messages.map(toChatMessage)) }],
-    { responseMimeType: 'application/json', responseJsonSchema: COMPACTION_SCHEMA },
-  )
-  const artifact = parseCompactionSummary(raw)
-  if (!artifact) throw new Error('Gemini returned an invalid session summary.')
-  return artifact
+export interface ByokBackend
+  extends PatternGenerator,
+    TransitionSuggester,
+    CompactionSummarizer {
+  /** Send a prepared repair message; resolves with the raw model text. */
+  repairPattern(message: string): Promise<string>
 }
 
-export async function byokRepairPattern(
-  key: string,
-  code: string,
-  error: string,
-): Promise<string> {
-  return callGemini(key, SYSTEM_PROMPT, [
-    { role: 'user', text: buildRetryMessage(code, error) },
-  ])
-}
+/** Bind the visitor's key into a backend the studio UI talks to. */
+export function createByokBackend(key: string): ByokBackend {
+  return {
+    generatePattern: (messages) => callGemini(key, SYSTEM_PROMPT, messages),
 
-export async function byokSuggestTransitions(
-  key: string,
-  code: string,
-  sourcePrompt?: string,
-): Promise<TransitionSuggestion[]> {
-  const raw = await callGemini(
-    key,
-    TRANSITION_SUGGESTIONS_PROMPT,
-    [{ role: 'user', text: buildTransitionSuggestionsRequest(code, sourcePrompt) }],
-    {
-      responseMimeType: 'application/json',
-      responseJsonSchema: TRANSITION_SUGGESTIONS_SCHEMA,
+    repairPattern: (message) =>
+      callGemini(key, SYSTEM_PROMPT, [{ role: 'user', content: message }]),
+
+    async suggestTransitions(code, sourcePrompt) {
+      try {
+        const raw = await callGemini(
+          key,
+          TRANSITION_SUGGESTIONS_PROMPT,
+          [{ role: 'user', content: buildTransitionSuggestionsRequest(code, sourcePrompt) }],
+          {
+            responseMimeType: 'application/json',
+            responseJsonSchema: TRANSITION_SUGGESTIONS_SCHEMA,
+          },
+        )
+        const suggestions = parseTransitionSuggestions(raw)
+        if (!suggestions) {
+          return { ok: false, error: 'Gemini returned invalid transition suggestions.' }
+        }
+        return { ok: true, suggestions }
+      } catch (error) {
+        return { ok: false, error: errorMessage(error) }
+      }
     },
-  )
-  const suggestions = parseTransitionSuggestions(raw)
-  if (!suggestions) throw new Error('Gemini returned invalid transition suggestions.')
-  return suggestions
+
+    async generateCompactionSummary(previous, messages) {
+      try {
+        const raw = await callGemini(
+          key,
+          COMPACTION_PROMPT,
+          [{ role: 'user', content: buildCompactionRequest(previous, messages) }],
+          { responseMimeType: 'application/json', responseJsonSchema: COMPACTION_SCHEMA },
+        )
+        const artifact = parseCompactionSummary(raw)
+        if (!artifact) {
+          return { ok: false, error: 'Gemini returned an invalid session summary.' }
+        }
+        return { ok: true, artifact }
+      } catch (error) {
+        return { ok: false, error: errorMessage(error) }
+      }
+    },
+  }
 }
 
 async function callGemini(
   key: string,
   system: string,
-  messages: readonly ByokMessage[],
+  messages: readonly ChatMessage[],
   generationConfig?: GeminiGenerationConfig,
 ): Promise<string> {
   const body: GeminiRequestBody = {
     systemInstruction: { parts: [{ text: system }] },
     contents: messages.map((message) => ({
       role: message.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: message.text }],
+      parts: [{ text: message.content }],
     })),
   }
   if (generationConfig) body.generationConfig = generationConfig

@@ -15,6 +15,7 @@ import {
   COMPACTION_SCHEMA,
   parseCompactionSummary,
   type CompactionArtifact,
+  type CompactionSummarizer,
   type CompactionSummaryResult,
 } from "@purple/core/compaction";
 import {
@@ -268,4 +269,5 @@ export const backend = {
   abortStream,
   generateTitle,
   suggestTransitions,
-} satisfies PurpleBackend;
+  generateCompactionSummary,
+} satisfies PurpleBackend & CompactionSummarizer;

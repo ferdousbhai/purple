@@ -1,24 +1,14 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  // Workers can't be renamed, so the pre-rebrand name stays until the app
-  // moves to its own domain (a fresh purple-web Worker + Builds connection,
-  // then delete this one).
-  "name": "riff-web",
+  // Fresh Worker created for the Purple rebrand; the retired riff-web Worker
+  // (and its RiffAgent DO migration history) is gone with the old identity.
+  "name": "purple-web",
   "main": "src/server.ts",
   "compatibility_date": "2026-08-08",
   "compatibility_flags": ["nodejs_compat"],
-  // v1 created the RiffAgent Durable Object; v2 retires it along with the
-  // hosted-inference/auth/billing stack. The app is local-first now: the only
-  // server-side job left is serving the shell.
-  "migrations": [
-    {
-      "tag": "v1",
-      "new_sqlite_classes": ["RiffAgent"]
-    },
-    {
-      "tag": "v2",
-      "deleted_classes": ["RiffAgent"]
-    }
+  "routes": [
+    { "pattern": "soundspurple.com", "custom_domain": true },
+    { "pattern": "www.soundspurple.com", "custom_domain": true }
   ],
   "observability": {
     "enabled": true,

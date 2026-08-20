@@ -45,12 +45,13 @@ export type TransitionSuggestionsResult =
   | { ok: false; error: string };
 
 /**
- * The generation backend a Purple UI talks to. The desktop implements it over
- * Tauri `invoke` + `Channel` (`src/mainview/backend.ts`, the only module that
- * imports `@tauri-apps/api`); the hosted app implements it over its chat agent
- * or the bring-your-own-key Gemini path.
+ * Backend capabilities a Purple UI composes. They are split so each app
+ * `satisfies` exactly what it implements — the desktop streams over Tauri
+ * `invoke` + `Channel` (`src/mainview/backend.ts`), while the web's
+ * bring-your-own-key path is one-shot and never streams — and the compiler
+ * catches contract drift on both sides.
  */
-export interface PurpleBackend {
+export interface PatternStreamer {
   /**
    * Stream a pattern response. Deltas arrive on `onDelta`; the promise settles
    * when the model finishes, and rejects with a user-facing message on failure.
@@ -61,11 +62,28 @@ export interface PurpleBackend {
   ): Promise<StreamOutcome>;
   /** Cancel the in-flight stream. */
   abortStream(): Promise<void>;
+}
+
+/** A one-shot generation backend: the prepared context window in, raw model text out. */
+export interface PatternGenerator {
+  generatePattern(messages: readonly ChatMessage[]): Promise<string>;
+}
+
+export interface TitleGenerator {
   /** Name the pattern a prompt is about to produce. */
   generateTitle(prompt: string): Promise<TitleGenerationResult>;
+}
+
+export interface TransitionSuggester {
   /** Suggest next-move prompts for the pattern that just landed. */
   suggestTransitions(
     code: string,
     sourcePrompt?: string,
   ): Promise<TransitionSuggestionsResult>;
 }
+
+/** The full backend the desktop UI talks to. */
+export interface PurpleBackend
+  extends PatternStreamer,
+    TitleGenerator,
+    TransitionSuggester {}

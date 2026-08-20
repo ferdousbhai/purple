@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { attemptWithRepair, MAX_RETRIES, type RepairDeps } from "./patternRepair";
-import type { EvalResult } from "../../shared/types";
+import { attemptWithRepair, MAX_RETRIES, type RepairDeps } from "./repair";
+import type { EvalResult } from "./types";
 
 const OK: EvalResult = { ok: true };
 

@@ -4,8 +4,8 @@ import { parseChatEnvelope, toChatEnvelope, type ByokChatState } from './byok'
 function chat(overrides: Partial<ByokChatState> = {}): ByokChatState {
   return {
     messages: [
-      { role: 'user', text: 'four on the floor' },
-      { role: 'assistant', text: '```strudel\ns("bd*4")\n```' },
+      { role: 'user', content: 'four on the floor' },
+      { role: 'assistant', content: '```strudel\ns("bd*4")\n```' },
     ],
     artifact: { summary: 'A techno session.', latestPattern: 's("bd*4")' },
     coveredCount: 2,
@@ -29,17 +29,37 @@ describe('byok chat persistence envelope', () => {
   })
 
   it('discards an envelope from another version', () => {
-    const raw = JSON.stringify({ ...toChatEnvelope(chat()), v: 2 })
+    const raw = JSON.stringify({ ...toChatEnvelope(chat()), v: 3 })
     expect(parseChatEnvelope(raw)).toBeNull()
   })
 
+  it('migrates a v1 envelope, mapping text onto content', () => {
+    const raw = JSON.stringify({
+      v: 1,
+      messages: [
+        { role: 'user', text: 'four on the floor' },
+        { role: 'assistant', text: 's("bd*4")' },
+      ],
+      artifact: { summary: 'A techno session.', latestPattern: 's("bd*4")' },
+      coveredCount: 5,
+    })
+    expect(parseChatEnvelope(raw)).toEqual({
+      messages: [
+        { role: 'user', content: 'four on the floor' },
+        { role: 'assistant', content: 's("bd*4")' },
+      ],
+      artifact: { summary: 'A techno session.', latestPattern: 's("bd*4")' },
+      coveredCount: 2,
+    })
+  })
+
   it('discards an envelope whose fields do not match the schema', () => {
-    expect(parseChatEnvelope(JSON.stringify({ v: 1, messages: 'nope' }))).toBeNull()
+    expect(parseChatEnvelope(JSON.stringify({ v: 2, messages: 'nope' }))).toBeNull()
     expect(
       parseChatEnvelope(
         JSON.stringify({
           v: 1,
-          messages: [{ role: 'system', text: 'x' }],
+          messages: [{ role: 'system', content: 'x' }],
           artifact: null,
           coveredCount: 0,
         }),
@@ -47,15 +67,15 @@ describe('byok chat persistence envelope', () => {
     ).toBeNull()
     expect(
       parseChatEnvelope(
-        JSON.stringify({ v: 1, messages: [], artifact: null, coveredCount: -1 }),
+        JSON.stringify({ v: 2, messages: [], artifact: null, coveredCount: -1 }),
       ),
     ).toBeNull()
   })
 
   it('clamps a stored coveredCount that exceeds the stored messages', () => {
     const raw = JSON.stringify({
-      v: 1,
-      messages: [{ role: 'user', text: 'hi' }],
+      v: 2,
+      messages: [{ role: 'user', content: 'hi' }],
       artifact: { summary: 's', latestPattern: '' },
       coveredCount: 5,
     })
@@ -65,11 +85,11 @@ describe('byok chat persistence envelope', () => {
   it('caps the stored transcript and shifts coveredCount by the dropped prefix', () => {
     const messages = Array.from({ length: 250 }, (_, index) => ({
       role: index % 2 === 0 ? ('user' as const) : ('assistant' as const),
-      text: `message ${index}`,
+      content: `message ${index}`,
     }))
     const envelope = toChatEnvelope(chat({ messages, coveredCount: 240 }))
     expect(envelope.messages).toHaveLength(200)
-    expect(envelope.messages[0]?.text).toBe('message 50')
+    expect(envelope.messages[0]?.content).toBe('message 50')
     // 50 covered messages fell off the front; the artifact still summarizes them.
     expect(envelope.coveredCount).toBe(190)
   })
@@ -77,7 +97,7 @@ describe('byok chat persistence envelope', () => {
   it('never lets the cap push coveredCount below zero', () => {
     const messages = Array.from({ length: 250 }, () => ({
       role: 'user' as const,
-      text: 'x',
+      content: 'x',
     }))
     const envelope = toChatEnvelope(chat({ messages, coveredCount: 10 }))
     expect(envelope.coveredCount).toBe(0)

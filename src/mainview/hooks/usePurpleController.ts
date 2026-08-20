@@ -17,7 +17,7 @@ import {
   saveApiKey as saveBackendApiKey,
   setPlaybackState as reportPlaybackState,
 } from "../backend";
-import { attemptWithRepair } from "./patternRepair";
+import { attemptWithRepair } from "@purple/core/repair";
 import { useChat } from "./useChat";
 import { useKeyboardShortcuts } from "./useKeyboardShortcuts";
 import { usePlayback } from "@purple/ui/use-playback";

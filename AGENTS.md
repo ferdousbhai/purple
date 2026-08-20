@@ -24,12 +24,12 @@ src/
     hooks/        # useChat, usePurpleController, useKeyboardShortcuts, useTransitionSuggestions
   shared/         # desktop-only types.ts, cli.ts (+ parser tests)
 apps/
-  web/            # @purple/web — hosted app (riff-web Worker)
+  web/            # @purple/web — hosted app (purple-web Worker, soundspurple.com)
     src/server.ts             # Worker entry: serves the shell, nothing else
     src/components/purple-studio.tsx  # the whole web UI
     src/lib/byok.ts           # browser → Google inference + chat persistence
     src/db-collections/       # TanStack DB localStorage collection (saved patterns)
-    wrangler.jsonc            # no bindings; keeps DO migration history
+    wrangler.jsonc            # no bindings; custom domains soundspurple.com + www
 packages/
   core/           # @purple/core — shared, dependency-free
     src/pattern.ts, prompts.ts, recipes.ts, transitions.ts, compaction.ts, types.ts, index.ts
@@ -47,7 +47,7 @@ pnpm run dev          # tauri dev (Vite + Rust shell)
 pnpm run dev:webview  # Vite alone, browser-only desktop UI work
 pnpm run build        # release binary at src-tauri/target/release/purple
 pnpm run web:dev      # web app dev server (localhost:3000)
-pnpm run web:deploy   # build + wrangler deploy the riff-web Worker
+pnpm run web:deploy   # build + wrangler deploy the purple-web Worker
 pnpm run web:check    # web test/typecheck/build
 pnpm run test         # vitest run (desktop + packages)
 pnpm run test:rust    # cargo test
@@ -87,4 +87,4 @@ locally before pushing.
 - Search `TODO`/`FIXME` in code for known workarounds; each has a comment explaining why.
 - Linux WebKitGTK quirks are isolated in `src/mainview/audio-shim.ts`.
 - Nothing product-shaped goes into `src-tauri/`. If the web app could ever want it, it belongs in `@purple/core`.
-- `apps/web/wrangler.jsonc` keeps the Durable Object migration history (`v1` create `RiffAgent`, `v2` delete) from the retired hosted-inference stack — removing it would break deploys against the existing Worker.
+- `apps/web/wrangler.jsonc` targets the `purple-web` Worker (fresh for the rebrand, no DO history) and declares the soundspurple.com custom domains; `wrangler deploy` attaches them.

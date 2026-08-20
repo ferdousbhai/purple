@@ -10,6 +10,7 @@
     "./pattern": "./src/pattern.ts",
     "./prompts": "./src/prompts.ts",
     "./recipes": "./src/recipes.ts",
+    "./repair": "./src/repair.ts",
     "./transitions": "./src/transitions.ts",
     "./types": "./src/types.ts"
   },

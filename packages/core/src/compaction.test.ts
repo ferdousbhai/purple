@@ -1,11 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildCompactionRequest,
   buildContextWindow,
   COMPACTION_TRIGGER,
+  createFoldScheduler,
+  MAX_FOLD_FAILURES,
   parseCompactionSummary,
   planCompaction,
   SUMMARY_CONTEXT_PREFIX,
+  type CompactionSummaryResult,
+  type FoldSnapshot,
 } from "./compaction";
 import { MAX_CONTEXT_MESSAGES, type ChatMessage } from "./types";
 
@@ -209,5 +213,123 @@ describe("parseCompactionSummary", () => {
         '{"summary":"```js code```","latestPattern":""}',
       ),
     ).toBeNull();
+  });
+});
+
+describe("createFoldScheduler", () => {
+  const ARTIFACT = { summary: "A techno session.", latestPattern: 's("bd*4")' };
+
+  function harness(overrides: {
+    summarize?: Parameters<typeof createFoldScheduler<ChatMessage>>[0]["summarize"];
+    onFoldFailed?: (error: string) => void;
+  } = {}) {
+    let live: FoldSnapshot<ChatMessage> = {
+      messages: conversation(COMPACTION_TRIGGER + 1),
+      artifact: null,
+      coveredCount: 0,
+    };
+    const summarize = vi.fn(
+      overrides.summarize ??
+        (async () => ({ ok: true as const, artifact: ARTIFACT })),
+    );
+    const scheduler = createFoldScheduler<ChatMessage>({
+      summarize,
+      isSameMessage: (a, b) => a === b,
+      commit: (accept) => {
+        const next = accept(live);
+        if (next) live = { ...live, ...next };
+      },
+      onFoldFailed: overrides.onFoldFailed,
+    });
+    return {
+      scheduler,
+      summarize,
+      get live() {
+        return live;
+      },
+      set live(value: FoldSnapshot<ChatMessage>) {
+        live = value;
+      },
+    };
+  }
+
+  async function settle(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  it("folds a due conversation and commits against the live state", async () => {
+    const h = harness();
+    h.scheduler.maybeFold(h.live);
+    await settle();
+
+    expect(h.summarize).toHaveBeenCalledExactlyOnceWith(
+      null,
+      h.live.messages.slice(0, COMPACTION_TRIGGER + 1),
+    );
+    expect(h.live.artifact).toEqual(ARTIFACT);
+    expect(h.live.coveredCount).toBe(COMPACTION_TRIGGER + 1);
+  });
+
+  it("does not fold below the trigger", () => {
+    const h = harness();
+    h.scheduler.maybeFold({ ...h.live, messages: conversation(COMPACTION_TRIGGER) });
+    expect(h.summarize).not.toHaveBeenCalled();
+  });
+
+  it("runs at most one summarizer call at a time", async () => {
+    let release: (result: CompactionSummaryResult) => void = () => {};
+    const h = harness({
+      summarize: () => new Promise((resolve) => { release = resolve; }),
+    });
+    h.scheduler.maybeFold(h.live);
+    h.scheduler.maybeFold(h.live);
+    expect(h.summarize).toHaveBeenCalledOnce();
+    release({ ok: true, artifact: ARTIFACT });
+    await settle();
+    expect(h.live.artifact).toEqual(ARTIFACT);
+  });
+
+  it("discards a result when the folded slice is no longer a prefix", async () => {
+    const h = harness();
+    const folded = h.live;
+    h.scheduler.maybeFold(folded);
+    // The session was cleared while the summarizer ran.
+    h.live = { messages: [], artifact: null, coveredCount: 0 };
+    await settle();
+    expect(h.live.artifact).toBeNull();
+    expect(h.live.coveredCount).toBe(0);
+  });
+
+  it("stops after MAX_FOLD_FAILURES consecutive failures until reset", async () => {
+    const errors: string[] = [];
+    const h = harness({
+      summarize: async () => ({ ok: false as const, error: "nope" }),
+      onFoldFailed: (error) => errors.push(error),
+    });
+    for (let round = 0; round < MAX_FOLD_FAILURES + 2; round += 1) {
+      h.scheduler.maybeFold(h.live);
+      await settle();
+    }
+    expect(h.summarize).toHaveBeenCalledTimes(MAX_FOLD_FAILURES);
+    expect(errors).toEqual(["nope", "nope", "nope"]);
+
+    h.scheduler.reset();
+    h.scheduler.maybeFold(h.live);
+    await settle();
+    expect(h.summarize).toHaveBeenCalledTimes(MAX_FOLD_FAILURES + 1);
+  });
+
+  it("counts a rejected summarizer call as a failure", async () => {
+    const errors: string[] = [];
+    const h = harness({
+      summarize: async () => {
+        throw new Error("network down");
+      },
+      onFoldFailed: (error) => errors.push(error),
+    });
+    h.scheduler.maybeFold(h.live);
+    await settle();
+    expect(errors).toEqual(["network down"]);
+    expect(h.live.artifact).toBeNull();
   });
 });

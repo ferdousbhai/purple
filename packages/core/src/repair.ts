@@ -1,5 +1,12 @@
-import { buildRetryMessage } from "@purple/core/prompts";
-import type { EvalResult } from "../../shared/types";
+/**
+ * The evaluation-repair loop shared by the desktop webview and the web app:
+ * when a model-generated pattern fails to evaluate, the error goes back to
+ * Gemini and each fix replays, up to MAX_RETRIES fixes. The caller supplies
+ * the playback attempt, the model round-trip, and the staleness guards.
+ */
+
+import { buildRetryMessage } from "./prompts";
+import type { EvalResult } from "./types";
 
 export const MAX_RETRIES = 2;
 
@@ -11,7 +18,7 @@ export interface RepairDeps {
    * its evaluation error surfaces in the UI instead. */
   isGeneratedPattern: (code: string) => boolean;
   /** Send the repair prompt to the model; resolves with the fixed pattern, or
-   * null when the stream failed or the chat was busy. */
+   * null when the request failed or produced no pattern. */
   requestFix: (message: string) => Promise<string | null>;
   /** Land a fixed pattern in the editor before it replays. */
   applyFix: (code: string) => void;
