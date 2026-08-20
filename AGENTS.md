@@ -1,13 +1,13 @@
-# AGENTS.md — ferdousbhai/riff (open core)
+# AGENTS.md — ferdousbhai/riff
 
 Index for agents and contributors. Code is self-documenting — read the file you are editing. `AGENTS.md` is only an index; gotchas live as comments next to the code they explain.
 
 ## What this repo is
 
-Desktop app for AI music production. Users describe music in natural language, Gemini generates Strudel live-coding patterns, audio plays in the webview. Tauri 2 shell (Rust) around a WebKitGTK webview. MIT.
+AI music production. Users describe music in natural language, Gemini generates Strudel live-coding patterns, audio plays in the webview. One repo, two apps sharing `packages/*`. MIT.
 
-- `riff` (this repo): open core — desktop app + shared music logic
-- `riff-hosted` (private): closed Cloudflare Workers build at `ferdousbhai/riff-hosted` — `apps/web`
+- Desktop: Tauri 2 shell (Rust) around a WebKitGTK webview (`src/`, `src-tauri/`)
+- Web: local-first TanStack Start app on Cloudflare Workers (`apps/web`) — no accounts, no server-side storage or inference; the visitor's Gemini key, chat, and saved patterns stay in the browser
 
 ## Layout
 
@@ -23,9 +23,16 @@ src/
     components/   # EditorPanel, ChatPanel, PlaybackControls, MessageBubble, StreamingText, CodeBlockRenderer, ApiKeyDialog
     hooks/        # useChat, useRiffController, useKeyboardShortcuts, useTransitionSuggestions
   shared/         # desktop-only types.ts, cli.ts (+ parser tests)
+apps/
+  web/            # @riff/web — hosted app (riff-web Worker)
+    src/server.ts             # Worker entry: serves the shell, nothing else
+    src/components/riff-studio.tsx  # the whole web UI
+    src/lib/byok.ts           # browser → Google inference + chat persistence
+    src/db-collections/       # TanStack DB localStorage collection (saved patterns)
+    wrangler.jsonc            # no bindings; keeps DO migration history
 packages/
-  core/           # @riff/core — shared, dependency-free (submodule vendor/riff in riff-hosted)
-    src/pattern.ts, prompts.ts, recipes.ts, transitions.ts, types.ts, index.ts
+  core/           # @riff/core — shared, dependency-free
+    src/pattern.ts, prompts.ts, recipes.ts, transitions.ts, compaction.ts, types.ts, index.ts
   ui/             # @riff/ui — shared webview modules (React/CodeMirror/@strudel/web)
     src/use-strudel.ts, use-playback.ts, playback-highlight.ts, strudel-web.d.ts
 packaging/        # PKGBUILD + riff.desktop
@@ -36,50 +43,45 @@ scripts/          # install-user.sh
 
 ```
 pnpm install
-pnpm run dev        # tauri dev (Vite + Rust shell)
-pnpm run dev:web    # Vite alone, browser-only UI work
-pnpm run build      # release binary at src-tauri/target/release/riff
-pnpm run test       # vitest run
-pnpm run test:rust  # cargo test
-pnpm run typecheck  # tsc --noEmit
-pnpm run check      # test + test:rust + typecheck + build:web
+pnpm run dev          # tauri dev (Vite + Rust shell)
+pnpm run dev:webview  # Vite alone, browser-only desktop UI work
+pnpm run build        # release binary at src-tauri/target/release/riff
+pnpm run web:dev      # web app dev server (localhost:3000)
+pnpm run web:deploy   # build + wrangler deploy the riff-web Worker
+pnpm run web:check    # web test/typecheck/build
+pnpm run test         # vitest run (desktop + packages)
+pnpm run test:rust    # cargo test
+pnpm run typecheck    # tsc --noEmit
+pnpm run check        # lint + test + test:rust + typecheck + build:webview + web:check
 ```
+
+## Deployment
+
+Cloudflare **Workers Builds** deploys `apps/web` on every push to `master`:
+build command `pnpm run web:check`, deploy command
+`pnpm --filter @riff/web exec wrangler deploy`. `web:check` fails the build
+before the deploy command runs when a test or typecheck breaks.
 
 ## Key files to read before changing
 
-- `src/mainview/backend.ts` + `src-tauri/src/gemini.rs` — the whole backend contract: `stream_pattern` over a `tauri::ipc::Channel`, `generate_json` for structured output (the caller passes the prompt and schema, so Rust stays generic)
-- `src/mainview/hooks/useChat.ts` — `busyRef` guard, auto-retry (max 2) on eval failure
+- `src/mainview/backend.ts` + `src-tauri/src/gemini.rs` — the whole desktop backend contract: `stream_pattern` over a `tauri::ipc::Channel`, `generate_json` for structured output (the caller passes the prompt and schema, so Rust stays generic)
+- `src/mainview/hooks/useChat.ts` — `busyRef` guard, auto-retry (max 2) on eval failure, background compaction
+- `apps/web/src/lib/byok.ts` — the web app's only inference path: browser → Google with the visitor's key (header, never URL); chat persists in localStorage and compacts with the shared `@riff/core` policy
 - `packages/ui/src/use-strudel.ts` + `src/mainview/audio-activation.ts` — AudioContext must be created synchronously in user gesture, then passed to `initStrudel({ prebake })` with `samples("github:tidalcycles/Dirt-Samples/master")`; the desktop injects `requireRunningAudioContext` via `StrudelAudioOptions`
-- `packages/core/src/*` — pattern/recipes/transitions, self-contained; tests in `core.test.ts`
+- `packages/core/src/*` — pattern/recipes/transitions/compaction, self-contained; tests alongside
 
 ## Conventions
 
 - Code explains itself — name things clearly, keep functions small. Add comments only for non-obvious behavior or workarounds.
 - Prefer existing libraries and official docs patterns over custom implementations.
-- `pnpm` workspace is `packages/*`; `@riff/core` and `@riff/ui` are `workspace:*`.
-- Do not commit `node_modules`, `dist`, `src-tauri/target`, `.env`.
-
-## Hosted split
-
-`apps/web` lives in private `ferdousbhai/riff-hosted`. `packages/core` and `packages/ui` are the only shared code: `riff-hosted` consumes them through the `vendor/riff` submodule, which points at **one frozen commit of this repo** and stays there until someone moves it.
-
-**A change under `packages/**` is a two-repo change.** It is not finished when `riff` is pushed — it is finished when `riff-hosted`'s pin moves onto that commit. Everything else in this repo (the shell, the desktop UI, packaging) touches nothing hosted uses, so it needs no coordination.
-
-That matters because core is mostly *prompts*. A stale pin does not break a build or fail a test; it just means the hosted product keeps serving the previous `SYSTEM_PROMPT` to paying users.
-
-What is automated, so it does not depend on anyone remembering:
-- `.github/workflows/hosted-guard.yml` here runs `riff-hosted`'s checks against a core commit as it lands, so a break is reported by the commit that caused it (needs the `HOSTED_REPO_TOKEN` secret).
-- `.github/workflows/core-bump.yml` there opens a pull request each Monday moving the pin to core tip, but only when the hosted checks pass against it.
-- `pnpm run build:ci` there prints how far the pin is behind on every deploy build.
-
-To move it now rather than waiting for Monday, in `ferdousbhai/riff-hosted`:
-```
-git submodule update --remote vendor/riff && pnpm install
-pnpm run check        # then commit the pointer bump
-```
+- `pnpm` workspace is `packages/*` + `apps/*`; `@riff/core` and `@riff/ui` are `workspace:*`.
+- `@riff/core` stays dependency-free (it bundles into the Worker); anything that imports React, CodeMirror or `@strudel/web` belongs in `@riff/ui`.
+- No server-side secrets: the Worker has no bindings. Anything stateful belongs in the visitor's browser.
+- Do not commit `node_modules`, `dist`, `src-tauri/target`, `.env`, `.wrangler`.
 
 ## Gotchas (see code comments for details)
 
 - Search `TODO`/`FIXME` in code for known workarounds; each has a comment explaining why.
 - Linux WebKitGTK quirks are isolated in `src/mainview/audio-shim.ts`.
-- Nothing product-shaped goes into `src-tauri/`. If the hosted app could ever want it, it belongs in `@riff/core`.
+- Nothing product-shaped goes into `src-tauri/`. If the web app could ever want it, it belongs in `@riff/core`.
+- `apps/web/wrangler.jsonc` keeps the Durable Object migration history (`v1` create `RiffAgent`, `v2` delete) from the retired hosted-inference stack — removing it would break deploys against the existing Worker.

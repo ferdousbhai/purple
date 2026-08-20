@@ -1,6 +1,6 @@
 # Riff
 
-AI-powered music production desktop app. Users describe music in natural language, Gemini generates Strudel live-coding patterns, audio plays natively in the webview. Split-pane layout: editable code editor (left) + chat (right).
+AI-powered music production. Users describe music in natural language, Gemini generates Strudel live-coding patterns, audio plays natively in the webview. Split-pane layout: editable code editor (left) + chat (right). One repo, two apps sharing `packages/*`: the Tauri desktop app (root) and a local-first web app (`apps/web`, deployed as the `riff-web` Cloudflare Worker).
 
 ## Stack
 
@@ -15,13 +15,16 @@ AI-powered music production desktop app. Users describe music in natural languag
 ## Commands
 
 - `pnpm run dev` / `pnpm run start` — `tauri dev` (Vite + the Rust shell, hot reload)
-- `pnpm run dev:web` — Vite alone, for browser-only UI work
+- `pnpm run dev:webview` — Vite alone, for browser-only desktop UI work
 - `pnpm run build` — release binary at `src-tauri/target/release/riff`
-- `pnpm run build:web` — Vite build into `dist/`
-- `pnpm run test` — vitest suite
+- `pnpm run build:webview` — Vite build into `dist/`
+- `pnpm run web:dev` — web app dev server (localhost:3000)
+- `pnpm run web:deploy` — build + `wrangler deploy` the riff-web Worker
+- `pnpm run web:check` — web test/typecheck/build
+- `pnpm run test` — vitest suite (desktop + packages)
 - `pnpm run test:rust` — cargo test for the shell
 - `pnpm run typecheck` — TypeScript compiler without emitting
-- `pnpm run check` — test + test:rust + typecheck + build:web
+- `pnpm run check` — lint + test + test:rust + typecheck + build:webview + web:check
 
 ## Architecture
 
@@ -57,7 +60,15 @@ src/
       useKeyboardShortcuts.ts      # Ctrl+., Escape handlers
   shared/                          # Desktop-only types and CLI grammar
     types.ts, cli.ts
-packages/core/                     # @riff/core — shared with the hosted app; dependency-free
+apps/web/                          # @riff/web — local-first web app on Cloudflare Workers
+                                   # (no accounts, no server-side storage/inference; BYOK Gemini
+                                   # key + saved patterns + chat live in the visitor's browser)
+  src/server.ts                    # Worker entry: serves the shell, nothing else
+  src/components/riff-studio.tsx   # The whole web UI
+  src/lib/byok.ts                  # Browser → Google inference + chat persistence/compaction
+  src/db-collections/              # TanStack DB localStorage collection (saved patterns)
+  wrangler.jsonc                   # No bindings; keeps the retired RiffAgent DO migration history
+packages/core/                     # @riff/core — shared between both apps; dependency-free
                                    # (prompts, parsers, recipes, shared types, RiffBackend)
 packages/ui/                       # @riff/ui — shared webview modules that need React/CodeMirror/
                                    # @strudel/web: use-strudel, use-playback, playback-highlight,
@@ -92,10 +103,9 @@ User types message → ChatPanel → backend.streamPattern() → invoke("stream_
 
 ## Key Patterns
 
-- **`packages/*` is a two-repo change**: the private `riff-hosted` build consumes `@riff/core` and `@riff/ui` through a submodule pinned to one commit of this repo, so an edit under `packages/` is only finished once that pin moves. CI guards both directions — see the Hosted split section in `AGENTS.md`. Nothing else here needs coordinating.
-- **`@riff/core` stays dependency-free** (it is bundled into a Cloudflare Worker); anything that imports React, CodeMirror or `@strudel/web` belongs in `@riff/ui`. The shared engine (`useStrudel`/`usePlayback`) takes a `StrudelAudioOptions` capability: the desktop injects `requireRunningAudioContext` from `audio-activation.ts` so the WebKitGTK quirks (non-standard "interrupted" state, silent-buffer priming) stay desktop-side instead of shipping to the hosted app. `audio-shim.ts` likewise stays desktop-only.
-- **Rust holds no product logic**: prompts, JSON schemas, parsers, retry policy and argument parsing all live in TypeScript (`@riff/core`, `src/shared`), because the hosted app at `ferdousbhai/riff-hosted` shares them. `generate_json` takes the system instruction and schema as parameters for exactly this reason.
-- **One adapter**: `src/mainview/backend.ts` is the only module importing `@tauri-apps/api`. Hooks talk to it, never to `invoke` directly. It implements the shared `RiffBackend` interface from `@riff/core/types` (`stream`/`abortStream`/`generateTitle`/`suggestTransitions`); the hosted app provides its own implementation over its agent/BYOK paths.
+- **`@riff/core` stays dependency-free** (it is bundled into a Cloudflare Worker); anything that imports React, CodeMirror or `@strudel/web` belongs in `@riff/ui`. The shared engine (`useStrudel`/`usePlayback`) takes a `StrudelAudioOptions` capability: the desktop injects `requireRunningAudioContext` from `audio-activation.ts` so the WebKitGTK quirks (non-standard "interrupted" state, silent-buffer priming) stay desktop-side instead of shipping to the web app. `audio-shim.ts` likewise stays desktop-only.
+- **Rust holds no product logic**: prompts, JSON schemas, parsers, retry policy and argument parsing all live in TypeScript (`@riff/core`, `src/shared`), because `apps/web` shares them. `generate_json` takes the system instruction and schema as parameters for exactly this reason.
+- **One adapter**: `src/mainview/backend.ts` is the only module importing `@tauri-apps/api`. Hooks talk to it, never to `invoke` directly. It implements the shared `RiffBackend` interface from `@riff/core/types` (`stream`/`abortStream`/`generateTitle`/`suggestTransitions`); the web app provides its own implementation over its BYOK path (`apps/web/src/lib/byok.ts` — browser → Google directly, key in a header, never through a server).
 - **Channels, not events**: streaming uses `tauri::ipc::Channel`, which guarantees ordered delivery, so the UI does not need to filter stale chunks.
 - **Interactions API**: requests go to `POST /v1beta/interactions` with `input` as `user_input`/`model_output` steps, `stream: true`, `store: false`. Text deltas only count when their step is `model_output` — reasoning steps stream their own deltas. `status: "incomplete"` means the model hit its output limit.
 - **busyRef in useChat**: `useRef` guards against concurrent `sendMessage` calls (closures capture stale state).

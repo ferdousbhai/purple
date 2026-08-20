@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "riff-web",
+  "main": "src/server.ts",
+  "compatibility_date": "2026-08-08",
+  "compatibility_flags": ["nodejs_compat"],
+  // v1 created the RiffAgent Durable Object; v2 retires it along with the
+  // hosted-inference/auth/billing stack. The app is local-first now: the only
+  // server-side job left is serving the shell.
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["RiffAgent"]
+    },
+    {
+      "tag": "v2",
+      "deleted_classes": ["RiffAgent"]
+    }
+  ],
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true, "head_sampling_rate": 1 },
+    "traces": { "enabled": true, "head_sampling_rate": 0.05 }
+  }
+}

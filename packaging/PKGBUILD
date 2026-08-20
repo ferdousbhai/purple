@@ -24,6 +24,8 @@ sha256sums=('7efd4d5c0c4826ecc8afb7a3db7daf8809761a784fdc44c97873b90db1596293')
 build() {
   cd "$srcdir/$pkgname-$pkgver"
   pnpm install --frozen-lockfile
+  # The pinned v0.3.1 tarball predates the build:webview rename; switch this
+  # to `pnpm run build:webview` when pkgver moves past 0.3.1.
   pnpm run build:web
   cargo build --release --locked --manifest-path src-tauri/Cargo.toml
 }

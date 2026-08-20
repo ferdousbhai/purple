@@ -10,7 +10,15 @@ packaging/pkg/
 src-tauri/target/
 src-tauri/gen/
 .env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
 *.tsbuildinfo
+# Cloudflare (apps/web): local state and generated Worker types
+.wrangler/
+apps/web/worker-configuration.d.ts
 package-lock.json
 bun.lockb
 bun.lock

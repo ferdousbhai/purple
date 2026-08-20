@@ -15,7 +15,8 @@ the WebKitGTK development packages listed in [README.md](./README.md).
 ## Commands
 
 - `pnpm run dev` — Vite and the Tauri shell together, with hot reload
-- `pnpm run dev:web` — Vite alone, for browser-only interface work
+- `pnpm run dev:webview` — Vite alone, for browser-only interface work
+- `pnpm run web:dev` — web app dev server (localhost:3000)
 - `pnpm run build` — release binary at `src-tauri/target/release/riff`
 - `pnpm run test` / `pnpm run test:rust` / `pnpm run typecheck` — single checks
 
@@ -24,7 +25,8 @@ the WebKitGTK development packages listed in [README.md](./README.md).
 - `src-tauri/` — Rust shell: window, Gemini transport, keyring, dialogs. No product logic
 - `src/mainview/` — React UI; `backend.ts` is the only module that talks to Tauri
 - `src/shared/` — types and the CLI grammar
-- `packages/core/` — music logic shared with `riff-hosted` via submodule
+- `apps/web/` — local-first web app on Cloudflare Workers
+- `packages/core/` — music logic shared by the desktop and web apps
 - `packaging/` — PKGBUILD and desktop entry
 
 See [AGENTS.md](./AGENTS.md) for file-by-file guidance.
@@ -37,7 +39,8 @@ See [AGENTS.md](./AGENTS.md) for file-by-file guidance.
 3. `bash -n scripts/*.sh` (CI does this)
 4. Don't commit `node_modules/ dist/ src-tauri/target/ .env` — they're in `.gitignore`
 
-Changing `packages/core/` also runs the hosted checks in CI, since the private
-hosted build consumes it. Keep that package free of runtime dependencies.
+`pnpm run check` covers both apps, so a `packages/*` change that breaks the
+web app fails right away. Keep `packages/core` free of runtime dependencies —
+it bundles into the Cloudflare Worker.
 
 Use `pnpm@10.27.0` (`npm install --global pnpm@10.27.0`).

@@ -1,6 +1,6 @@
 # Riff
 
-Riff is a desktop app for making music with AI.
+Riff is an app for making music with AI. It ships two ways: a native desktop app, and a web app at [riff-web.ferdousbd.workers.dev](https://riff-web.ferdousbd.workers.dev) — same instrument, same shared engine.
 
 You type a plain-English music idea, such as "make a slow lo-fi drum loop with warm chords." Riff asks Gemini to write a Strudel music pattern, puts that pattern in the editor, and plays it through your computer speakers.
 
@@ -96,6 +96,18 @@ Make it faster and add a bassline.
 Make the drums simpler and the chords darker.
 ```
 
+## Riff On The Web
+
+`apps/web` is the same instrument as a local-first web app on Cloudflare
+Workers. There are no accounts and no server-side storage or inference: your
+Gemini key, your chat, and your saved riffs live only in your browser, and
+generation requests go straight from the browser to Google.
+
+```bash
+pnpm run web:dev      # dev server at localhost:3000
+pnpm run web:deploy   # build + wrangler deploy
+```
+
 ## Command Line Usage
 
 With no arguments, Riff opens a random built-in musical recipe. It waits for
@@ -174,7 +186,7 @@ Check your internet connection, then restart Riff.
 
 ```bash
 pnpm run dev        # Vite + the Rust shell, with hot reload
-pnpm run dev:web    # Vite alone, for browser-only interface work
+pnpm run dev:webview  # Vite alone, for browser-only interface work
 pnpm run build      # Release binary at src-tauri/target/release/riff
 pnpm run test       # Interface and shared-logic tests
 pnpm run test:rust  # Shell tests

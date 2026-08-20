@@ -29,7 +29,7 @@ fi
 
 echo "[riff] building..."
 pnpm install --frozen-lockfile
-pnpm run build:web
+pnpm run build:webview
 cargo build --release --locked --manifest-path src-tauri/Cargo.toml
 
 echo "[riff] installing to ${bin_dir}..."
