@@ -2,7 +2,7 @@
 //!
 //! This module is deliberately dumb: it knows how to talk to the Interactions
 //! API and nothing about music. Prompts, schemas and every parser stay in
-//! TypeScript (`@riff/core`) so the desktop app and the hosted app keep sharing
+//! TypeScript (`@purple/core`) so the desktop app and the hosted app keep sharing
 //! them.
 
 use std::collections::HashMap;
@@ -60,7 +60,7 @@ impl GeminiState {
                 // Applies between reads, so a stalled stream fails instead of
                 // hanging the UI on a request that never finishes.
                 .read_timeout(Duration::from_secs(60))
-                .user_agent(concat!("riff/", env!("CARGO_PKG_VERSION")))
+                .user_agent(concat!("purple/", env!("CARGO_PKG_VERSION")))
                 .build()
                 .expect("could not build the HTTP client")
         })
@@ -101,7 +101,7 @@ fn generation_config(model: &str) -> Result<Value, String> {
 
 fn api_key() -> Result<String, String> {
     secrets::effective_key()
-        .ok_or_else(|| "Missing Google API key. Add one in Riff settings.".to_owned())
+        .ok_or_else(|| "Missing Google API key. Add one in Purple settings.".to_owned())
 }
 
 /// Conversation history as Interactions API steps.
@@ -137,7 +137,7 @@ fn friendly_api_error(status: reqwest::StatusCode, body: &str) -> String {
     let message = extract_error_message(body).unwrap_or_else(|| body.trim().to_owned());
 
     if message.contains("API key not valid") || message.contains("API_KEY_INVALID") {
-        return "Invalid API key. Check the Google Gemini API key saved in Riff settings."
+        return "Invalid API key. Check the Google Gemini API key saved in Purple settings."
             .to_owned();
     }
     if status == reqwest::StatusCode::TOO_MANY_REQUESTS || message.to_lowercase().contains("quota")
@@ -529,7 +529,7 @@ mod tests {
             reqwest::StatusCode::BAD_REQUEST,
             r#"{"error":{"message":"API key not valid. Please pass a valid API key."}}"#,
         );
-        assert!(message.contains("Riff settings"), "{message}");
+        assert!(message.contains("Purple settings"), "{message}");
     }
 
     #[test]

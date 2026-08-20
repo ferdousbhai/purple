@@ -14,7 +14,7 @@ import { PlaybackControls } from "./PlaybackControls";
 import {
   playbackHighlightExtension,
   updatePlaybackHighlights,
-} from "@riff/ui/playback-highlight";
+} from "@purple/ui/playback-highlight";
 import type {
   PlaybackState,
   EvalResult,

@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Riff main window: Tauri core APIs only. Every backend call goes through an explicit command.",
+  "description": "Purple main window: Tauri core APIs only. Every backend call goes through an explicit command.",
   "windows": ["main"],
   "permissions": ["core:default"]
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildTransitionCode,
   getTransitionStartCycle,
-} from "@riff/core/transitions";
+} from "@purple/core/transitions";
 
 describe("getTransitionStartCycle", () => {
   it("chooses the next whole cycle with enough evaluation lead time", () => {

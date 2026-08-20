@@ -1,6 +1,6 @@
 /**
  * Types shared by the desktop webview and the hosted app's studio UI.
- * Type declarations plus one constant — `@riff/core` stays dependency-free
+ * Type declarations plus one constant — `@purple/core` stays dependency-free
  * because the hosted build bundles it into a Cloudflare Worker.
  */
 
@@ -45,12 +45,12 @@ export type TransitionSuggestionsResult =
   | { ok: false; error: string };
 
 /**
- * The generation backend a Riff UI talks to. The desktop implements it over
+ * The generation backend a Purple UI talks to. The desktop implements it over
  * Tauri `invoke` + `Channel` (`src/mainview/backend.ts`, the only module that
  * imports `@tauri-apps/api`); the hosted app implements it over its chat agent
  * or the bring-your-own-key Gemini path.
  */
-export interface RiffBackend {
+export interface PurpleBackend {
   /**
    * Stream a pattern response. Deltas arrive on `onDelta`; the promise settles
    * when the model finishes, and rejects with a user-facing message on failure.

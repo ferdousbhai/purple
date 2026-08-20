@@ -1,6 +1,6 @@
 {
-  "name": "riff",
-  "version": "0.3.1",
+  "name": "purple",
+  "version": "0.4.0",
   "description": "AI-powered music production \u2014 Cursor for music",
   "license": "MIT",
   "packageManager": "pnpm@10.27.0",
@@ -15,15 +15,15 @@
     "test": "vitest run",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "typecheck": "tsc --noEmit",
-    "web:dev": "pnpm --filter @riff/web run dev",
-    "web:deploy": "pnpm --filter @riff/web run deploy",
-    "web:check": "pnpm --filter @riff/web run check",
+    "web:dev": "pnpm --filter @purple/web run dev",
+    "web:deploy": "pnpm --filter @purple/web run deploy",
+    "web:check": "pnpm --filter @purple/web run check",
     "check": "pnpm run lint && pnpm run test && pnpm run test:rust && pnpm run typecheck && pnpm run build:webview && pnpm run web:check",
     "lint": "oxlint"
   },
   "dependencies": {
-    "@riff/core": "workspace:*",
-    "@riff/ui": "workspace:*",
+    "@purple/core": "workspace:*",
+    "@purple/ui": "workspace:*",
     "@tauri-apps/api": "^2.11.1",
     "react": "^19.2.5",
     "react-dom": "^19.2.5"

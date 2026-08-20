@@ -1,6 +1,6 @@
 /**
  * `@strudel/web` ships no type definitions. These declarations describe only the
- * surface Riff uses, and mirror the upstream runtime behaviour:
+ * surface Purple uses, and mirror the upstream runtime behaviour:
  * `@strudel/web/web.mjs` re-exports `@strudel/core` (`getCps`, `getTime`),
  * `@strudel/webaudio` and `superdough` (`getAudioContext`, `initAudio`,
  * `samples`) alongside its own `initStrudel`/`hush`.

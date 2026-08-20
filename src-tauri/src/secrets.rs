@@ -3,7 +3,8 @@
 //! The key lives in the OS credential store (Secret Service on Linux). Machines
 //! without a running secret service fall back to a `0600` file under the config
 //! directory, which is also where Riff <= 0.2.0 kept the key — startup migrates
-//! that file into the keyring and deletes it.
+//! that file into the keyring and deletes it. Startup also migrates the whole
+//! pre-rebrand Riff identity (<= 0.3.x): its keyring entry and config file.
 
 use std::fs;
 use std::io::Write;
@@ -12,7 +13,9 @@ use std::path::PathBuf;
 use keyring::v1::{Entry, Error as KeyringError};
 use serde::Serialize;
 
-const SERVICE: &str = "dev.ferdous.riff";
+const SERVICE: &str = "dev.ferdous.purple";
+/// The pre-rebrand identity (the app shipped as Riff through 0.3.x).
+const LEGACY_SERVICE: &str = "dev.ferdous.riff";
 const ACCOUNT: &str = "gemini-api-key";
 
 #[derive(Debug, Serialize)]
@@ -27,11 +30,18 @@ fn entry() -> Result<Entry, KeyringError> {
     Entry::new(SERVICE, ACCOUNT)
 }
 
-fn fallback_path() -> Option<PathBuf> {
-    let config_home = std::env::var_os("XDG_CONFIG_HOME")
+fn config_home() -> Option<PathBuf> {
+    std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))?;
-    Some(config_home.join("riff").join("config.json"))
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))
+}
+
+fn fallback_path() -> Option<PathBuf> {
+    Some(config_home()?.join("purple").join("config.json"))
+}
+
+fn legacy_fallback_path() -> Option<PathBuf> {
+    Some(config_home()?.join("riff").join("config.json"))
 }
 
 /// A key is only usable once trimmed, and an all-whitespace one is no key at all.
@@ -41,7 +51,10 @@ fn usable_key(raw: &str) -> Option<String> {
 }
 
 fn read_fallback() -> Option<String> {
-    let path = fallback_path()?;
+    read_key_file(fallback_path()?)
+}
+
+fn read_key_file(path: PathBuf) -> Option<String> {
     let text = fs::read_to_string(path).ok()?;
     let value: serde_json::Value = serde_json::from_str(&text).ok()?;
     usable_key(value.get("googleApiKey")?.as_str()?)
@@ -94,7 +107,7 @@ fn restrict_to_owner(_dir: &std::path::Path) -> Result<(), String> {
     Ok(())
 }
 
-/// The key the user saved in Riff, from the keyring or the fallback file.
+/// The key the user saved in Purple, from the keyring or the fallback file.
 pub fn stored_key() -> Option<String> {
     let from_keyring = match entry().and_then(|entry| entry.get_password()) {
         Ok(key) => usable_key(&key),
@@ -162,8 +175,10 @@ pub fn clear() -> Result<ApiKeyStatus, String> {
     Ok(status())
 }
 
-/// Move a pre-Tauri `config.json` key into the credential store, then delete the file.
+/// Move a pre-Tauri `config.json` key into the credential store, then delete
+/// the file. Also adopts a key saved under the pre-rebrand Riff identity.
 pub fn migrate_legacy_file() {
+    migrate_riff_key();
     let Some(key) = read_fallback() else {
         return;
     };
@@ -180,6 +195,43 @@ pub fn migrate_legacy_file() {
         }
         Err(error) => {
             log::warn!("[Secrets] Keeping the key in the config file; credential store unavailable: {error}");
+        }
+    }
+}
+
+/// Adopt the key a Riff (<= 0.3.x) install saved — its keyring entry or its
+/// `~/.config/riff/config.json` — and clean the old identity up afterwards.
+fn migrate_riff_key() {
+    // A key already saved under the Purple identity is the newer one; leave
+    // any Riff leftovers alone so a rollback still finds them.
+    if stored_key().is_some() {
+        return;
+    }
+    let legacy_key = match Entry::new(LEGACY_SERVICE, ACCOUNT).and_then(|entry| entry.get_password())
+    {
+        Ok(key) => usable_key(&key),
+        Err(KeyringError::NoEntry) => None,
+        Err(error) => {
+            log::warn!("[Secrets] Credential store unavailable for the Riff migration: {error}");
+            None
+        }
+    }
+    .or_else(|| legacy_fallback_path().and_then(read_key_file));
+    let Some(key) = legacy_key else {
+        return;
+    };
+    match save(&key) {
+        Ok(_) => {
+            if let Ok(entry) = Entry::new(LEGACY_SERVICE, ACCOUNT) {
+                let _ = entry.delete_credential();
+            }
+            if let Some(path) = legacy_fallback_path() {
+                let _ = fs::remove_file(path);
+            }
+            log::info!("[Secrets] Migrated the API key saved by Riff.");
+        }
+        Err(error) => {
+            log::warn!("[Secrets] Keeping the key under the Riff identity; migration failed: {error}");
         }
     }
 }

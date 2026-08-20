@@ -1,11 +1,11 @@
 import { useEffect, useReducer, useCallback, useRef } from "react";
 import { useStrudel, type StrudelAudioOptions } from "./use-strudel";
-import type { PlaybackState, EvalResult, SourceRange } from "@riff/core/types";
+import type { PlaybackState, EvalResult, SourceRange } from "@purple/core/types";
 import {
   buildTransitionCode,
   DEFAULT_TRANSITION_CYCLES,
   getTransitionStartCycle,
-} from "@riff/core/transitions";
+} from "@purple/core/transitions";
 
 type AudioActivationResult =
   | { ok: true }

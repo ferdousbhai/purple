@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { visibleTextWithoutCodeBlocks } from "@riff/core/pattern";
+import { visibleTextWithoutCodeBlocks } from "@purple/core/pattern";
 
 describe("visibleTextWithoutCodeBlocks", () => {
   it("trims trailing whitespace left before a hidden streaming code block", () => {

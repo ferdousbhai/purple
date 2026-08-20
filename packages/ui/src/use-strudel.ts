@@ -6,7 +6,7 @@ import type {
   StrudelPattern,
   StrudelRepl,
 } from "@strudel/web/web.mjs";
-import type { EvalResult, SourceRange } from "@riff/core/types";
+import type { EvalResult, SourceRange } from "@purple/core/types";
 
 type StrudelModule = typeof import("@strudel/web/web.mjs");
 
@@ -32,7 +32,7 @@ export interface StrudelAudioOptions {
 async function defaultEnsureRunningContext(context: AudioContext): Promise<void> {
   const state = String(context.state);
   if (state === "closed") {
-    throw new Error("Audio output is closed. Reload Riff and try again.");
+    throw new Error("Audio output is closed. Reload Purple and try again.");
   }
   if (state !== "running") await context.resume();
   const resumedState = String(context.state);
@@ -211,7 +211,7 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
       const haps = pattern
         .queryArc(time - 1, time + 1, {
           _cps: strudel.getCps(),
-          cyclist: "riff-highlight",
+          cyclist: "purple-highlight",
         })
         .filter((hap) => hap.isActive?.(time));
 

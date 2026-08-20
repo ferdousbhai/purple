@@ -1,4 +1,4 @@
-import { visibleTextWithoutCodeBlocks } from "@riff/core/pattern";
+import { visibleTextWithoutCodeBlocks } from "@purple/core/pattern";
 
 interface CodeBlockRendererProps {
   text: string;

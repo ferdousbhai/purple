@@ -1,5 +1,5 @@
 import type { PlaybackState } from "../../shared/types";
-import { DEFAULT_TRANSITION_CYCLES } from "@riff/core/transitions";
+import { DEFAULT_TRANSITION_CYCLES } from "@purple/core/transitions";
 
 interface PlaybackControlsProps {
   playbackState: PlaybackState;

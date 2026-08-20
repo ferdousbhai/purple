@@ -1,4 +1,4 @@
-# AGENTS.md — ferdousbhai/riff
+# AGENTS.md — ferdousbhai/purple
 
 Index for agents and contributors. Code is self-documenting — read the file you are editing. `AGENTS.md` is only an index; gotchas live as comments next to the code they explain.
 
@@ -21,21 +21,21 @@ src/
     backend.ts    # the only module that imports @tauri-apps/api
     audio-activation.ts, audio-shim.ts
     components/   # EditorPanel, ChatPanel, PlaybackControls, MessageBubble, StreamingText, CodeBlockRenderer, ApiKeyDialog
-    hooks/        # useChat, useRiffController, useKeyboardShortcuts, useTransitionSuggestions
+    hooks/        # useChat, usePurpleController, useKeyboardShortcuts, useTransitionSuggestions
   shared/         # desktop-only types.ts, cli.ts (+ parser tests)
 apps/
-  web/            # @riff/web — hosted app (riff-web Worker)
+  web/            # @purple/web — hosted app (riff-web Worker)
     src/server.ts             # Worker entry: serves the shell, nothing else
-    src/components/riff-studio.tsx  # the whole web UI
+    src/components/purple-studio.tsx  # the whole web UI
     src/lib/byok.ts           # browser → Google inference + chat persistence
     src/db-collections/       # TanStack DB localStorage collection (saved patterns)
     wrangler.jsonc            # no bindings; keeps DO migration history
 packages/
-  core/           # @riff/core — shared, dependency-free
+  core/           # @purple/core — shared, dependency-free
     src/pattern.ts, prompts.ts, recipes.ts, transitions.ts, compaction.ts, types.ts, index.ts
-  ui/             # @riff/ui — shared webview modules (React/CodeMirror/@strudel/web)
+  ui/             # @purple/ui — shared webview modules (React/CodeMirror/@strudel/web)
     src/use-strudel.ts, use-playback.ts, playback-highlight.ts, strudel-web.d.ts
-packaging/        # PKGBUILD + riff.desktop
+packaging/        # PKGBUILD + purple.desktop
 scripts/          # install-user.sh
 ```
 
@@ -45,7 +45,7 @@ scripts/          # install-user.sh
 pnpm install
 pnpm run dev          # tauri dev (Vite + Rust shell)
 pnpm run dev:webview  # Vite alone, browser-only desktop UI work
-pnpm run build        # release binary at src-tauri/target/release/riff
+pnpm run build        # release binary at src-tauri/target/release/purple
 pnpm run web:dev      # web app dev server (localhost:3000)
 pnpm run web:deploy   # build + wrangler deploy the riff-web Worker
 pnpm run web:check    # web test/typecheck/build
@@ -60,7 +60,7 @@ pnpm run check        # lint + test + test:rust + typecheck + build:webview + we
 There is no GitHub Actions workflow — Cloudflare **Workers Builds** is the
 only automated gate. It deploys `apps/web` on every push to `master`: build
 command `pnpm run web:check`, deploy command
-`pnpm --filter @riff/web exec wrangler deploy`. `web:check` fails the build
+`pnpm --filter @purple/web exec wrangler deploy`. `web:check` fails the build
 before the deploy command runs when a test or typecheck breaks. Everything
 else (desktop tests, cargo, lint) is covered by running `pnpm run check`
 locally before pushing.
@@ -69,7 +69,7 @@ locally before pushing.
 
 - `src/mainview/backend.ts` + `src-tauri/src/gemini.rs` — the whole desktop backend contract: `stream_pattern` over a `tauri::ipc::Channel`, `generate_json` for structured output (the caller passes the prompt and schema, so Rust stays generic)
 - `src/mainview/hooks/useChat.ts` — `busyRef` guard, auto-retry (max 2) on eval failure, background compaction
-- `apps/web/src/lib/byok.ts` — the web app's only inference path: browser → Google with the visitor's key (header, never URL); chat persists in localStorage and compacts with the shared `@riff/core` policy
+- `apps/web/src/lib/byok.ts` — the web app's only inference path: browser → Google with the visitor's key (header, never URL); chat persists in localStorage and compacts with the shared `@purple/core` policy
 - `packages/ui/src/use-strudel.ts` + `src/mainview/audio-activation.ts` — AudioContext must be created synchronously in user gesture, then passed to `initStrudel({ prebake })` with `samples("github:tidalcycles/Dirt-Samples/master")`; the desktop injects `requireRunningAudioContext` via `StrudelAudioOptions`
 - `packages/core/src/*` — pattern/recipes/transitions/compaction, self-contained; tests alongside
 
@@ -77,8 +77,8 @@ locally before pushing.
 
 - Code explains itself — name things clearly, keep functions small. Add comments only for non-obvious behavior or workarounds.
 - Prefer existing libraries and official docs patterns over custom implementations.
-- `pnpm` workspace is `packages/*` + `apps/*`; `@riff/core` and `@riff/ui` are `workspace:*`.
-- `@riff/core` stays dependency-free (it bundles into the Worker); anything that imports React, CodeMirror or `@strudel/web` belongs in `@riff/ui`.
+- `pnpm` workspace is `packages/*` + `apps/*`; `@purple/core` and `@purple/ui` are `workspace:*`.
+- `@purple/core` stays dependency-free (it bundles into the Worker); anything that imports React, CodeMirror or `@strudel/web` belongs in `@purple/ui`.
 - No server-side secrets: the Worker has no bindings. Anything stateful belongs in the visitor's browser.
 - Do not commit `node_modules`, `dist`, `src-tauri/target`, `.env`, `.wrangler`.
 
@@ -86,5 +86,5 @@ locally before pushing.
 
 - Search `TODO`/`FIXME` in code for known workarounds; each has a comment explaining why.
 - Linux WebKitGTK quirks are isolated in `src/mainview/audio-shim.ts`.
-- Nothing product-shaped goes into `src-tauri/`. If the web app could ever want it, it belongs in `@riff/core`.
+- Nothing product-shaped goes into `src-tauri/`. If the web app could ever want it, it belongs in `@purple/core`.
 - `apps/web/wrangler.jsonc` keeps the Durable Object migration history (`v1` create `RiffAgent`, `v2` delete) from the retired hosted-inference stack — removing it would break deploys against the existing Worker.

@@ -1,7 +1,7 @@
 //! MPRIS media-control bridge (Linux only).
 //!
 //! Rust only speaks D-Bus here: desktop media-key presses become
-//! `riff://media-control` events for the webview, and the webview reports
+//! `purple://media-control` events for the webview, and the webview reports
 //! playback status back through `set_playback_state`. What a "play" or "stop"
 //! request *means* stays in TypeScript, next to the rest of the playback logic.
 
@@ -38,7 +38,7 @@ mod linux {
 
     /// Emitted at the webview whenever a desktop media control asks for something.
     /// Payload: `"play"`, `"pause"`, `"play-pause"` or `"stop"`.
-    pub const MEDIA_CONTROL_EVENT: &str = "riff://media-control";
+    pub const MEDIA_CONTROL_EVENT: &str = "purple://media-control";
 
     /// What the desktop sees, as last reported by the webview.
     struct Shared {
@@ -49,7 +49,7 @@ mod linux {
     #[derive(Clone)]
     pub struct MprisState {
         shared: Arc<Mutex<Shared>>,
-        server: Arc<OnceLock<Server<RiffPlayer>>>,
+        server: Arc<OnceLock<Server<PurplePlayer>>>,
     }
 
     impl Default for MprisState {
@@ -83,7 +83,7 @@ mod linux {
         builder.build()
     }
 
-    /// Register `org.mpris.MediaPlayer2.Riff` on the session bus. Registration
+    /// Register `org.mpris.MediaPlayer2.Purple` on the session bus. Registration
     /// runs in the background; a desktop without D-Bus just logs and moves on.
     pub fn init(app: &AppHandle) {
         let state = app.state::<MprisState>();
@@ -91,7 +91,7 @@ mod linux {
         let cell = state.server.clone();
         let app = app.clone();
         tauri::async_runtime::spawn(async move {
-            match Server::new("Riff", RiffPlayer { app, shared }).await {
+            match Server::new("Purple", PurplePlayer { app, shared }).await {
                 Ok(server) => {
                     log::info!("[MPRIS] Registered as {}", server.bus_name());
                     let _ = cell.set(server);
@@ -125,12 +125,12 @@ mod linux {
         }
     }
 
-    struct RiffPlayer {
+    struct PurplePlayer {
         app: AppHandle,
         shared: Arc<Mutex<Shared>>,
     }
 
-    impl RiffPlayer {
+    impl PurplePlayer {
         fn request(&self, action: &str) -> fdo::Result<()> {
             log::info!("[MPRIS] Desktop requested {action}");
             self.app
@@ -139,7 +139,7 @@ mod linux {
         }
     }
 
-    impl mpris_server::RootInterface for RiffPlayer {
+    impl mpris_server::RootInterface for PurplePlayer {
         async fn raise(&self) -> fdo::Result<()> {
             if let Some(window) = self.app.get_webview_window("main") {
                 let _ = window.unminimize();
@@ -178,11 +178,11 @@ mod linux {
         }
 
         async fn identity(&self) -> fdo::Result<String> {
-            Ok("Riff".into())
+            Ok("Purple".into())
         }
 
         async fn desktop_entry(&self) -> fdo::Result<String> {
-            Ok("riff".into())
+            Ok("purple".into())
         }
 
         async fn supported_uri_schemes(&self) -> fdo::Result<Vec<String>> {
@@ -194,7 +194,7 @@ mod linux {
         }
     }
 
-    impl mpris_server::PlayerInterface for RiffPlayer {
+    impl mpris_server::PlayerInterface for PurplePlayer {
         async fn next(&self) -> fdo::Result<()> {
             Err(fdo::Error::NotSupported("Next is not supported".into()))
         }

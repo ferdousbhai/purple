@@ -10,9 +10,9 @@ const hasWindow = "window" in globalThis;
 
 export function applyWebAudioShim(): void {
   if (!hasWindow || !window.AudioContext) return;
-  if (!isLinuxWebKitUserAgent(navigator.userAgent) || window.__riffAudioShimApplied)
+  if (!isLinuxWebKitUserAgent(navigator.userAgent) || window.__purpleAudioShimApplied)
     return;
-  window.__riffAudioShimApplied = true;
+  window.__purpleAudioShimApplied = true;
 
   // Wrap ChannelMergerNode constructor & createChannelMerger
   const OriginalChannelMergerNode = window.ChannelMergerNode;
@@ -148,6 +148,6 @@ export function isLinuxWebKitUserAgent(userAgent: string): boolean {
 
 declare global {
   interface Window {
-    __riffAudioShimApplied?: boolean;
+    __purpleAudioShimApplied?: boolean;
   }
 }

@@ -8,10 +8,10 @@ importers:
 
   .:
     dependencies:
-      '@riff/core':
+      '@purple/core':
         specifier: workspace:*
         version: link:packages/core
-      '@riff/ui':
+      '@purple/ui':
         specifier: workspace:*
         version: link:packages/ui
       '@tauri-apps/api':
@@ -90,10 +90,10 @@ importers:
       '@codemirror/view':
         specifier: ^6.41.1
         version: 6.41.1
-      '@riff/core':
+      '@purple/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@riff/ui':
+      '@purple/ui':
         specifier: workspace:*
         version: link:../../packages/ui
       '@tanstack/react-db':
@@ -160,7 +160,7 @@ importers:
 
   packages/ui:
     dependencies:
-      '@riff/core':
+      '@purple/core':
         specifier: workspace:*
         version: link:../core
       '@strudel/web':

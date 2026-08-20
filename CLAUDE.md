@@ -1,4 +1,4 @@
-# Riff
+# Purple
 
 AI-powered music production. Users describe music in natural language, Gemini generates Strudel live-coding patterns, audio plays natively in the webview. Split-pane layout: editable code editor (left) + chat (right). One repo, two apps sharing `packages/*`: the Tauri desktop app (root) and a local-first web app (`apps/web`, deployed as the `riff-web` Cloudflare Worker).
 
@@ -16,7 +16,7 @@ AI-powered music production. Users describe music in natural language, Gemini ge
 
 - `pnpm run dev` / `pnpm run start` — `tauri dev` (Vite + the Rust shell, hot reload)
 - `pnpm run dev:webview` — Vite alone, for browser-only desktop UI work
-- `pnpm run build` — release binary at `src-tauri/target/release/riff`
+- `pnpm run build` — release binary at `src-tauri/target/release/purple`
 - `pnpm run build:webview` — Vite build into `dist/`
 - `pnpm run web:dev` — web app dev server (localhost:3000)
 - `pnpm run web:deploy` — build + `wrangler deploy` the riff-web Worker
@@ -55,22 +55,22 @@ src/
                                    # StreamingText, CodeBlockRenderer, ApiKeyDialog
     hooks/
       useChat.ts                   # Streaming chat state
-      useRiffController.ts         # Prompt, playback, startup, and settings orchestration
+      usePurpleController.ts         # Prompt, playback, startup, and settings orchestration
       useTransitionSuggestions.ts  # Next-move suggestions
       useKeyboardShortcuts.ts      # Ctrl+., Escape handlers
   shared/                          # Desktop-only types and CLI grammar
     types.ts, cli.ts
-apps/web/                          # @riff/web — local-first web app on Cloudflare Workers
+apps/web/                          # @purple/web — local-first web app on Cloudflare Workers
                                    # (no accounts, no server-side storage/inference; BYOK Gemini
                                    # key + saved patterns + chat live in the visitor's browser)
   src/server.ts                    # Worker entry: serves the shell, nothing else
-  src/components/riff-studio.tsx   # The whole web UI
+  src/components/purple-studio.tsx   # The whole web UI
   src/lib/byok.ts                  # Browser → Google inference + chat persistence/compaction
   src/db-collections/              # TanStack DB localStorage collection (saved patterns)
   wrangler.jsonc                   # No bindings; keeps the retired RiffAgent DO migration history
-packages/core/                     # @riff/core — shared between both apps; dependency-free
-                                   # (prompts, parsers, recipes, shared types, RiffBackend)
-packages/ui/                       # @riff/ui — shared webview modules that need React/CodeMirror/
+packages/core/                     # @purple/core — shared between both apps; dependency-free
+                                   # (prompts, parsers, recipes, shared types, PurpleBackend)
+packages/ui/                       # @purple/ui — shared webview modules that need React/CodeMirror/
                                    # @strudel/web: use-strudel, use-playback, playback-highlight,
                                    # plus the hand-written @strudel/web type declarations
 packaging/                         # PKGBUILD + desktop entry
@@ -103,20 +103,20 @@ User types message → ChatPanel → backend.streamPattern() → invoke("stream_
 
 ## Key Patterns
 
-- **`@riff/core` stays dependency-free** (it is bundled into a Cloudflare Worker); anything that imports React, CodeMirror or `@strudel/web` belongs in `@riff/ui`. The shared engine (`useStrudel`/`usePlayback`) takes a `StrudelAudioOptions` capability: the desktop injects `requireRunningAudioContext` from `audio-activation.ts` so the WebKitGTK quirks (non-standard "interrupted" state, silent-buffer priming) stay desktop-side instead of shipping to the web app. `audio-shim.ts` likewise stays desktop-only.
-- **Rust holds no product logic**: prompts, JSON schemas, parsers, retry policy and argument parsing all live in TypeScript (`@riff/core`, `src/shared`), because `apps/web` shares them. `generate_json` takes the system instruction and schema as parameters for exactly this reason.
-- **One adapter**: `src/mainview/backend.ts` is the only module importing `@tauri-apps/api`. Hooks talk to it, never to `invoke` directly. It implements the shared `RiffBackend` interface from `@riff/core/types` (`stream`/`abortStream`/`generateTitle`/`suggestTransitions`); the web app provides its own implementation over its BYOK path (`apps/web/src/lib/byok.ts` — browser → Google directly, key in a header, never through a server).
+- **`@purple/core` stays dependency-free** (it is bundled into a Cloudflare Worker); anything that imports React, CodeMirror or `@strudel/web` belongs in `@purple/ui`. The shared engine (`useStrudel`/`usePlayback`) takes a `StrudelAudioOptions` capability: the desktop injects `requireRunningAudioContext` from `audio-activation.ts` so the WebKitGTK quirks (non-standard "interrupted" state, silent-buffer priming) stay desktop-side instead of shipping to the web app. `audio-shim.ts` likewise stays desktop-only.
+- **Rust holds no product logic**: prompts, JSON schemas, parsers, retry policy and argument parsing all live in TypeScript (`@purple/core`, `src/shared`), because `apps/web` shares them. `generate_json` takes the system instruction and schema as parameters for exactly this reason.
+- **One adapter**: `src/mainview/backend.ts` is the only module importing `@tauri-apps/api`. Hooks talk to it, never to `invoke` directly. It implements the shared `PurpleBackend` interface from `@purple/core/types` (`stream`/`abortStream`/`generateTitle`/`suggestTransitions`); the web app provides its own implementation over its BYOK path (`apps/web/src/lib/byok.ts` — browser → Google directly, key in a header, never through a server).
 - **Channels, not events**: streaming uses `tauri::ipc::Channel`, which guarantees ordered delivery, so the UI does not need to filter stale chunks.
 - **Interactions API**: requests go to `POST /v1beta/interactions` with `input` as `user_input`/`model_output` steps, `stream: true`, `store: false`. Text deltas only count when their step is `model_output` — reasoning steps stream their own deltas. `status: "incomplete"` means the model hit its output limit.
 - **busyRef in useChat**: `useRef` guards against concurrent `sendMessage` calls (closures capture stale state).
-- **Background compaction**: instead of just trimming, `useChat` folds the whole history into a rolling artifact — prose summary + latest pattern code verbatim (`@riff/core/compaction`) — via a background `generate_json` call after a send settles; each generation sends the artifact plus everything since the fold, and the old `MAX_CONTEXT_MESSAGES` trim stays as the fallback cap when no artifact exists or a fold is stale/failed.
+- **Background compaction**: instead of just trimming, `useChat` folds the whole history into a rolling artifact — prose summary + latest pattern code verbatim (`@purple/core/compaction`) — via a background `generate_json` call after a send settles; each generation sends the artifact plus everything since the fold, and the old `MAX_CONTEXT_MESSAGES` trim stays as the fallback cap when no artifact exists or a fold is stale/failed.
 - **Staged playback**: a prompt never plays on its own. The generated pattern lands in the editor and waits for XFADE or PLAY, because a webview only starts audio inside a user gesture. When PLAY/XFADE fails to evaluate a generated (not hand-edited) pattern, the error goes back to Gemini as a hidden message and each fix replays, up to 2 retries (`patternRepair.ts`).
 - **Strudel audio init**: AudioContext creation/resume starts synchronously inside a user gesture, then the same context is passed to `initStrudel()`.
 - **Dirt-Samples**: `samples("github:tidalcycles/Dirt-Samples/master")` must be called in `initStrudel({ prebake })` to load bd/sd/hh/cp etc. Without this, `s()` patterns produce no sound.
-- **Secrets**: the key lives in the OS credential store (Secret Service). A pre-0.3 `~/.config/riff/config.json` is migrated into the keyring at startup and deleted; machines without a secret service fall back to that `0600` file.
-- **Single instance**: a second `riff …` focuses the running window and forwards its arguments over the `riff://startup-args` event.
-- **MPRIS**: `mpris.rs` registers `org.mpris.MediaPlayer2.Riff` (crate `mpris-server`) and only bridges D-Bus: media-key requests become `riff://media-control` events (`"play"`/`"pause"`/`"play-pause"`/`"stop"`) that `useRiffController` interprets, and the webview reports state back via `set_playback_state`. A media key can stop playback any time but only *start* it if a user gesture already unlocked audio (`isAudioReady`) — a D-Bus event is not a gesture, so the request is otherwise ignored.
-- **PipeWire/Pulse client name**: `PULSE_PROP_application.name=Riff` (+ icon/media name) is set in `run()` before the webview spawns; WebKitGTK's WebProcess inherits it, so mixers show "Riff" instead of a generic WebKit client.
+- **Secrets**: the key lives in the OS credential store (Secret Service). A key saved by a pre-rebrand Riff install (its keyring entry or `~/.config/riff/config.json`) is adopted at startup; machines without a secret service fall back to a `0600` `~/.config/purple/config.json`.
+- **Single instance**: a second `purple …` focuses the running window and forwards its arguments over the `purple://startup-args` event.
+- **MPRIS**: `mpris.rs` registers `org.mpris.MediaPlayer2.Purple` (crate `mpris-server`) and only bridges D-Bus: media-key requests become `purple://media-control` events (`"play"`/`"pause"`/`"play-pause"`/`"stop"`) that `usePurpleController` interprets, and the webview reports state back via `set_playback_state`. A media key can stop playback any time but only *start* it if a user gesture already unlocked audio (`isAudioReady`) — a D-Bus event is not a gesture, so the request is otherwise ignored.
+- **PipeWire/Pulse client name**: `PULSE_PROP_application.name=Purple` (+ icon/media name) is set in `run()` before the webview spawns; WebKitGTK's WebProcess inherits it, so mixers show "Purple" instead of a generic WebKit client.
 - **Omarchy theming**: `get_system_theme` reads `omarchy/current/theme` (`~/.local/state`, then `~/.config`) — `colors.toml` first, `alacritty.toml` as fallback — and `system-theme.ts` overrides the `@theme` CSS tokens (`--color-surface*`, `--color-text`, `--color-neon-cyan`) at startup. Best-effort only: no theme dir, hex-invalid colors, or non-Linux keeps the built-in dark palette.
 - **Keyboard shortcuts**: Ctrl+. stops playback, Escape cancels stream, Enter sends messages, Ctrl+Enter evaluates code in editor.
 
@@ -131,4 +131,4 @@ User types message → ChatPanel → backend.streamPattern() → invoke("stream_
 - `GEMINI_API_KEY` — optional alternative to saving a key with the in-app `KEY` dialog
 - `GEMINI_MODEL` — optional, defaults to `gemini-3.7-flash`
 - `GEMINI_THINKING_LEVEL` — optional Gemini 3 thinking level (`low`/`medium`/`high`), defaults to `low`
-- `RIFF_GPU=1` — opt back into WebKitGTK's DMABUF renderer, which Riff disables by default because it renders a blank window on several Mesa drivers
+- `PURPLE_GPU=1` — opt back into WebKitGTK's DMABUF renderer, which Purple disables by default because it renders a blank window on several Mesa drivers

@@ -1,9 +1,9 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Riff",
-  "mainBinaryName": "riff",
-  "version": "0.3.1",
-  "identifier": "dev.ferdous.riff",
+  "productName": "Purple",
+  "mainBinaryName": "purple",
+  "version": "0.4.0",
+  "identifier": "dev.ferdous.purple",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Riff",
+        "title": "Purple",
         "width": 1200,
         "height": 800,
         "x": 200,
@@ -34,7 +34,7 @@
     "active": false,
     "category": "Music",
     "shortDescription": "AI-powered music production",
-    "longDescription": "Describe music in plain language; Riff writes and plays Strudel patterns.",
+    "longDescription": "Describe music in plain language; Purple writes and plays Strudel patterns.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

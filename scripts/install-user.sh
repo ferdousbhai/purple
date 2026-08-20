@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build Riff and install it for the current user (no root, no package manager).
+# Build Purple and install it for the current user (no root, no package manager).
 # On Arch/Omarchy prefer the package: makepkg -si from packaging/PKGBUILD.
 set -euo pipefail
 
@@ -27,26 +27,26 @@ if command -v pacman >/dev/null 2>&1; then
   fi
 fi
 
-echo "[riff] building..."
+echo "[purple] building..."
 pnpm install --frozen-lockfile
 pnpm run build:webview
 cargo build --release --locked --manifest-path src-tauri/Cargo.toml
 
-echo "[riff] installing to ${bin_dir}..."
-install -Dm755 src-tauri/target/release/riff "${bin_dir}/riff"
-install -Dm644 packaging/riff.desktop "${apps_dir}/riff.desktop"
-install -Dm644 assets/riff.svg "${icons_dir}/scalable/apps/riff.svg"
-install -Dm644 src-tauri/icons/32x32.png "${icons_dir}/32x32/apps/riff.png"
-install -Dm644 src-tauri/icons/64x64.png "${icons_dir}/64x64/apps/riff.png"
-install -Dm644 src-tauri/icons/128x128.png "${icons_dir}/128x128/apps/riff.png"
-install -Dm644 "src-tauri/icons/128x128@2x.png" "${icons_dir}/256x256/apps/riff.png"
+echo "[purple] installing to ${bin_dir}..."
+install -Dm755 src-tauri/target/release/purple "${bin_dir}/purple"
+install -Dm644 packaging/purple.desktop "${apps_dir}/purple.desktop"
+install -Dm644 assets/purple.svg "${icons_dir}/scalable/apps/purple.svg"
+install -Dm644 src-tauri/icons/32x32.png "${icons_dir}/32x32/apps/purple.png"
+install -Dm644 src-tauri/icons/64x64.png "${icons_dir}/64x64/apps/purple.png"
+install -Dm644 src-tauri/icons/128x128.png "${icons_dir}/128x128/apps/purple.png"
+install -Dm644 "src-tauri/icons/128x128@2x.png" "${icons_dir}/256x256/apps/purple.png"
 
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$apps_dir" >/dev/null 2>&1 || true
 command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -q "$icons_dir" >/dev/null 2>&1 || true
 command -v omarchy-refresh-walker >/dev/null 2>&1 && omarchy-refresh-walker >/dev/null 2>&1 || true
 
-echo "[riff] installed. Run 'riff', or search for Riff in the launcher."
+echo "[purple] installed. Run 'purple', or search for Purple in the launcher."
 case ":$PATH:" in
   *":${bin_dir}:"*) ;;
-  *) echo "[riff] note: ${bin_dir} is not on your PATH." ;;
+  *) echo "[purple] note: ${bin_dir} is not on your PATH." ;;
 esac

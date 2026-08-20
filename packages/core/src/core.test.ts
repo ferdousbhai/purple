@@ -8,7 +8,7 @@ import {
   visibleTextWithoutCodeBlocks,
 } from "./index";
 
-describe("@riff/core", () => {
+describe("@purple/core", () => {
   it("extracts only labelled Strudel blocks", () => {
     expect(extractPattern("```strudel\ns(\"bd\")\n```\nok")).toBe('s("bd")');
     expect(extractPattern("```\ns(\"bd\")\n```" )).toBeNull();

@@ -3,7 +3,7 @@ import { Group, Panel, Separator } from "react-resizable-panels";
 import { EditorPanel } from "./components/EditorPanel";
 import { ChatPanel } from "./components/ChatPanel";
 import { ApiKeyDialog } from "./components/ApiKeyDialog";
-import { useRiffController } from "./hooks/useRiffController";
+import { usePurpleController } from "./hooks/usePurpleController";
 import type { PlaybackState } from "../shared/types";
 
 const EQ_BAR_DELAYS = [0, 0.15, 0.3, 0.1, 0.25];
@@ -49,7 +49,7 @@ export function App() {
     transitionSuggestionsError,
     play,
     transition,
-  } = useRiffController();
+  } = usePurpleController();
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
 
   function closeSettings(): void {
@@ -66,7 +66,7 @@ export function App() {
       <div className="h-9 flex items-center px-4 border-b border-neon-cyan/10 bg-surface/80 backdrop-blur-sm relative z-10">
         <div className="flex items-center gap-2">
           <span className="text-neon-cyan glow-cyan font-display font-bold text-sm tracking-wider">
-            RIFF
+            PURPLE
           </span>
           <span className="text-[10px] font-mono text-neon-cyan/40 tracking-widest uppercase">
             synth console

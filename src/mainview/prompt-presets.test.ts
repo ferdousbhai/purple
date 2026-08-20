@@ -3,7 +3,7 @@ import {
   PROMPT_PRESETS,
   PROMPT_MODIFIERS,
   generateRandomPrompt,
-} from "@riff/core/recipes";
+} from "@purple/core/recipes";
 
 describe("prompt-presets", () => {
   it("exports valid prompt presets", () => {

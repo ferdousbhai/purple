@@ -12,7 +12,7 @@ import {
   generateRandomPrompt,
   type PromptPreset,
   type PromptModifier,
-} from "@riff/core/recipes";
+} from "@purple/core/recipes";
 import type { Message, TransitionSuggestion } from "../../shared/types";
 
 type TransitionSuggestionsStatus = "idle" | "loading" | "ready" | "error";

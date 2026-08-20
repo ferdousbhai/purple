@@ -33,7 +33,7 @@ export function patternFilename(title: string): string {
     .replace(/^-+|-+$/g, "")
     .slice(0, 64)
     .replace(/-+$/g, "");
-  return `${slug || "riff-pattern"}.strudel`;
+  return `${slug || "purple-pattern"}.strudel`;
 }
 
 export function validateGeneratedPatternTitle(value: string): string | null {

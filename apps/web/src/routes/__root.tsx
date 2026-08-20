@@ -12,7 +12,7 @@ export const Route = createRootRoute({
         content: 'width=device-width, initial-scale=1',
       },
       {
-        title: 'Riff — AI music production',
+        title: 'Purple — AI music production',
       },
     ],
     links: [
@@ -30,14 +30,14 @@ export const Route = createRootRoute({
   }),
   notFoundComponent: () => (
     <main className="route-message">
-      <h1>RIFF</h1>
+      <h1>PURPLE</h1>
       <p>That page does not exist.</p>
       <a href="/">Return to the studio</a>
     </main>
   ),
   errorComponent: ({ error }) => (
     <main className="route-message">
-      <h1>RIFF</h1>
+      <h1>PURPLE</h1>
       <p role="alert">{error.message}</p>
       <a href="/">Reload the studio</a>
     </main>

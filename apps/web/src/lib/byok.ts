@@ -1,9 +1,9 @@
 /**
  * Bring-your-own-key mode: the visitor's Gemini API key lives only in this
  * browser's localStorage and every request goes straight from the browser to
- * Google's API. Riff's servers are never in the path — the key is sent in a
+ * Google's API. Purple's servers are never in the path — the key is sent in a
  * request header (never a URL) and is never transmitted to, logged by, or
- * recoverable from Riff.
+ * recoverable from Purple.
  */
 
 import {
@@ -22,12 +22,33 @@ import {
   type CompactionArtifact,
   type ResponseSchema,
   type TransitionSuggestion,
-} from '@riff/core'
-import type { ChatMessage } from '@riff/core/types'
+} from '@purple/core'
+import type { ChatMessage } from '@purple/core/types'
 import { z } from 'zod'
 
-const STORAGE_KEY = 'riff.byok.gemini-key'
-const CHAT_STORAGE_KEY = 'riff.byok.chat'
+const STORAGE_KEY = 'purple.byok.gemini-key'
+const CHAT_STORAGE_KEY = 'purple.byok.chat'
+
+// One-time adoption of the pre-rebrand keys (the app shipped as Riff through
+// 0.3.x), so a returning visitor keeps their key and chat.
+try {
+  if ('window' in globalThis) {
+    for (const [legacy, current] of [
+      ['riff.byok.gemini-key', STORAGE_KEY],
+      ['riff.byok.chat', CHAT_STORAGE_KEY],
+    ] as const) {
+      const value = window.localStorage.getItem(legacy)
+      if (value !== null) {
+        if (window.localStorage.getItem(current) === null) {
+          window.localStorage.setItem(current, value)
+        }
+        window.localStorage.removeItem(legacy)
+      }
+    }
+  }
+} catch {
+  // Storage unavailable (private mode); nothing to migrate.
+}
 /**
  * Persistence cap only — the context sent to Gemini is bounded separately by
  * buildContextWindow. Keeps the stored transcript from growing localStorage

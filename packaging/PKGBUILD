@@ -1,10 +1,10 @@
 # Maintainer: Ferdous Bhai <ferdousbd@gmail.com>
-pkgname=riff
-pkgver=0.3.1
+pkgname=purple
+pkgver=0.4.0
 pkgrel=1
 pkgdesc="AI-powered music production: describe music in plain language and hear Strudel patterns play"
 arch=('x86_64')
-url="https://github.com/ferdousbhai/riff"
+url="https://github.com/ferdousbhai/purple"
 license=('MIT')
 depends=(
   'webkit2gtk-4.1'
@@ -24,9 +24,7 @@ sha256sums=('7efd4d5c0c4826ecc8afb7a3db7daf8809761a784fdc44c97873b90db1596293')
 build() {
   cd "$srcdir/$pkgname-$pkgver"
   pnpm install --frozen-lockfile
-  # The pinned v0.3.1 tarball predates the build:webview rename; switch this
-  # to `pnpm run build:webview` when pkgver moves past 0.3.1.
-  pnpm run build:web
+  pnpm run build:webview
   cargo build --release --locked --manifest-path src-tauri/Cargo.toml
 }
 
@@ -39,14 +37,14 @@ check() {
 package() {
   cd "$srcdir/$pkgname-$pkgver"
 
-  install -Dm755 src-tauri/target/release/riff "$pkgdir/usr/bin/riff"
-  install -Dm644 packaging/riff.desktop "$pkgdir/usr/share/applications/riff.desktop"
-  install -Dm644 assets/riff.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/riff.svg"
+  install -Dm755 src-tauri/target/release/purple "$pkgdir/usr/bin/purple"
+  install -Dm644 packaging/purple.desktop "$pkgdir/usr/share/applications/purple.desktop"
+  install -Dm644 assets/purple.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/purple.svg"
 
-  install -Dm644 src-tauri/icons/32x32.png "$pkgdir/usr/share/icons/hicolor/32x32/apps/riff.png"
-  install -Dm644 src-tauri/icons/64x64.png "$pkgdir/usr/share/icons/hicolor/64x64/apps/riff.png"
-  install -Dm644 src-tauri/icons/128x128.png "$pkgdir/usr/share/icons/hicolor/128x128/apps/riff.png"
-  install -Dm644 "src-tauri/icons/128x128@2x.png" "$pkgdir/usr/share/icons/hicolor/256x256/apps/riff.png"
+  install -Dm644 src-tauri/icons/32x32.png "$pkgdir/usr/share/icons/hicolor/32x32/apps/purple.png"
+  install -Dm644 src-tauri/icons/64x64.png "$pkgdir/usr/share/icons/hicolor/64x64/apps/purple.png"
+  install -Dm644 src-tauri/icons/128x128.png "$pkgdir/usr/share/icons/hicolor/128x128/apps/purple.png"
+  install -Dm644 "src-tauri/icons/128x128@2x.png" "$pkgdir/usr/share/icons/hicolor/256x256/apps/purple.png"
 
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -Dm644 THIRD_PARTY_NOTICES.md "$pkgdir/usr/share/licenses/$pkgname/THIRD_PARTY_NOTICES.md"

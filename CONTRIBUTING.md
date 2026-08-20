@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping with Riff! This is the open-core desktop app at `ferdousbhai/riff`.
+Thanks for helping with Purple! This is the open-core desktop app at `ferdousbhai/purple`.
 
 ## Quick start
 
@@ -9,7 +9,7 @@ pnpm install
 pnpm run check   # vitest + cargo test + typecheck + vite build — must pass before PR
 ```
 
-Riff needs [Rust](https://rustup.rs) 1.85+ alongside Node 22 and pnpm 10, plus
+Purple needs [Rust](https://rustup.rs) 1.85+ alongside Node 22 and pnpm 10, plus
 the WebKitGTK development packages listed in [README.md](./README.md).
 
 ## Commands
@@ -17,7 +17,7 @@ the WebKitGTK development packages listed in [README.md](./README.md).
 - `pnpm run dev` — Vite and the Tauri shell together, with hot reload
 - `pnpm run dev:webview` — Vite alone, for browser-only interface work
 - `pnpm run web:dev` — web app dev server (localhost:3000)
-- `pnpm run build` — release binary at `src-tauri/target/release/riff`
+- `pnpm run build` — release binary at `src-tauri/target/release/purple`
 - `pnpm run test` / `pnpm run test:rust` / `pnpm run typecheck` — single checks
 
 ## Layout

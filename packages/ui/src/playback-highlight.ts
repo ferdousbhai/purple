@@ -1,6 +1,6 @@
 import { RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
 import { Decoration, EditorView } from "@codemirror/view";
-import type { SourceRange } from "@riff/core/types";
+import type { SourceRange } from "@purple/core/types";
 
 const setPlaybackRanges = StateEffect.define<readonly SourceRange[]>();
 

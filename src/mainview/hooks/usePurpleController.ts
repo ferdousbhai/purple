@@ -20,7 +20,7 @@ import {
 import { attemptWithRepair } from "./patternRepair";
 import { useChat } from "./useChat";
 import { useKeyboardShortcuts } from "./useKeyboardShortcuts";
-import { usePlayback } from "@riff/ui/use-playback";
+import { usePlayback } from "@purple/ui/use-playback";
 import { requireRunningAudioContext } from "../audio-activation";
 import { useTransitionSuggestions } from "./useTransitionSuggestions";
 
@@ -54,7 +54,7 @@ async function reportRejection(
   }
 }
 
-export function useRiffController() {
+export function usePurpleController() {
   const [code, setCode] = useState("");
   const [patternTitle, setPatternTitle] = useState("Startup Pattern");
   const [titleStatus, setTitleStatus] = useState<TitleStatus>("idle");
@@ -376,7 +376,7 @@ export function useRiffController() {
     };
   }, [play, playback.isAudioReady, stop]);
 
-  // A second `riff …` invocation focuses this window and forwards its arguments.
+  // A second `purple …` invocation focuses this window and forwards its arguments.
   useEffect(() => {
     let active = true;
     const unlisten = onStartupArgs((options) => {

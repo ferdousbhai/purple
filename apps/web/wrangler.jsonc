@@ -1,5 +1,8 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
+  // Workers can't be renamed, so the pre-rebrand name stays until the app
+  // moves to its own domain (a fresh purple-web Worker + Builds connection,
+  // then delete this one).
   "name": "riff-web",
   "main": "src/server.ts",
   "compatibility_date": "2026-08-08",

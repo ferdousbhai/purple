@@ -1,4 +1,4 @@
-import { buildRetryMessage } from "@riff/core/prompts";
+import { buildRetryMessage } from "@purple/core/prompts";
 import type { EvalResult } from "../../shared/types";
 
 export const MAX_RETRIES = 2;

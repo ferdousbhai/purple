@@ -45,7 +45,7 @@ export async function requireRunningAudioContext(
 ): Promise<void> {
   const initialState = context.state;
   if (initialState === "closed") {
-    throw new Error("Audio output is closed. Reload Riff and try again.");
+    throw new Error("Audio output is closed. Reload Purple and try again.");
   }
 
   if (initialState !== RUNNING_STATE) {

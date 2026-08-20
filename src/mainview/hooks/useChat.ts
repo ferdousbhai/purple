@@ -3,8 +3,8 @@ import {
   buildContextWindow,
   planCompaction,
   type CompactionArtifact,
-} from "@riff/core/compaction";
-import { extractPattern } from "@riff/core/pattern";
+} from "@purple/core/compaction";
+import { extractPattern } from "@purple/core/pattern";
 import {
   abortStream as abortBackendStream,
   errorMessage,

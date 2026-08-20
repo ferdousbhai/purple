@@ -3,12 +3,12 @@
  *
  * Every call the UI makes into the Tauri shell goes through this module. The
  * Rust side is a transport: prompts, schemas and parsing live here (and in
- * `@riff/core`) so the hosted app keeps sharing them.
+ * `@purple/core`) so the hosted app keeps sharing them.
  */
 
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { errorMessage } from "@riff/core/error";
+import { errorMessage } from "@purple/core/error";
 import {
   buildCompactionRequest,
   COMPACTION_PROMPT,
@@ -16,12 +16,12 @@ import {
   parseCompactionSummary,
   type CompactionArtifact,
   type CompactionSummaryResult,
-} from "@riff/core/compaction";
+} from "@purple/core/compaction";
 import {
   parseGeneratedPatternTitle,
   parseTransitionSuggestions,
   patternFilename,
-} from "@riff/core/pattern";
+} from "@purple/core/pattern";
 import {
   SYSTEM_PROMPT,
   TITLE_PROMPT,
@@ -29,14 +29,14 @@ import {
   TRANSITION_SUGGESTIONS_SCHEMA,
   buildTransitionSuggestionsRequest,
   type ResponseSchema,
-} from "@riff/core/prompts";
+} from "@purple/core/prompts";
 import { parseCliArgs, type StartupOptions } from "../shared/cli";
 import type {
   ApiKeyStatus,
   ChatMessage,
   MediaControlAction,
   PlaybackState,
-  RiffBackend,
+  PurpleBackend,
   SavePatternResult,
   StreamOutcome,
   SystemTheme,
@@ -44,11 +44,11 @@ import type {
   TransitionSuggestionsResult,
 } from "../shared/types";
 
-/** Emitted by the Rust shell when a second `riff …` invocation is forwarded here. */
-const STARTUP_ARGS_EVENT = "riff://startup-args";
+/** Emitted by the Rust shell when a second `purple …` invocation is forwarded here. */
+const STARTUP_ARGS_EVENT = "purple://startup-args";
 
 /** Emitted by the Rust shell when a desktop media control (MPRIS) asks for something. */
-const MEDIA_CONTROL_EVENT = "riff://media-control";
+const MEDIA_CONTROL_EVENT = "purple://media-control";
 
 type StreamEvent =
   | { type: "delta"; text: string }
@@ -193,12 +193,12 @@ export async function getStartupOptions(): Promise<StartupOptions> {
   return parseCliArgs(await invoke<string[]>("startup_args"));
 }
 
-/** Run `handler` when another `riff …` invocation hands its arguments to this window. */
+/** Run `handler` when another `purple …` invocation hands its arguments to this window. */
 export function onStartupArgs(
   handler: (options: StartupOptions) => void,
 ): Promise<UnlistenFn> {
   return listen<string[]>(STARTUP_ARGS_EVENT, (event) => {
-    // A bare `riff` — the launcher icon, or a second click on it — forwards no
+    // A bare `purple` — the launcher icon, or a second click on it — forwards no
     // arguments and means "focus the window". Parsing that would hand back a
     // random preset and overwrite the pattern the user is working on.
     if (event.payload.length === 0) return;
@@ -259,7 +259,7 @@ export function log(level: "warn" | "error", message: string): void {
 }
 
 /**
- * The desktop implementation of the shared `RiffBackend` adapter. `satisfies`
+ * The desktop implementation of the shared `PurpleBackend` adapter. `satisfies`
  * keeps the individual functions above exported under their existing names
  * while proving they add up to the interface the shared UI expects.
  */
@@ -268,4 +268,4 @@ export const backend = {
   abortStream,
   generateTitle,
   suggestTransitions,
-} satisfies RiffBackend;
+} satisfies PurpleBackend;

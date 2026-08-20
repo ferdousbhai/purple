@@ -1,19 +1,19 @@
-// The webview-layer types shared with the hosted app live in @riff/core;
+// The webview-layer types shared with the hosted app live in @purple/core;
 // re-exported here so desktop modules keep one import site for both.
 export type {
   ChatMessage,
   EvalResult,
   PlaybackState,
-  RiffBackend,
+  PurpleBackend,
   SourceRange,
   StreamOutcome,
   TitleGenerationResult,
   TransitionSuggestion,
   TransitionSuggestionsResult,
-} from "@riff/core/types";
-export { MAX_CONTEXT_MESSAGES } from "@riff/core/types";
+} from "@purple/core/types";
+export { MAX_CONTEXT_MESSAGES } from "@purple/core/types";
 
-import type { ChatMessage } from "@riff/core/types";
+import type { ChatMessage } from "@purple/core/types";
 
 /** A chat turn as the desktop transcript renders it. */
 export interface Message extends ChatMessage {

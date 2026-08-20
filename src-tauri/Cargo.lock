@@ -2909,6 +2909,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "purple"
+version = "0.4.0"
+dependencies = [
+ "futures-util",
+ "keyring",
+ "log",
+ "mpris-server",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-log",
+ "tauri-plugin-single-instance",
+ "tokio",
+ "tokio-util",
+ "toml 1.1.4+spec-1.1.0",
+]
+
+[[package]]
 name = "quick-xml"
 version = "0.41.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3192,27 +3213,6 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "windows-sys 0.60.2",
-]
-
-[[package]]
-name = "riff"
-version = "0.3.1"
-dependencies = [
- "futures-util",
- "keyring",
- "log",
- "mpris-server",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-log",
- "tauri-plugin-single-instance",
- "tokio",
- "tokio-util",
- "toml 1.1.4+spec-1.1.0",
 ]
 
 [[package]]

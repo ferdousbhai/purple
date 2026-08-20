@@ -18,7 +18,7 @@ import { MAX_CONTEXT_MESSAGES, type ChatMessage } from "./types";
 /** Compact once the uncovered history grows beyond this many messages. */
 export const COMPACTION_TRIGGER = 13;
 
-export const COMPACTION_PROMPT = `You are the session memory inside Riff, a Strudel live-coding music app.
+export const COMPACTION_PROMPT = `You are the session memory inside Purple, a Strudel live-coding music app.
 Merge the previous rolling summary, if one is given, with the older chat messages below.
 Return two fields:
 "summary" — at most 150 words of plain prose describing the production session so far: the musical direction (genre, BPM, key or scale), the instruments and samples in play, what the user asked for, liked, and explicitly rejected, and any names or titles used. No markdown, no lists, and never any Strudel pattern code — the code travels in the other field.

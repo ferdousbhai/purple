@@ -3,7 +3,7 @@ import {
   parseGeneratedPatternTitle,
   patternFilename,
   validateGeneratedPatternTitle,
-} from "@riff/core/pattern";
+} from "@purple/core/pattern";
 
 describe("patternFilename", () => {
   it("creates a portable Strudel filename", () => {
@@ -13,7 +13,7 @@ describe("patternFilename", () => {
 
   it("has a stable fallback", () => {
     expect(patternFilename("🎛️"))
-      .toBe("riff-pattern.strudel");
+      .toBe("purple-pattern.strudel");
   });
 });
 

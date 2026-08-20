@@ -1,13 +1,13 @@
 [Desktop Entry]
 Type=Application
 Version=1.0
-Name=Riff
+Name=Purple
 GenericName=AI Music Studio
 Comment=Describe music in plain language and hear it play
-Exec=riff
-Icon=riff
+Exec=purple
+Icon=purple
 Terminal=false
 Categories=AudioVideo;Audio;Music;
 Keywords=music;audio;ai;strudel;livecoding;
 StartupNotify=true
-StartupWMClass=riff
+StartupWMClass=purple

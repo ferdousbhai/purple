@@ -1,4 +1,4 @@
-# Riff Web
+# Purple Web
 
 The web app is a TanStack Start application on Cloudflare Workers. The Worker
 only serves the app shell — everything stateful is local-first:
@@ -13,7 +13,7 @@ browser ── HTTPS ── generativelanguage.googleapis.com (visitor's own Gem
 There are no accounts, no billing, and no server-side inference or storage.
 The Gemini key is entered by the visitor, kept in localStorage, and sent only
 to Google (in a header, never a URL). Chat history is compacted in the browser
-with the shared `@riff/core` compaction policy (`src/lib/byok.ts`).
+with the shared `@purple/core` compaction policy (`src/lib/byok.ts`).
 
 From the repo root: `pnpm run web:dev`, `pnpm run web:check`,
 `pnpm run web:deploy`.

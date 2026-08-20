@@ -10,7 +10,7 @@ import {
   planCompaction,
   visibleTextWithoutCodeBlocks,
   type TransitionSuggestion,
-} from '@riff/core'
+} from '@purple/core'
 import { javascript } from '@codemirror/lang-javascript'
 import { Prec } from '@codemirror/state'
 import { oneDark } from '@codemirror/theme-one-dark'
@@ -31,12 +31,12 @@ import {
   type ByokChatState,
 } from '#/lib/byok'
 import { getPatternsCollection } from '#/db-collections'
-import { usePlayback } from '@riff/ui/use-playback'
+import { usePlayback } from '@purple/ui/use-playback'
 import {
   playbackHighlightExtension,
   updatePlaybackHighlights,
-} from '@riff/ui/playback-highlight'
-import type { SourceRange } from '@riff/core/types'
+} from '@purple/ui/playback-highlight'
+import type { SourceRange } from '@purple/core/types'
 
 const STARTER_PATTERNS = [
   's("bd*4").gain(0.8)',
@@ -49,7 +49,7 @@ const EQ_BAR_DELAYS = [0, 0.15, 0.3, 0.1, 0.25] as const
 type Playback = ReturnType<typeof usePlayback>
 type PatternMode = 'play' | 'stage'
 
-export function RiffStudio() {
+export function PurpleStudio() {
   const [byokKey, setByokKeyState] = useState<string | null>(() => getByokKey())
   const [keyPanelOpen, setKeyPanelOpen] = useState(false)
   const [libraryOpen, setLibraryOpen] = useState(false)
@@ -72,13 +72,13 @@ export function RiffStudio() {
     return key === null || stored === key.trim()
   }
 
-  const title = customTitle ?? titleFromPrompt(sourcePrompt) ?? 'Untitled Riff'
+  const title = customTitle ?? titleFromPrompt(sourcePrompt) ?? 'Untitled Pattern'
 
   const save = () => {
     // Mirror the collection schema's bounds; an out-of-range insert throws.
     if (!code.trim() || code.length > 30_000) return
     const now = Date.now()
-    const name = title.trim() || 'Untitled Riff'
+    const name = title.trim() || 'Untitled Pattern'
     const existing = savedPatterns.find((pattern) => pattern.title === name)
     if (existing) {
       patterns.update(existing.id, (draft) => {
@@ -135,7 +135,7 @@ export function RiffStudio() {
     <main className="studio-shell">
       <header className="topbar">
         <div className="brand">
-          <span className="brand-name">RIFF</span>
+          <span className="brand-name">PURPLE</span>
           <span className="brand-tag">web</span>
         </div>
         <div className="topbar-actions">
@@ -159,7 +159,7 @@ export function RiffStudio() {
       {libraryOpen ? (
         <section className="library-popover">
           {savedPatterns.length === 0 ? (
-            <p className="muted">Nothing saved yet — SAVE keeps a riff in this browser.</p>
+            <p className="muted">Nothing saved yet — SAVE keeps a pattern in this browser.</p>
           ) : (
             [...savedPatterns]
               .sort((a, b) => b.updatedAt - a.updatedAt)
@@ -272,7 +272,7 @@ function KeyCard(props: {
     <section className="key-card">
       <h2>YOUR GEMINI KEY</h2>
       <p>
-        Riff has no accounts and keeps no data. Your key, your chat, and your saved riffs
+        Purple has no accounts and keeps no data. Your key, your chat, and your saved patterns
         live only in this browser — generation requests go straight from here to Google.
       </p>
       <p>
@@ -732,7 +732,7 @@ function MixRow(props: { flow: PatternFlow; playback: Playback }) {
   )
 }
 
-/** A default title from the generating prompt, so saved riffs don't collide. */
+/** A default title from the generating prompt, so saved patterns don't collide. */
 function titleFromPrompt(prompt: string | undefined): string | null {
   const text = prompt?.trim().replace(/\s+/g, ' ')
   if (!text) return null

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseTransitionSuggestions } from "@riff/core/pattern";
+import { parseTransitionSuggestions } from "@purple/core/pattern";
 
 const validResponse = JSON.stringify({
   suggestions: [

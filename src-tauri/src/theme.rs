@@ -135,7 +135,7 @@ mod tests {
 
     #[test]
     fn reads_semantic_colors_first() {
-        let dir = std::env::temp_dir().join(format!("riff-theme-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("purple-theme-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("colors.toml"),
@@ -159,7 +159,7 @@ mod tests {
 
     #[test]
     fn falls_back_to_alacritty_and_light_marker() {
-        let dir = std::env::temp_dir().join(format!("riff-theme-alac-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("purple-theme-alac-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("alacritty.toml"),
@@ -179,7 +179,7 @@ mod tests {
 
     #[test]
     fn empty_theme_dir_is_no_theme() {
-        let dir = std::env::temp_dir().join(format!("riff-theme-empty-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("purple-theme-empty-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         assert_eq!(load_theme(&dir), None);
         std::fs::remove_dir_all(&dir).unwrap();
