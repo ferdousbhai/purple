@@ -32,8 +32,7 @@ mod linux {
 
     use mpris_server::zbus::{self, fdo};
     use mpris_server::{
-        LoopStatus, Metadata, PlaybackRate, PlaybackStatus, Property, Server, Time, TrackId,
-        Volume,
+        LoopStatus, Metadata, PlaybackRate, PlaybackStatus, Property, Server, Time, TrackId, Volume,
     };
     use tauri::{AppHandle, Emitter, Manager};
 
@@ -339,4 +338,3 @@ mod linux {
         }
     }
 }
-
