@@ -472,6 +472,8 @@ function Composer(props: {
     () => loadByokChat() ?? { messages: [], artifact: null, coveredCount: 0 },
   )
   const [isGenerating, setIsGenerating] = useState(false)
+  /** Prose of the streaming response so far, code fences stripped. */
+  const [streamingProse, setStreamingProse] = useState('')
   const backend = useMemo(() => createByokBackend(props.byokKey), [props.byokKey])
   // The fold scheduler is created once; reach the current backend through a ref
   // so a re-saved key applies to folds already scheduled.
@@ -483,6 +485,7 @@ function Composer(props: {
         backendRef.current.generateCompactionSummary(previous, batch),
       // Message objects are stable across appends.
       isSameMessage: (a, b) => a === b,
+      sizeOf: (message) => message.content.length,
       commit: (accept) =>
         setChat((current) => {
           const next = accept(current)
@@ -519,7 +522,7 @@ function Composer(props: {
   useEffect(() => {
     const transcript = transcriptRef.current
     if (transcript) transcript.scrollTop = transcript.scrollHeight
-  }, [chat.messages, isGenerating])
+  }, [chat.messages, isGenerating, streamingProse])
 
   const busy = isGenerating || props.playback.playbackState === 'transitioning'
 
@@ -537,12 +540,17 @@ function Composer(props: {
     // Ask for a title in parallel with the pattern; sends are disabled while
     // generating, so the result can only belong to this prompt.
     const titlePromise = backend.generateTitle(prompt)
-    void backend.generatePattern(contextWindow)
+    let streamed = ''
+    void backend.streamPattern(contextWindow, (delta) => {
+      streamed += delta
+      setStreamingProse(visibleTextWithoutCodeBlocks(streamed))
+    })
       .then(async (raw) => {
         setChat((current) => ({
           ...current,
           messages: [...history, { role: 'assistant', content: raw }],
         }))
+        setStreamingProse('')
         // isGenerating stays true through acceptPattern's repair round-trips.
         const landed = await flow.acceptPattern(raw, mode)
         if (landed) {
@@ -551,7 +559,10 @@ function Composer(props: {
         }
       })
       .catch((cause: unknown) => flow.setUiError(errorMessage(cause)))
-      .finally(() => setIsGenerating(false))
+      .finally(() => {
+        setStreamingProse('')
+        setIsGenerating(false)
+      })
   }
 
   const clearSession = () => {
@@ -629,7 +640,10 @@ function Composer(props: {
               <p key={message.key} className={message.role}>{message.prose}</p>
             ) : null,
           )}
-          {busy ? (
+          {streamingProse ? (
+            <p className="assistant streaming">{streamingProse}</p>
+          ) : null}
+          {busy && !streamingProse ? (
             <span className="stream-dots" aria-label="Generating">
               <span>.</span><span>.</span><span>.</span>
             </span>

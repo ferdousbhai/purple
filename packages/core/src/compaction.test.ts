@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildCompactionRequest,
   buildContextWindow,
+  COMPACTION_CHAR_TRIGGER,
   COMPACTION_TRIGGER,
   createFoldScheduler,
   MAX_FOLD_FAILURES,
@@ -48,6 +49,24 @@ describe("planCompaction", () => {
   it("clamps an out-of-range covered count", () => {
     expect(planCompaction(5, 10)).toEqual({ fold: false, foldEnd: 5 });
     expect(planCompaction(5, -3)).toEqual({ fold: false, foldEnd: 0 });
+  });
+
+  it("folds early when the uncovered history exceeds the character budget", () => {
+    expect(planCompaction(4, 0, COMPACTION_CHAR_TRIGGER + 1)).toEqual({
+      fold: true,
+      foldEnd: 4,
+    });
+    expect(planCompaction(4, 0, COMPACTION_CHAR_TRIGGER)).toEqual({
+      fold: false,
+      foldEnd: 0,
+    });
+  });
+
+  it("never folds a single uncovered message on size alone", () => {
+    expect(planCompaction(5, 4, COMPACTION_CHAR_TRIGGER * 2)).toEqual({
+      fold: false,
+      foldEnd: 4,
+    });
   });
 });
 

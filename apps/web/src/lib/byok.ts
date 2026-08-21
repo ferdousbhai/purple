@@ -7,20 +7,9 @@
  */
 
 import {
-  COMPACTION_PROMPT,
-  COMPACTION_SCHEMA,
   DEFAULT_GEMINI_MODEL,
   SYSTEM_PROMPT,
-  TITLE_PROMPT,
-  TITLE_SCHEMA,
-  TRANSITION_SUGGESTIONS_PROMPT,
-  TRANSITION_SUGGESTIONS_SCHEMA,
-  buildCompactionRequest,
-  buildTransitionSuggestionsRequest,
-  errorMessage,
-  parseCompactionSummary,
-  parseGeneratedPatternTitle,
-  parseTransitionSuggestions,
+  createModelHelpers,
   type CompactionArtifact,
   type CompactionSummarizer,
   type ResponseSchema,
@@ -63,6 +52,7 @@ try {
  */
 const MAX_STORED_MESSAGES = 200
 const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${DEFAULT_GEMINI_MODEL}:generateContent`
+const STREAM_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${DEFAULT_GEMINI_MODEL}:streamGenerateContent`
 
 /** The BYOK chat a browser carries across reloads. */
 export interface ByokChatState {
@@ -238,84 +228,42 @@ export interface ByokBackend
     CompactionSummarizer {
   /** Send a prepared repair message; resolves with the raw model text. */
   repairPattern(message: string): Promise<string>
+  /** Stream a pattern generation; deltas arrive on `onDelta` and the promise
+   * resolves with the full raw model text. */
+  streamPattern(
+    messages: readonly ChatMessage[],
+    onDelta: (text: string) => void,
+  ): Promise<string>
 }
 
 /** Bind the visitor's key into a backend the studio UI talks to. */
 export function createByokBackend(key: string): ByokBackend {
   return {
+    // Titles, transition suggestions, and compaction summaries share the
+    // structured-generation wrappers in @purple/core; only the transport —
+    // one JSON-mode generateContent call — is supplied here.
+    ...createModelHelpers((systemInstruction, input, schema) =>
+      callGemini(key, systemInstruction, [{ role: 'user', content: input }], {
+        responseMimeType: 'application/json',
+        responseJsonSchema: schema,
+      }),
+    ),
+
     generatePattern: (messages) => callGemini(key, SYSTEM_PROMPT, messages),
+
+    streamPattern: (messages, onDelta) =>
+      streamGemini(key, SYSTEM_PROMPT, messages, onDelta),
 
     repairPattern: (message) =>
       callGemini(key, SYSTEM_PROMPT, [{ role: 'user', content: message }]),
-
-    async generateTitle(prompt) {
-      try {
-        const raw = await callGemini(
-          key,
-          TITLE_PROMPT,
-          [{ role: 'user', content: prompt.trim() }],
-          {
-            responseMimeType: 'application/json',
-            responseJsonSchema: TITLE_SCHEMA,
-          },
-        )
-        const title = parseGeneratedPatternTitle(raw)
-        if (!title) {
-          return { ok: false, error: 'Gemini returned an invalid pattern title.' }
-        }
-        return { ok: true, title }
-      } catch (error) {
-        return { ok: false, error: errorMessage(error) }
-      }
-    },
-
-    async suggestTransitions(code, sourcePrompt) {
-      try {
-        const raw = await callGemini(
-          key,
-          TRANSITION_SUGGESTIONS_PROMPT,
-          [{ role: 'user', content: buildTransitionSuggestionsRequest(code, sourcePrompt) }],
-          {
-            responseMimeType: 'application/json',
-            responseJsonSchema: TRANSITION_SUGGESTIONS_SCHEMA,
-          },
-        )
-        const suggestions = parseTransitionSuggestions(raw)
-        if (!suggestions) {
-          return { ok: false, error: 'Gemini returned invalid transition suggestions.' }
-        }
-        return { ok: true, suggestions }
-      } catch (error) {
-        return { ok: false, error: errorMessage(error) }
-      }
-    },
-
-    async generateCompactionSummary(previous, messages) {
-      try {
-        const raw = await callGemini(
-          key,
-          COMPACTION_PROMPT,
-          [{ role: 'user', content: buildCompactionRequest(previous, messages) }],
-          { responseMimeType: 'application/json', responseJsonSchema: COMPACTION_SCHEMA },
-        )
-        const artifact = parseCompactionSummary(raw)
-        if (!artifact) {
-          return { ok: false, error: 'Gemini returned an invalid session summary.' }
-        }
-        return { ok: true, artifact }
-      } catch (error) {
-        return { ok: false, error: errorMessage(error) }
-      }
-    },
   }
 }
 
-async function callGemini(
-  key: string,
+function buildRequestBody(
   system: string,
   messages: readonly ChatMessage[],
   generationConfig?: GeminiGenerationConfig,
-): Promise<string> {
+): GeminiRequestBody {
   const body: GeminiRequestBody = {
     systemInstruction: { parts: [{ text: system }] },
     contents: messages.map((message) => ({
@@ -332,31 +280,101 @@ async function callGemini(
       ...generationConfig,
     }
   }
+  return body
+}
+
+async function throwRequestError(response: Response): Promise<never> {
+  let detail = `Gemini request failed (${response.status}).`
+  try {
+    const payload = geminiErrorSchema.parse(await response.json())
+    if (payload.error?.message) detail = payload.error.message
+  } catch {
+    // Keep the status-based message.
+  }
+  if (response.status === 400 || response.status === 401 || response.status === 403) {
+    detail += ' Check that your Gemini API key is valid.'
+  }
+  throw new Error(detail)
+}
+
+type GeminiContent = z.infer<typeof geminiContentSchema>
+
+function chunkText(data: GeminiContent): string {
+  return (data.candidates?.[0]?.content?.parts ?? [])
+    .map((part) => part.text ?? '')
+    .join('')
+}
+
+async function callGemini(
+  key: string,
+  system: string,
+  messages: readonly ChatMessage[],
+  generationConfig?: GeminiGenerationConfig,
+): Promise<string> {
   const response = await fetch(ENDPOINT, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       'x-goog-api-key': key,
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify(buildRequestBody(system, messages, generationConfig)),
   })
-  if (!response.ok) {
-    let detail = `Gemini request failed (${response.status}).`
-    try {
-      const payload = geminiErrorSchema.parse(await response.json())
-      if (payload.error?.message) detail = payload.error.message
-    } catch {
-      // Keep the status-based message.
-    }
-    if (response.status === 400 || response.status === 401 || response.status === 403) {
-      detail += ' Check that your Gemini API key is valid.'
-    }
-    throw new Error(detail)
-  }
-  const data = geminiContentSchema.parse(await response.json())
-  const text = (data.candidates?.[0]?.content?.parts ?? [])
-    .map((part) => part.text ?? '')
-    .join('')
+  if (!response.ok) await throwRequestError(response)
+  const text = chunkText(geminiContentSchema.parse(await response.json()))
   if (!text) throw new Error('Gemini returned an empty response.')
   return text
+}
+
+/**
+ * Stream a generation over SSE, delivering text deltas as they arrive and
+ * resolving with the full response text. Follows Gemini's SSE framing: each
+ * event is one `data: <json>` line holding a partial GenerateContentResponse.
+ */
+async function streamGemini(
+  key: string,
+  system: string,
+  messages: readonly ChatMessage[],
+  onDelta: (text: string) => void,
+): Promise<string> {
+  const response = await fetch(`${STREAM_ENDPOINT}?alt=sse`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-goog-api-key': key,
+    },
+    body: JSON.stringify(buildRequestBody(system, messages)),
+  })
+  if (!response.ok) await throwRequestError(response)
+  if (!response.body) throw new Error('Gemini returned an empty response.')
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffered = ''
+  let total = ''
+  const consumeLine = (line: string) => {
+    if (!line.startsWith('data:')) return
+    let event: GeminiContent
+    try {
+      event = geminiContentSchema.parse(JSON.parse(line.slice('data:'.length).trim()))
+    } catch {
+      // Not a complete JSON event (keep-alive or fragment); skip it.
+      return
+    }
+    const text = chunkText(event)
+    if (!text) return
+    total += text
+    onDelta(text)
+  }
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffered += decoder.decode(value, { stream: true })
+    const lines = buffered.split('\n')
+    // The last element may be a partial line; keep it buffered.
+    buffered = lines.pop() ?? ''
+    for (const line of lines) consumeLine(line)
+  }
+  consumeLine(buffered)
+  if (!total) throw new Error('Gemini returned an empty response.')
+  return total
 }

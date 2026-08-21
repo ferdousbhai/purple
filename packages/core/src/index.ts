@@ -3,6 +3,7 @@ export * from "./error";
 export * from "./pattern";
 export * from "./types";
 export * from "./prompts";
+export * from "./model-helpers";
 export * from "./repair";
 export * from "./validation";
 export * from "./recipes";

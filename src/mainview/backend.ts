@@ -9,29 +9,10 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { errorMessage } from "@purple/core/error";
-import {
-  buildCompactionRequest,
-  COMPACTION_PROMPT,
-  COMPACTION_SCHEMA,
-  parseCompactionSummary,
-  type CompactionArtifact,
-  type CompactionSummarizer,
-  type CompactionSummaryResult,
-} from "@purple/core/compaction";
-import {
-  parseGeneratedPatternTitle,
-  parseTransitionSuggestions,
-  patternFilename,
-} from "@purple/core/pattern";
-import {
-  SYSTEM_PROMPT,
-  TITLE_PROMPT,
-  TITLE_SCHEMA,
-  TRANSITION_SUGGESTIONS_PROMPT,
-  TRANSITION_SUGGESTIONS_SCHEMA,
-  buildTransitionSuggestionsRequest,
-  type ResponseSchema,
-} from "@purple/core/prompts";
+import type { CompactionSummarizer } from "@purple/core/compaction";
+import { createModelHelpers } from "@purple/core/model-helpers";
+import { patternFilename } from "@purple/core/pattern";
+import { SYSTEM_PROMPT, type ResponseSchema } from "@purple/core/prompts";
 import { parseCliArgs, type StartupOptions } from "../shared/cli";
 import type {
   ApiKeyStatus,
@@ -42,8 +23,6 @@ import type {
   SavePatternResult,
   StreamOutcome,
   SystemTheme,
-  TitleGenerationResult,
-  TransitionSuggestionsResult,
 } from "../shared/types";
 
 /** Emitted by the Rust shell when a second `purple …` invocation is forwarded here. */
@@ -105,68 +84,14 @@ async function generateJson(
   });
 }
 
-export async function generateTitle(
-  prompt: string,
-): Promise<TitleGenerationResult> {
-  try {
-    const raw = await generateJson(TITLE_PROMPT, prompt.trim(), TITLE_SCHEMA);
-    const title = parseGeneratedPatternTitle(raw);
-    if (!title) {
-      return { ok: false, error: "Gemini returned an invalid pattern title." };
-    }
-    return { ok: true, title };
-  } catch (error) {
-    return { ok: false, error: errorMessage(error) };
-  }
-}
+// Titles, transition suggestions, and compaction summaries share the
+// structured-generation wrappers in @purple/core; only the transport — the
+// Tauri `generate_json` invoke — is supplied here.
+const modelHelpers = createModelHelpers(generateJson);
 
-export async function suggestTransitions(
-  code: string,
-  sourcePrompt?: string,
-): Promise<TransitionSuggestionsResult> {
-  try {
-    const raw = await generateJson(
-      TRANSITION_SUGGESTIONS_PROMPT,
-      buildTransitionSuggestionsRequest(code, sourcePrompt),
-      TRANSITION_SUGGESTIONS_SCHEMA,
-    );
-    const suggestions = parseTransitionSuggestions(raw);
-    if (!suggestions) {
-      return {
-        ok: false,
-        error: "Gemini returned invalid transition suggestions.",
-      };
-    }
-    return { ok: true, suggestions };
-  } catch (error) {
-    return { ok: false, error: errorMessage(error) };
-  }
-}
-
-/**
- * Fold older chat messages into a rolling session summary. Runs in the
- * background after a send settles; the caller keeps its previous state when
- * this reports failure.
- */
-export async function generateCompactionSummary(
-  previous: CompactionArtifact | null,
-  messages: readonly ChatMessage[],
-): Promise<CompactionSummaryResult> {
-  try {
-    const raw = await generateJson(
-      COMPACTION_PROMPT,
-      buildCompactionRequest(previous, messages),
-      COMPACTION_SCHEMA,
-    );
-    const artifact = parseCompactionSummary(raw);
-    if (!artifact) {
-      return { ok: false, error: "Gemini returned an invalid session summary." };
-    }
-    return { ok: true, artifact };
-  } catch (error) {
-    return { ok: false, error: errorMessage(error) };
-  }
-}
+export const generateTitle = modelHelpers.generateTitle;
+export const suggestTransitions = modelHelpers.suggestTransitions;
+export const generateCompactionSummary = modelHelpers.generateCompactionSummary;
 
 export async function getApiKeyStatus(): Promise<ApiKeyStatus> {
   return invoke<ApiKeyStatus>("api_key_status");

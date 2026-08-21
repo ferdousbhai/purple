@@ -19,6 +19,14 @@ import { MAX_CONTEXT_MESSAGES, type ChatMessage } from "./types";
 /** Compact once the uncovered history grows beyond this many messages. */
 export const COMPACTION_TRIGGER = 13;
 
+/**
+ * Compact once the uncovered history grows beyond this many characters
+ * (roughly 6k tokens), regardless of message count. Message count alone is a
+ * poor proxy here: one pattern response can run thousands of tokens, so a
+ * few code-heavy turns can outweigh a dozen chatty ones.
+ */
+export const COMPACTION_CHAR_TRIGGER = 24_000;
+
 export const COMPACTION_PROMPT = `You are the session memory inside Purple, a Strudel live-coding music app.
 Merge the previous rolling summary, if one is given, with the older chat messages below.
 Return two fields:
@@ -86,14 +94,21 @@ export interface CompactionPlan {
 /**
  * Decide whether a background fold is due. `totalCount` is the length of the
  * full conversation; `coveredCount` is how many leading messages the current
- * artifact already covers (0 when there is none).
+ * artifact already covers (0 when there is none); `uncoveredChars` is the
+ * total content size of the uncovered messages (0 when the caller does not
+ * track sizes). A fold fires when either budget is exceeded.
  */
 export function planCompaction(
   totalCount: number,
   coveredCount: number,
+  uncoveredChars = 0,
 ): CompactionPlan {
   const covered = Math.min(Math.max(coveredCount, 0), totalCount);
-  if (totalCount - covered > COMPACTION_TRIGGER) {
+  const uncovered = totalCount - covered;
+  if (
+    uncovered > COMPACTION_TRIGGER ||
+    (uncovered > 1 && uncoveredChars > COMPACTION_CHAR_TRIGGER)
+  ) {
     return { fold: true, foldEnd: totalCount };
   }
   return { fold: false, foldEnd: covered };
@@ -199,6 +214,9 @@ export function createFoldScheduler<Message>(options: {
   /** Message identity for the prefix check: `id` equality on desktop, object
    * identity on the web (message objects are stable across appends). */
   isSameMessage: (a: Message, b: Message) => boolean;
+  /** Content size of one message, for the character-budget trigger. Omitting
+   * it leaves only the message-count trigger active. */
+  sizeOf?: (message: Message) => number;
   onFoldFailed?: (error: string) => void;
 }): FoldScheduler<Message> {
   let inFlight = false;
@@ -212,7 +230,17 @@ export function createFoldScheduler<Message>(options: {
   return {
     maybeFold(snapshot) {
       if (inFlight || consecutiveFailures >= MAX_FOLD_FAILURES) return;
-      const plan = planCompaction(snapshot.messages.length, snapshot.coveredCount);
+      const sizeOf = options.sizeOf;
+      const uncoveredChars = sizeOf
+        ? snapshot.messages
+            .slice(Math.max(snapshot.coveredCount, 0))
+            .reduce((total, message) => total + sizeOf(message), 0)
+        : 0;
+      const plan = planCompaction(
+        snapshot.messages.length,
+        snapshot.coveredCount,
+        uncoveredChars,
+      );
       if (!plan.fold) return;
 
       const folded = snapshot.messages.slice(0, plan.foldEnd);
