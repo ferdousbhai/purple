@@ -2,6 +2,7 @@ import {
   DEFAULT_TRANSITION_CYCLES,
   PROMPT_MODIFIERS,
   PROMPT_PRESETS,
+  MAX_RETRIES,
   TRANSITION_CYCLE_OPTIONS,
   attemptWithRepair,
   buildContextWindow,
@@ -10,6 +11,7 @@ import {
   extractPattern,
   generateRandomPrompt,
   patternFilename,
+  repairUntilValid,
   visibleTextWithoutCodeBlocks,
   type TransitionSuggestion,
   type TransitionSuggestionsResult,
@@ -403,12 +405,23 @@ function usePatternFlow(deps: {
     deps.setCode(pattern)
     deps.setCustomTitle(null)
     deps.setSourcePrompt(sourcePrompt)
+
+    // Audit the pattern against the live engine before it plays or stages:
+    // evaluation failures, empty patterns, and sound names that would play
+    // silence go back to Gemini as hidden messages. Sends are disabled while
+    // a generation (validation repairs included) is in flight.
+    const validated = await repairUntilValid(pattern, {
+      validate: deps.playback.validatePattern,
+      requestFix: deps.requestFix,
+      applyFix: deps.setCode,
+      isStale: () => false,
+    })
     if (mode === 'stage') {
-      setStagedCode(pattern)
+      setStagedCode(validated.code)
       return
     }
 
-    const outcome = await attemptWithRepair(pattern, {
+    const outcome = await attemptWithRepair(validated.code, {
       attempt: deps.playback.play,
       // Every pattern reaching this path came from the model; hand edits
       // play through the transport button, never through acceptPattern.
@@ -419,6 +432,8 @@ function usePatternFlow(deps: {
       // flight, so no newer prompt can replace the pattern mid-fix.
       isStale: () => false,
       isStopped: () => playbackStateRef.current === 'stopped',
+      // Validation may have spent part of this pattern's repair budget.
+      maxRetries: Math.max(0, MAX_RETRIES - validated.retriesUsed),
     })
     if (outcome.result.ok) {
       setStagedCode(null)

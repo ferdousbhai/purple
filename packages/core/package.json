@@ -12,7 +12,8 @@
     "./recipes": "./src/recipes.ts",
     "./repair": "./src/repair.ts",
     "./transitions": "./src/transitions.ts",
-    "./types": "./src/types.ts"
+    "./types": "./src/types.ts",
+    "./validation": "./src/validation.ts"
   },
   "scripts": {
     "test": "vitest run",

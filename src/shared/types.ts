@@ -47,4 +47,7 @@ export type SavePatternResult =
 export interface PatternContext {
   code: string;
   sourcePrompt?: string;
+  /** Model fixes already spent on this pattern. Generation-time validation
+   * and play-time repair share one MAX_RETRIES budget per pattern. */
+  repairsUsed?: number;
 }

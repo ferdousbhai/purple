@@ -7,8 +7,17 @@ import type {
   StrudelRepl,
 } from "@strudel/web/web.mjs";
 import type { EvalResult, SourceRange } from "@purple/core/types";
+import {
+  auditHapSounds,
+  closestSoundNames,
+  type ValidationProblem,
+} from "@purple/core/validation";
 
 type StrudelModule = typeof import("@strudel/web/web.mjs");
+
+/** How many cycles of events the validation audit inspects. Four covers every
+ * `<a b c d>` alternation the prompt examples use while staying instant. */
+const VALIDATION_CYCLES = 4;
 
 export interface SchedulerPosition {
   cycle: number;
@@ -203,6 +212,69 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
     activePatternRef.current = null;
   }, []);
 
+  /**
+   * Audit `code` without touching playback: evaluate silently, query the
+   * events it produces, and check every referenced sound name against the
+   * engine's registry (Strudel plays SILENCE for unknown names, so evaluation
+   * alone cannot catch them). Resolves with the problems found (empty = plays
+   * correctly), or null when the engine is not initialized — the caller then
+   * skips validation and play-time repair stays the safety net.
+   */
+  const validate = useCallback(async (
+    code: string,
+  ): Promise<ValidationProblem[] | null> => {
+    // A send gesture usually kicked init off already; wait for it rather than
+    // skipping. If init never started (or failed), validation is skipped.
+    if (!replRef.current && initPromiseRef.current) {
+      try {
+        await initPromiseRef.current;
+      } catch {
+        return null;
+      }
+    }
+    const strudel = strudelRef.current;
+    const repl = replRef.current;
+    if (!strudel || !repl) return null;
+
+    try {
+      lastEvaluationErrorRef.current = null;
+      // autoplay=false, shouldHush=false: build the pattern without touching
+      // the scheduler or whatever is currently playing.
+      const pattern = await repl.evaluate(code, false, false);
+      if (!isStrudelPattern(pattern)) {
+        return [
+          {
+            kind: "evaluation",
+            error: evaluationErrorMessage(lastEvaluationErrorRef.current),
+          },
+        ];
+      }
+
+      const haps = pattern.queryArc(0, VALIDATION_CYCLES);
+      if (haps.length === 0) return [{ kind: "empty" }];
+
+      const unknown = auditHapSounds(
+        haps,
+        (name) => strudel.getSound(name) != null,
+      );
+      if (unknown.length === 0) return [];
+
+      const available = Object.keys(strudel.soundMap.get());
+      return [
+        {
+          kind: "unknown-sounds",
+          sounds: unknown.map((name) => ({
+            name,
+            suggestions: closestSoundNames(name, available),
+          })),
+        },
+      ];
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      return [{ kind: "evaluation", error: message }];
+    }
+  }, []);
+
   // Whether a user gesture has already unlocked audio output. Events that
   // arrive outside a gesture (MPRIS media keys) may only start playback when
   // this is true; activate() would otherwise leave the context suspended.
@@ -259,6 +331,7 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
   return {
     activate,
     evaluate,
+    validate,
     hush,
     isAudioReady,
     getSchedulerPosition,

@@ -15,6 +15,7 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
   const {
     activate,
     evaluate,
+    validate,
     hush,
     isAudioReady,
     getSchedulerPosition,
@@ -292,6 +293,8 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
     play,
     transition,
     stop,
+    /** Audit generated code against the live engine without touching playback. */
+    validatePattern: validate,
   };
 }
 

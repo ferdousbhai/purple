@@ -16,6 +16,18 @@ declare module "@strudel/web/web.mjs" {
       locations?: StrudelLocation[];
     };
     isActive?: (time: number) => boolean;
+    /** The event's control values (`s`, `bank`, `note`, ...), or a primitive
+     * for bare numeric/string patterns. Only the fields the sound audit reads
+     * are declared. */
+    value?:
+      | number
+      | string
+      | boolean
+      | null
+      | {
+          s?: number | string | null;
+          bank?: number | string | null;
+        };
   }
 
   /** Controls merged into the query state. Strudel reads `_cps` for timing. */
@@ -60,6 +72,16 @@ declare module "@strudel/web/web.mjs" {
     options: InitStrudelOptions,
   ): Promise<StrudelRepl>;
   export function samples(source: string): Promise<void>;
+  /** One sound-registry entry. Purple only ever tests for presence. */
+  export interface RegisteredSound {
+    data?: object;
+  }
+  /** The engine's registry lookup: the registered sound for `name` (case
+   * folded, aliases resolved), or undefined — exactly what trigger time uses,
+   * which makes it the ground truth for validating generated sound names. */
+  export function getSound(name: string): RegisteredSound | undefined;
+  /** The registry itself; `get()` returns the name -> sound map. */
+  export const soundMap: { get(): Record<string, RegisteredSound> };
   /** Register friendly bank aliases from a `{alias: bank}` JSON map at `source`. */
   export function aliasBank(source: string): Promise<void>;
   /** Register `alias` as another name for the already-loaded sound `original`. */

@@ -4,5 +4,6 @@ export * from "./pattern";
 export * from "./types";
 export * from "./prompts";
 export * from "./repair";
+export * from "./validation";
 export * from "./recipes";
 export * from "./transitions";

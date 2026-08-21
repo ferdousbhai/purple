@@ -6,6 +6,10 @@
  */
 
 import { buildRetryMessage } from "./prompts";
+import {
+  buildValidationRetryMessage,
+  type ValidationProblem,
+} from "./validation";
 import type { EvalResult } from "./types";
 
 export const MAX_RETRIES = 2;
@@ -26,6 +30,10 @@ export interface RepairDeps {
   isStale: () => boolean;
   /** True when the user stopped playback while the fix streamed. */
   isStopped: () => boolean;
+  /** Repair budget for this attempt. Generation-time validation and play-time
+   * repair share MAX_RETRIES per pattern, so a caller that already spent
+   * fixes on validation passes the remainder. Defaults to MAX_RETRIES. */
+  maxRetries?: number;
 }
 
 export interface RepairOutcome {
@@ -47,7 +55,7 @@ export async function attemptWithRepair(
   let result = await deps.attempt(currentCode);
   if (!deps.isGeneratedPattern(code)) return { result, code: currentCode };
 
-  let retriesLeft = MAX_RETRIES;
+  let retriesLeft = deps.maxRetries ?? MAX_RETRIES;
   while (!result.ok && result.kind === "evaluation" && retriesLeft > 0) {
     retriesLeft--;
     const fixed = await deps.requestFix(
@@ -61,4 +69,58 @@ export async function attemptWithRepair(
     result = await deps.attempt(currentCode);
   }
   return { result, code: currentCode };
+}
+
+export interface ValidationRepairDeps {
+  /** Audit the code against the live engine. Resolves with the problems found
+   * (empty = plays correctly), or null when the engine is not initialized
+   * yet — validation is then skipped and play-time repair remains the net. */
+  validate: (code: string) => Promise<ValidationProblem[] | null>;
+  /** Send the repair prompt to the model; resolves with the fixed pattern, or
+   * null when the request failed or produced no pattern. */
+  requestFix: (message: string) => Promise<string | null>;
+  /** Land a fixed pattern in the editor. */
+  applyFix: (code: string) => void;
+  /** True when a newer prompt replaced the pattern while the fix streamed. */
+  isStale: () => boolean;
+  maxRetries?: number;
+}
+
+export interface ValidationOutcome {
+  code: string;
+  /** Problems still present when the loop ended (empty on success or skip). */
+  problems: ValidationProblem[];
+  /** Fixes spent, so play-time repair can be handed the remaining budget. */
+  retriesUsed: number;
+}
+
+/**
+ * Validate a freshly generated pattern and repair it before the user plays
+ * it: audit against the live engine (evaluation, empty pattern, sound names
+ * that would play silence), hand any problems back to Gemini as a hidden
+ * message, and re-audit each fix, up to `maxRetries` fixes. Runs right after
+ * generation, so most failures are fixed while the user is still reading.
+ */
+export async function repairUntilValid(
+  code: string,
+  deps: ValidationRepairDeps,
+): Promise<ValidationOutcome> {
+  let currentCode = code;
+  let retriesUsed = 0;
+  let problems = (await deps.validate(currentCode)) ?? [];
+  const maxRetries = deps.maxRetries ?? MAX_RETRIES;
+
+  while (problems.length > 0 && retriesUsed < maxRetries) {
+    if (deps.isStale()) break;
+    retriesUsed++;
+    const fixed = await deps.requestFix(
+      buildValidationRetryMessage(currentCode, problems),
+    );
+    if (!fixed || deps.isStale()) break;
+    deps.applyFix(fixed);
+    currentCode = fixed;
+    problems = (await deps.validate(currentCode)) ?? [];
+  }
+
+  return { code: currentCode, problems, retriesUsed };
 }

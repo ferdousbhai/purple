@@ -17,7 +17,11 @@ import {
   saveApiKey as saveBackendApiKey,
   setPlaybackState as reportPlaybackState,
 } from "../backend";
-import { attemptWithRepair } from "@purple/core/repair";
+import {
+  attemptWithRepair,
+  MAX_RETRIES,
+  repairUntilValid,
+} from "@purple/core/repair";
 import { useChat } from "./useChat";
 import { useKeyboardShortcuts } from "./useKeyboardShortcuts";
 import { usePlayback } from "@purple/ui/use-playback";
@@ -125,6 +129,43 @@ export function usePurpleController() {
     [nextMoves.generate],
   );
 
+  /** Audit a freshly generated pattern against the live engine and repair it
+   * before the user plays it: evaluation failures, empty patterns, and sound
+   * names that would play silence all go back to Gemini as hidden messages.
+   * Runs in the background right after generation — the send gesture already
+   * kicked off audio init, so the engine is usually ready by now; when it is
+   * not, validation is skipped and play-time repair stays the safety net. */
+  const validateGeneratedPattern = useCallback(
+    async (pattern: string): Promise<void> => {
+      let context = patternContextRef.current;
+      if (context?.code !== pattern) return;
+
+      const outcome = await repairUntilValid(pattern, {
+        validate: playback.validatePattern,
+        requestFix: (message) =>
+          chat.sendMessage(message, { hiddenUserMessage: true }),
+        applyFix: (fixed) => {
+          context = {
+            code: fixed,
+            sourcePrompt: context?.sourcePrompt,
+            repairsUsed: (context?.repairsUsed ?? 0) + 1,
+          };
+          patternContextRef.current = context;
+          setCode(fixed);
+        },
+        // A newer prompt owns the editor now; leave its pattern alone.
+        isStale: () => patternContextRef.current !== context,
+      });
+      if (outcome.problems.length > 0) {
+        console.warn(
+          "[Validate] Pattern still has problems after repair:",
+          outcome.problems,
+        );
+      }
+    },
+    [chat.sendMessage, playback.validatePattern],
+  );
+
   const runPrompt = useCallback(
     async (text: string, mode: PromptMode): Promise<void> => {
       nextMoves.clear();
@@ -159,8 +200,12 @@ export function usePurpleController() {
         applyTitleResult(titleRequest, titleRequest.result);
       }
       setRequiresUserActivation(mode === "await-activation");
+      runInBackground(
+        validateGeneratedPattern(pattern),
+        "[Validate] Pattern validation failed",
+      );
     },
-    [applyTitleResult, chat.sendMessage, nextMoves.clear],
+    [applyTitleResult, chat.sendMessage, nextMoves.clear, validateGeneratedPattern],
   );
 
   /** Play or transition, repairing a generated pattern that fails to evaluate:
@@ -180,10 +225,16 @@ export function usePurpleController() {
         requestFix: (message) =>
           chat.sendMessage(message, { hiddenUserMessage: true }),
         applyFix: (fixed) => {
-          context = { code: fixed, sourcePrompt: context?.sourcePrompt };
+          context = {
+            code: fixed,
+            sourcePrompt: context?.sourcePrompt,
+            repairsUsed: (context?.repairsUsed ?? 0) + 1,
+          };
           patternContextRef.current = context;
           setCode(fixed);
         },
+        // Validation may have spent part of this pattern's repair budget.
+        maxRetries: Math.max(0, MAX_RETRIES - (context?.repairsUsed ?? 0)),
         // A newer prompt owns the editor now; leave its pattern alone.
         isStale: () => patternContextRef.current !== context,
         isStopped: () => playbackStateRef.current === "stopped",
