@@ -86,13 +86,35 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
           onEvalError: (error) => {
             lastEvaluationErrorRef.current = error;
           },
-          // defaultPrebake() registers synths only, so the Dirt-Samples bank
-          // has to be loaded explicitly for sample-based patterns to play.
+          // defaultPrebake() registers synths only, so every sample bank has
+          // to be loaded explicitly. These mirror the packs the official
+          // strudel.cc REPL prebakes (manifests are small; sample audio is
+          // fetched lazily on first trigger): Dirt-Samples for the classic
+          // names, tidal-drum-machines so `bank("RolandTR909")` etc. resolve,
+          // and piano for the docs' default melodic sound.
           prebake: async () => {
-            await strudel.samples("github:tidalcycles/Dirt-Samples/master");
+            const doughSamples =
+              "https://raw.githubusercontent.com/felixroos/dough-samples/main";
+            await Promise.all([
+              strudel.samples("github:tidalcycles/Dirt-Samples/master"),
+              strudel.samples(`${doughSamples}/tidal-drum-machines.json`),
+              strudel.samples(`${doughSamples}/piano.json`),
+              // gm_* General MIDI instruments. Dynamically imported because a
+              // static import breaks SSR builds (soundfont2 touches `window`).
+              import("@strudel/soundfonts").then(({ registerSoundfonts }) =>
+                registerSoundfonts(),
+              ),
+            ]);
+            // z_* chiptune synths (no network involved).
+            strudel.registerZZFXSounds();
+            // Friendly bank names ("tr909" -> "RolandTR909"), as on strudel.cc.
+            await strudel.aliasBank(
+              "https://raw.githubusercontent.com/todepond/samples/main/tidal-drum-machines-alias.json",
+            );
             // Dirt-Samples names these ho/cp, but the model vocabulary (and
-            // Strudel's own default prebake) says oh/clap; without the alias
-            // those hits are silently dropped.
+            // Strudel's own default prebake) says oh/clap; the drum-machine
+            // pack only registers prefixed names (RolandTR909_oh), so without
+            // the alias bare oh/clap hits are silently dropped.
             strudel.soundAlias("ho", "oh");
             strudel.soundAlias("cp", "clap");
           },

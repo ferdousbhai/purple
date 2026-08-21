@@ -60,6 +60,15 @@ declare module "@strudel/web/web.mjs" {
     options: InitStrudelOptions,
   ): Promise<StrudelRepl>;
   export function samples(source: string): Promise<void>;
+  /** Register friendly bank aliases from a `{alias: bank}` JSON map at `source`. */
+  export function aliasBank(source: string): Promise<void>;
   /** Register `alias` as another name for the already-loaded sound `original`. */
   export function soundAlias(original: string, alias: string): void;
+  /** Register the z_* ZZFX chiptune synths (no network involved). */
+  export function registerZZFXSounds(): void;
+}
+
+declare module "@strudel/soundfonts" {
+  /** Register the gm_* General MIDI soundfont instruments. */
+  export function registerSoundfonts(): Promise<void>;
 }
