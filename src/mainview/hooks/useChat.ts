@@ -94,7 +94,6 @@ export function useChat() {
     createFoldScheduler<Message>({
       summarize: generateCompactionSummary,
       isSameMessage: (a, b) => a.id === b.id,
-      sizeOf: (message) => message.content.length,
       commit: (accept) => {
         const next = accept({
           messages: conversationRef.current,
