@@ -8,6 +8,8 @@ import {
   buildContextWindow,
   createFoldScheduler,
   errorMessage,
+  MAX_PATTERN_LENGTH,
+  acceptRawPattern,
   extractPattern,
   generateRandomPrompt,
   patternFilename,
@@ -74,7 +76,7 @@ export function PurpleStudio() {
 
   const save = () => {
     // Mirror the pattern schema's bounds; an out-of-range upsert throws.
-    if (!code.trim() || code.length > 30_000) return
+    if (!code.trim() || code.length > MAX_PATTERN_LENGTH) return
     const now = Date.now()
     const name = title.trim() || 'Untitled Pattern'
     const existing = savedPatterns.find((pattern) => pattern.title === name)
@@ -393,15 +395,12 @@ function usePatternFlow(deps: {
   /** Resolves with whether a pattern actually landed in the editor. */
   const acceptPattern = async (raw: string, mode: PatternMode): Promise<boolean> => {
     const sourcePrompt = lastPromptRef.current
-    const pattern = extractPattern(raw)
-    if (!pattern) {
-      setUiError('Gemini did not return a Strudel pattern.')
+    const acceptance = acceptRawPattern(raw)
+    if (!acceptance.ok) {
+      setUiError(acceptance.error)
       return false
     }
-    if (pattern.length > 30_000) {
-      setUiError('Gemini returned a pattern larger than 30,000 characters.')
-      return false
-    }
+    const pattern = acceptance.pattern
 
     deps.setCode(pattern)
     deps.setCustomTitle(null)

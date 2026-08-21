@@ -18,6 +18,32 @@ export function extractPattern(text: string): string | null {
   return null;
 }
 
+/** Patterns larger than this are rejected rather than landed in the editor. */
+export const MAX_PATTERN_LENGTH = 30_000;
+
+export type PatternAcceptance =
+  | { ok: true; pattern: string }
+  | { ok: false; error: string };
+
+/**
+ * Extract and size-guard the pattern from a raw model response — the shared
+ * acceptance gate both apps run before a generated pattern reaches the
+ * editor.
+ */
+export function acceptRawPattern(raw: string): PatternAcceptance {
+  const pattern = extractPattern(raw);
+  if (!pattern) {
+    return { ok: false, error: "Gemini did not return a Strudel pattern." };
+  }
+  if (pattern.length > MAX_PATTERN_LENGTH) {
+    return {
+      ok: false,
+      error: "Gemini returned a pattern larger than 30,000 characters.",
+    };
+  }
+  return { ok: true, pattern };
+}
+
 /** Hide complete and still-streaming fenced code while keeping assistant prose. */
 export function visibleTextWithoutCodeBlocks(text: string): string {
   return text.replace(/(```[\s\S]*?```|```[\s\S]*$)/g, '').trim()

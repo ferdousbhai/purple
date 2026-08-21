@@ -4,7 +4,7 @@ import {
   createFoldScheduler,
   type CompactionArtifact,
 } from "@purple/core/compaction";
-import { extractPattern } from "@purple/core/pattern";
+import { acceptRawPattern } from "@purple/core/pattern";
 import {
   abortStream as abortBackendStream,
   errorMessage,
@@ -283,14 +283,15 @@ export function useChat() {
       }
 
       const fullText = activeStream.text;
-      const pattern = extractPattern(fullText);
-      if (!pattern) {
+      const acceptance = acceptRawPattern(fullText);
+      if (!acceptance.ok) {
         return rollback(
           activeStream.truncated
             ? "Gemini reached its output limit before completing the Strudel pattern. Please try again."
-            : "Gemini returned no complete Strudel pattern. Please try again.",
+            : acceptance.error,
         );
       }
+      const pattern = acceptance.pattern;
 
       const assistantMsg: Message = {
         id: activeStream.assistantId,
