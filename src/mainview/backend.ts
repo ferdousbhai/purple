@@ -33,7 +33,7 @@ const MEDIA_CONTROL_EVENT = "purple://media-control";
 
 type StreamEvent =
   | { type: "delta"; text: string }
-  | { type: "done"; truncated: boolean };
+  | { type: "done"; truncated: boolean; promptTokens: number | null };
 
 
 export { errorMessage };
@@ -56,7 +56,10 @@ export function streamPattern(
       if (event.type === "delta") {
         onDelta(event.text);
       } else {
-        resolve({ truncated: event.truncated });
+        resolve({
+          truncated: event.truncated,
+          promptTokens: event.promptTokens ?? null,
+        });
       }
     };
 

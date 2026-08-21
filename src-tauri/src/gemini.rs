@@ -40,8 +40,12 @@ pub struct ChatMessage {
 pub enum StreamEvent {
     /// A chunk of model output text.
     Delta { text: String },
-    /// The model finished. `truncated` means it ran into the output limit.
-    Done { truncated: bool },
+    /// The model finished. `truncated` means it ran into the output limit;
+    /// `prompt_tokens` is the prompt size Gemini reported, when it did.
+    Done {
+        truncated: bool,
+        prompt_tokens: Option<u64>,
+    },
 }
 
 #[derive(Default)]
@@ -222,7 +226,10 @@ pub async fn stream_pattern(
     // A cancelled request therefore still needs its terminal event.
     let result = match outcome {
         Some(result) => result,
-        None => emit(StreamEvent::Done { truncated: false }),
+        None => emit(StreamEvent::Done {
+            truncated: false,
+            prompt_tokens: None,
+        }),
     };
 
     let mut active = state.active.lock().await;
@@ -283,6 +290,7 @@ async fn run_stream(
 
     emit(StreamEvent::Done {
         truncated: progress.truncated,
+        prompt_tokens: progress.prompt_tokens,
     })?;
     Ok(())
 }
@@ -294,6 +302,8 @@ struct StreamProgress {
     step_types: HashMap<i64, String>,
     saw_text: bool,
     truncated: bool,
+    /// `usage.total_input_tokens` from the completed event, when reported.
+    prompt_tokens: Option<u64>,
 }
 
 impl StreamProgress {
@@ -349,11 +359,15 @@ impl StreamProgress {
                 }
             }
             Some("interaction.completed") => {
-                self.truncated = event
-                    .get("interaction")
+                let interaction = event.get("interaction");
+                self.truncated = interaction
                     .and_then(|interaction| interaction.get("status"))
                     .and_then(Value::as_str)
                     == Some("incomplete");
+                self.prompt_tokens = interaction
+                    .and_then(|interaction| interaction.get("usage"))
+                    .and_then(|usage| usage.get("total_input_tokens"))
+                    .and_then(Value::as_u64);
             }
             Some("error") => {
                 return Err(extract_error_message(&data)
@@ -605,6 +619,29 @@ mod tests {
             parsed.get("title").and_then(Value::as_str).is_some(),
             "expected a title field in {raw}"
         );
+    }
+
+    #[test]
+    fn reads_truncation_and_usage_from_the_completed_event() {
+        let mut progress = StreamProgress::default();
+        let raw = concat!(
+            "data: {\"event_type\":\"interaction.completed\",",
+            "\"interaction\":{\"status\":\"completed\",",
+            "\"usage\":{\"total_input_tokens\":11605}}}"
+        );
+        progress.handle(raw, &mut |_| Ok(())).expect("handled");
+        assert!(!progress.truncated);
+        assert_eq!(progress.prompt_tokens, Some(11605));
+
+        let mut incomplete = StreamProgress::default();
+        incomplete
+            .handle(
+                "data: {\"event_type\":\"interaction.completed\",\"interaction\":{\"status\":\"incomplete\"}}",
+                &mut |_| Ok(()),
+            )
+            .expect("handled");
+        assert!(incomplete.truncated);
+        assert_eq!(incomplete.prompt_tokens, None);
     }
 
     #[test]

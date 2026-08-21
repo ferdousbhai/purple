@@ -31,6 +31,9 @@ export interface ChatMessage {
 export interface StreamOutcome {
   /** The model stopped at its output limit rather than finishing. */
   truncated: boolean;
+  /** Gemini's reported prompt token count for this request, or null when the
+   * transport did not report one. Feeds the compaction trigger. */
+  promptTokens: number | null;
 }
 
 export type TitleGenerationResult =

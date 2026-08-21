@@ -473,6 +473,10 @@ function Composer(props: {
   const [isGenerating, setIsGenerating] = useState(false)
   /** Prose of the streaming response so far, code fences stripped. */
   const [streamingProse, setStreamingProse] = useState('')
+  /** Gemini's reported prompt size for the latest generation — the fold
+   * trigger's exact signal. Transient by design: a reload starts at null and
+   * the next generation refreshes it. */
+  const promptTokensRef = useRef<number | null>(null)
   const backend = useMemo(() => createByokBackend(props.byokKey), [props.byokKey])
   // The fold scheduler is created once; reach the current backend through a ref
   // so a re-saved key applies to folds already scheduled.
@@ -484,10 +488,12 @@ function Composer(props: {
         backendRef.current.generateCompactionSummary(previous, batch),
       // Message objects are stable across appends.
       isSameMessage: (a, b) => a === b,
-      sizeOf: (message) => message.content.length,
       commit: (accept) =>
         setChat((current) => {
-          const next = accept(current)
+          const next = accept({
+            ...current,
+            promptTokens: promptTokensRef.current,
+          })
           return next ? { ...current, ...next } : current
         }),
     }),
@@ -515,7 +521,7 @@ function Composer(props: {
   // state, and buildContextWindow caps the uncovered tail regardless.
   useEffect(() => {
     saveByokChat(chat)
-    foldScheduler.maybeFold(chat)
+    foldScheduler.maybeFold({ ...chat, promptTokens: promptTokensRef.current })
   }, [chat, foldScheduler])
 
   useEffect(() => {
@@ -544,7 +550,8 @@ function Composer(props: {
       streamed += delta
       setStreamingProse(visibleTextWithoutCodeBlocks(streamed))
     })
-      .then(async (raw) => {
+      .then(async ({ text: raw, promptTokens }) => {
+        promptTokensRef.current = promptTokens ?? promptTokensRef.current
         setChat((current) => ({
           ...current,
           messages: [...history, { role: 'assistant', content: raw }],
@@ -567,6 +574,7 @@ function Composer(props: {
   const clearSession = () => {
     clearByokChat()
     setChat({ messages: [], artifact: null, coveredCount: 0 })
+    promptTokensRef.current = null
     foldScheduler.reset()
     flow.setUiError(null)
     flow.setStagedCode(null)

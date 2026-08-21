@@ -90,6 +90,7 @@ const geminiContentSchema = z
     candidates: z
       .array(z.object({ content: z.object({ parts: z.array(z.object({ text: z.string().optional() })).optional() }).optional() }))
       .optional(),
+    usageMetadata: z.object({ promptTokenCount: z.number().optional() }).optional(),
   })
   .catch({})
 
@@ -229,11 +230,11 @@ export interface ByokBackend
   /** Send a prepared repair message; resolves with the raw model text. */
   repairPattern(message: string): Promise<string>
   /** Stream a pattern generation; deltas arrive on `onDelta` and the promise
-   * resolves with the full raw model text. */
+   * resolves with the full raw model text plus the reported prompt size. */
   streamPattern(
     messages: readonly ChatMessage[],
     onDelta: (text: string) => void,
-  ): Promise<string>
+  ): Promise<StreamedGeneration>
 }
 
 /** Bind the visitor's key into a backend the studio UI talks to. */
@@ -325,6 +326,13 @@ async function callGemini(
   return text
 }
 
+export interface StreamedGeneration {
+  text: string
+  /** Gemini's reported prompt token count, or null when absent. Feeds the
+   * compaction trigger with exact sizes instead of estimates. */
+  promptTokens: number | null
+}
+
 /**
  * Stream a generation over SSE, delivering text deltas as they arrive and
  * resolving with the full response text. Follows Gemini's SSE framing: each
@@ -335,7 +343,7 @@ async function streamGemini(
   system: string,
   messages: readonly ChatMessage[],
   onDelta: (text: string) => void,
-): Promise<string> {
+): Promise<StreamedGeneration> {
   const response = await fetch(`${STREAM_ENDPOINT}?alt=sse`, {
     method: 'POST',
     headers: {
@@ -351,6 +359,7 @@ async function streamGemini(
   const decoder = new TextDecoder()
   let buffered = ''
   let total = ''
+  let promptTokens: number | null = null
   const consumeLine = (line: string) => {
     if (!line.startsWith('data:')) return
     let event: GeminiContent
@@ -360,6 +369,7 @@ async function streamGemini(
       // Not a complete JSON event (keep-alive or fragment); skip it.
       return
     }
+    promptTokens = event.usageMetadata?.promptTokenCount ?? promptTokens
     const text = chunkText(event)
     if (!text) return
     total += text
@@ -376,5 +386,5 @@ async function streamGemini(
   }
   consumeLine(buffered)
   if (!total) throw new Error('Gemini returned an empty response.')
-  return total
+  return { text: total, promptTokens }
 }

@@ -69,10 +69,13 @@ interface ChatView {
 interface CompactionState {
   artifact: CompactionArtifact | null;
   coveredCount: number;
+  /** Gemini's reported prompt token count for the latest generation, or null
+   * before the first one — the fold trigger's exact-size signal. */
+  promptTokens: number | null;
 }
 
 function freshCompactionState(): CompactionState {
-  return { artifact: null, coveredCount: 0 };
+  return { artifact: null, coveredCount: 0, promptTokens: null };
 }
 
 export function useChat() {
@@ -94,13 +97,14 @@ export function useChat() {
     createFoldScheduler<Message>({
       summarize: generateCompactionSummary,
       isSameMessage: (a, b) => a.id === b.id,
-      sizeOf: (message) => message.content.length,
       commit: (accept) => {
         const next = accept({
           messages: conversationRef.current,
           ...compactionRef.current,
         });
-        if (next) compactionRef.current = next;
+        if (next) {
+          compactionRef.current = { ...compactionRef.current, ...next };
+        }
       },
       onFoldFailed: (error) =>
         console.warn("[Chat] Background compaction failed:", error),
@@ -229,11 +233,14 @@ export function useChat() {
       const runStream = async (): Promise<void> => {
         try {
           const { artifact, coveredCount } = compactionRef.current;
-          const { truncated } = await streamPattern(
+          const { truncated, promptTokens } = await streamPattern(
             buildContextWindow(artifact, coveredCount, conversation),
             appendDelta,
           );
           activeStream.truncated = truncated;
+          if (promptTokens !== null) {
+            compactionRef.current = { ...compactionRef.current, promptTokens };
+          }
           settleStream(activeStream, "done");
         } catch (error) {
           if (streamRef.current !== activeStream) return;

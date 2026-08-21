@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildCompactionRequest,
   buildContextWindow,
-  COMPACTION_TRIGGER_CHARS,
+  COMPACTION_TRIGGER_TOKENS,
   createFoldScheduler,
   MAX_FOLD_FAILURES,
   parseCompactionSummary,
@@ -13,6 +13,8 @@ import {
 } from "./compaction";
 import type { ChatMessage } from "./types";
 
+const OVER_BUDGET = COMPACTION_TRIGGER_TOKENS + 1;
+
 function conversation(length: number): ChatMessage[] {
   return Array.from({ length }, (_, index) => ({
     role: index % 2 === 0 ? ("user" as const) : ("assistant" as const),
@@ -20,44 +22,36 @@ function conversation(length: number): ChatMessage[] {
   }));
 }
 
-/** A conversation where even one message exceeds the character budget. */
-function largeConversation(length: number): ChatMessage[] {
-  return Array.from({ length }, (_, index) => ({
-    role: index % 2 === 0 ? ("user" as const) : ("assistant" as const),
-    content: "m".repeat(COMPACTION_TRIGGER_CHARS + 1),
-  }));
-}
-
 describe("planCompaction", () => {
-  it("does not fold at or below the character budget", () => {
-    expect(planCompaction(0, 0, 0)).toEqual({ fold: false, foldEnd: 0 });
-    expect(planCompaction(4, 0, COMPACTION_TRIGGER_CHARS)).toEqual({
+  it("does not fold at or below the token budget, or before any count exists", () => {
+    expect(planCompaction(4, 0, null)).toEqual({ fold: false, foldEnd: 0 });
+    expect(planCompaction(4, 0, COMPACTION_TRIGGER_TOKENS)).toEqual({
       fold: false,
       foldEnd: 0,
     });
   });
 
   it("folds the entire conversation once the budget is exceeded", () => {
-    expect(planCompaction(4, 0, COMPACTION_TRIGGER_CHARS + 1)).toEqual({
+    expect(planCompaction(4, 0, OVER_BUDGET)).toEqual({
       fold: true,
       foldEnd: 4,
     });
   });
 
   it("never folds a lone uncovered message", () => {
-    expect(planCompaction(5, 4, COMPACTION_TRIGGER_CHARS * 2)).toEqual({
+    expect(planCompaction(5, 4, OVER_BUDGET)).toEqual({
       fold: false,
       foldEnd: 4,
     });
   });
 
   it("echoes the covered count when no fold is due", () => {
-    expect(planCompaction(10, 4, 0)).toEqual({ fold: false, foldEnd: 4 });
+    expect(planCompaction(10, 4, null)).toEqual({ fold: false, foldEnd: 4 });
   });
 
   it("clamps an out-of-range covered count", () => {
-    expect(planCompaction(5, 10, 0)).toEqual({ fold: false, foldEnd: 5 });
-    expect(planCompaction(5, -3, 0)).toEqual({ fold: false, foldEnd: 0 });
+    expect(planCompaction(5, 10, null)).toEqual({ fold: false, foldEnd: 5 });
+    expect(planCompaction(5, -3, null)).toEqual({ fold: false, foldEnd: 0 });
   });
 });
 
@@ -227,9 +221,10 @@ describe("createFoldScheduler", () => {
     onFoldFailed?: (error: string) => void;
   } = {}) {
     let live: FoldSnapshot<ChatMessage> = {
-      messages: largeConversation(4),
+      messages: conversation(4),
       artifact: null,
       coveredCount: 0,
+      promptTokens: OVER_BUDGET,
     };
     const summarize = vi.fn(
       overrides.summarize ??
@@ -238,7 +233,6 @@ describe("createFoldScheduler", () => {
     const scheduler = createFoldScheduler<ChatMessage>({
       summarize,
       isSameMessage: (a, b) => a === b,
-      sizeOf: (message) => message.content.length,
       commit: (accept) => {
         const next = accept(live);
         if (next) live = { ...live, ...next };
@@ -274,15 +268,16 @@ describe("createFoldScheduler", () => {
     expect(h.live.coveredCount).toBe(4);
   });
 
-  it("does not fold below the character budget", () => {
+  it("does not fold below the token budget or before a count exists", () => {
     const h = harness();
-    h.scheduler.maybeFold({ ...h.live, messages: conversation(20) });
+    h.scheduler.maybeFold({ ...h.live, promptTokens: COMPACTION_TRIGGER_TOKENS });
+    h.scheduler.maybeFold({ ...h.live, promptTokens: null });
     expect(h.summarize).not.toHaveBeenCalled();
   });
 
-  it("never folds a lone oversized message", () => {
+  it("never folds a lone uncovered message on size alone", () => {
     const h = harness();
-    h.scheduler.maybeFold({ ...h.live, messages: largeConversation(1) });
+    h.scheduler.maybeFold({ ...h.live, messages: conversation(1) });
     expect(h.summarize).not.toHaveBeenCalled();
   });
 

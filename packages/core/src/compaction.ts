@@ -17,15 +17,17 @@ import { extractPattern } from "./pattern";
 import type { ChatMessage } from "./types";
 
 /**
- * Compact once the uncovered history grows beyond this many characters —
- * roughly 100k tokens. This is the only bound on the context window: every
- * request sends the artifact plus the full uncovered history, and nothing is
- * ever silently dropped. Gemini's implicit prefix caching keeps the
- * append-only conversation cheap to resend, so folding earlier would only
- * invalidate that cache, spend a summarizer call, and lose session detail to
- * summarization.
+ * Compact once a generation request exceeds this many prompt tokens — exact
+ * counts reported by Gemini itself (`usage.total_input_tokens` on the
+ * desktop's Interactions API, `usageMetadata.promptTokenCount` on the web's
+ * generateContent), not an estimate. This is the only bound on the context
+ * window: every request sends the artifact plus the full uncovered history,
+ * and nothing is ever silently dropped. Gemini's implicit prefix caching
+ * keeps the append-only conversation cheap to resend, so folding earlier
+ * would only invalidate that cache, spend a summarizer call, and lose
+ * session detail to summarization.
  */
-export const COMPACTION_TRIGGER_CHARS = 400_000;
+export const COMPACTION_TRIGGER_TOKENS = 100_000;
 
 export const COMPACTION_PROMPT = `You are the session memory inside Purple, a Strudel live-coding music app.
 Merge the previous rolling summary, if one is given, with the older chat messages below.
@@ -94,18 +96,25 @@ export interface CompactionPlan {
 /**
  * Decide whether a background fold is due. `totalCount` is the length of the
  * full conversation; `coveredCount` is how many leading messages the current
- * artifact already covers (0 when there is none); `uncoveredChars` is the
- * total content size of the uncovered messages. A lone uncovered message is
- * never folded — a summary of one exchange loses more than it saves.
+ * artifact already covers (0 when there is none); `promptTokens` is the
+ * prompt token count Gemini reported for the latest generation request, or
+ * null before the first one. A lone uncovered message is never folded — a
+ * summary of one exchange loses more than it saves, and it also keeps a
+ * token count measured against pre-fold context from immediately re-folding
+ * the fresh tail.
  */
 export function planCompaction(
   totalCount: number,
   coveredCount: number,
-  uncoveredChars: number,
+  promptTokens: number | null,
 ): CompactionPlan {
   const covered = Math.min(Math.max(coveredCount, 0), totalCount);
   const uncovered = totalCount - covered;
-  if (uncovered > 1 && uncoveredChars > COMPACTION_TRIGGER_CHARS) {
+  if (
+    uncovered > 1 &&
+    promptTokens !== null &&
+    promptTokens > COMPACTION_TRIGGER_TOKENS
+  ) {
     return { fold: true, foldEnd: totalCount };
   }
   return { fold: false, foldEnd: covered };
@@ -172,6 +181,9 @@ export interface FoldSnapshot<Message> {
   messages: readonly Message[];
   artifact: CompactionArtifact | null;
   coveredCount: number;
+  /** Gemini's reported prompt token count for the latest generation request,
+   * or null before the first one — the fold trigger's exact-size signal. */
+  promptTokens: number | null;
 }
 
 export interface AcceptedFold {
@@ -206,8 +218,6 @@ export function createFoldScheduler<Message>(options: {
   /** Message identity for the prefix check: `id` equality on desktop, object
    * identity on the web (message objects are stable across appends). */
   isSameMessage: (a: Message, b: Message) => boolean;
-  /** Content size of one message, for the character-budget trigger. */
-  sizeOf: (message: Message) => number;
   onFoldFailed?: (error: string) => void;
 }): FoldScheduler<Message> {
   let inFlight = false;
@@ -221,13 +231,10 @@ export function createFoldScheduler<Message>(options: {
   return {
     maybeFold(snapshot) {
       if (inFlight || consecutiveFailures >= MAX_FOLD_FAILURES) return;
-      const uncoveredChars = snapshot.messages
-        .slice(Math.max(snapshot.coveredCount, 0))
-        .reduce((total, message) => total + options.sizeOf(message), 0);
       const plan = planCompaction(
         snapshot.messages.length,
         snapshot.coveredCount,
-        uncoveredChars,
+        snapshot.promptTokens,
       );
       if (!plan.fold) return;
 
