@@ -16,7 +16,6 @@ import {
 } from '@purple/core'
 import type {
   ChatMessage,
-  PatternGenerator,
   TitleGenerator,
   TransitionSuggester,
 } from '@purple/core/types'
@@ -223,8 +222,7 @@ export function clearByokChat(): void {
  * plus the repair round-trip the shared repair loop plugs into.
  */
 export interface ByokBackend
-  extends PatternGenerator,
-    TitleGenerator,
+  extends TitleGenerator,
     TransitionSuggester,
     CompactionSummarizer {
   /** Send a prepared repair message; resolves with the raw model text. */
@@ -249,8 +247,6 @@ export function createByokBackend(key: string): ByokBackend {
         responseJsonSchema: schema,
       }),
     ),
-
-    generatePattern: (messages) => callGemini(key, SYSTEM_PROMPT, messages),
 
     streamPattern: (messages, onDelta) =>
       streamGemini(key, SYSTEM_PROMPT, messages, onDelta),

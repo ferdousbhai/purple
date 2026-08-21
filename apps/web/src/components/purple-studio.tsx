@@ -10,7 +10,6 @@ import {
   errorMessage,
   MAX_PATTERN_LENGTH,
   acceptRawPattern,
-  extractPattern,
   generateRandomPrompt,
   patternFilename,
   repairUntilValid,
@@ -376,6 +375,10 @@ function usePatternFlow(deps: {
   setSourcePrompt: (prompt: string | undefined) => void
   /** Send the prepared repair message; the fixed pattern, or null on failure. */
   requestFix: (message: string) => Promise<string | null>
+  /** A repair replaced `broken` with `fixed`: propagate it into the stored
+   * transcript, so future generations and compaction folds see the pattern
+   * that actually plays — not the mistake the repair just removed. */
+  onPatternFixed: (broken: string, fixed: string) => void
   suggest: (code: string, sourcePrompt?: string) => Promise<TransitionSuggestionsResult>
 }) {
   const [uiError, setUiError] = useState<string | null>(null)
@@ -406,6 +409,14 @@ function usePatternFlow(deps: {
     deps.setCustomTitle(null)
     deps.setSourcePrompt(sourcePrompt)
 
+    // Each fix lands in the editor and the stored transcript.
+    let currentCode = pattern
+    const applyFix = (fixed: string) => {
+      deps.setCode(fixed)
+      deps.onPatternFixed(currentCode, fixed)
+      currentCode = fixed
+    }
+
     // Audit the pattern against the live engine before it plays or stages:
     // evaluation failures, empty patterns, and sound names that would play
     // silence go back to Gemini as hidden messages. Sends are disabled while
@@ -413,7 +424,7 @@ function usePatternFlow(deps: {
     const validated = await repairUntilValid(pattern, {
       validate: deps.playback.validatePattern,
       requestFix: deps.requestFix,
-      applyFix: deps.setCode,
+      applyFix,
       isStale: () => false,
     })
     if (mode === 'stage') {
@@ -427,7 +438,7 @@ function usePatternFlow(deps: {
       // play through the transport button, never through acceptPattern.
       isGeneratedPattern: () => true,
       requestFix: deps.requestFix,
-      applyFix: deps.setCode,
+      applyFix,
       // Sends are disabled while a generation (repairs included) is in
       // flight, so no newer prompt can replace the pattern mid-fix.
       isStale: () => false,
@@ -506,12 +517,27 @@ function Composer(props: {
     setSourcePrompt: props.setSourcePrompt,
     requestFix: async (message) => {
       try {
-        return extractPattern(await backend.repairPattern(message))
+        const acceptance = acceptRawPattern(await backend.repairPattern(message))
+        return acceptance.ok ? acceptance.pattern : null
       } catch {
         // The evaluation error the fix was for surfaces instead.
         return null
       }
     },
+    onPatternFixed: (broken, fixed) =>
+      setChat((current) => {
+        const last = current.messages.at(-1)
+        if (!last || last.role !== 'assistant' || !last.content.includes(broken)) {
+          return current
+        }
+        return {
+          ...current,
+          messages: [
+            ...current.messages.slice(0, -1),
+            { ...last, content: last.content.replace(broken, fixed) },
+          ],
+        }
+      }),
     suggest: backend.suggestTransitions,
   })
 

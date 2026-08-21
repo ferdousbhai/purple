@@ -64,11 +64,6 @@ export interface PatternStreamer {
   abortStream(): Promise<void>;
 }
 
-/** A one-shot generation backend: the prepared context window in, raw model text out. */
-export interface PatternGenerator {
-  generatePattern(messages: readonly ChatMessage[]): Promise<string>;
-}
-
 export interface TitleGenerator {
   /** Name the pattern a prompt is about to produce. */
   generateTitle(prompt: string): Promise<TitleGenerationResult>;
