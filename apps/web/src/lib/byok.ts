@@ -11,12 +11,15 @@ import {
   COMPACTION_SCHEMA,
   DEFAULT_GEMINI_MODEL,
   SYSTEM_PROMPT,
+  TITLE_PROMPT,
+  TITLE_SCHEMA,
   TRANSITION_SUGGESTIONS_PROMPT,
   TRANSITION_SUGGESTIONS_SCHEMA,
   buildCompactionRequest,
   buildTransitionSuggestionsRequest,
   errorMessage,
   parseCompactionSummary,
+  parseGeneratedPatternTitle,
   parseTransitionSuggestions,
   type CompactionArtifact,
   type CompactionSummarizer,
@@ -25,6 +28,7 @@ import {
 import type {
   ChatMessage,
   PatternGenerator,
+  TitleGenerator,
   TransitionSuggester,
 } from '@purple/core/types'
 import { z } from 'zod'
@@ -71,8 +75,9 @@ export interface ByokChatState {
 
 /** The generation knobs this client sets on Gemini's generateContent call. */
 interface GeminiGenerationConfig {
-  responseMimeType: string
-  responseJsonSchema: ResponseSchema
+  responseMimeType?: string
+  responseJsonSchema?: ResponseSchema
+  thinkingConfig?: { thinkingLevel: 'low' | 'medium' | 'high' }
 }
 
 interface GeminiRequestBody {
@@ -228,6 +233,7 @@ export function clearByokChat(): void {
  */
 export interface ByokBackend
   extends PatternGenerator,
+    TitleGenerator,
     TransitionSuggester,
     CompactionSummarizer {
   /** Send a prepared repair message; resolves with the raw model text. */
@@ -241,6 +247,27 @@ export function createByokBackend(key: string): ByokBackend {
 
     repairPattern: (message) =>
       callGemini(key, SYSTEM_PROMPT, [{ role: 'user', content: message }]),
+
+    async generateTitle(prompt) {
+      try {
+        const raw = await callGemini(
+          key,
+          TITLE_PROMPT,
+          [{ role: 'user', content: prompt.trim() }],
+          {
+            responseMimeType: 'application/json',
+            responseJsonSchema: TITLE_SCHEMA,
+          },
+        )
+        const title = parseGeneratedPatternTitle(raw)
+        if (!title) {
+          return { ok: false, error: 'Gemini returned an invalid pattern title.' }
+        }
+        return { ok: true, title }
+      } catch (error) {
+        return { ok: false, error: errorMessage(error) }
+      }
+    },
 
     async suggestTransitions(code, sourcePrompt) {
       try {
@@ -295,8 +322,16 @@ async function callGemini(
       role: message.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: message.content }],
     })),
+    generationConfig,
   }
-  if (generationConfig) body.generationConfig = generationConfig
+  // Low thinking mirrors the desktop's GEMINI_THINKING_LEVEL default and cuts
+  // seconds of server-side latency. Thinking levels are a Gemini 3 feature.
+  if (DEFAULT_GEMINI_MODEL.startsWith('gemini-3')) {
+    body.generationConfig = {
+      thinkingConfig: { thinkingLevel: 'low' },
+      ...generationConfig,
+    }
+  }
   const response = await fetch(ENDPOINT, {
     method: 'POST',
     headers: {

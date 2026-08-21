@@ -26,6 +26,7 @@ import {
 import {
   SYSTEM_PROMPT,
   TITLE_PROMPT,
+  TITLE_SCHEMA,
   TRANSITION_SUGGESTIONS_PROMPT,
   TRANSITION_SUGGESTIONS_SCHEMA,
   buildTransitionSuggestionsRequest,
@@ -55,17 +56,6 @@ type StreamEvent =
   | { type: "delta"; text: string }
   | { type: "done"; truncated: boolean };
 
-const TITLE_SCHEMA = {
-  type: "object",
-  properties: {
-    title: {
-      type: "string",
-      description: "A memorable 2 to 6 word music title, at most 60 characters",
-    },
-  },
-  required: ["title"],
-  additionalProperties: false,
-} as const;
 
 export { errorMessage };
 

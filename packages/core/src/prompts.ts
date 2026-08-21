@@ -100,6 +100,19 @@ export const TITLE_PROMPT = `Create a memorable title for this music pattern.
 The title must contain 2 to 6 words and at most 60 characters.
 Do not use markdown, labels, or ending punctuation.`;
 
+/** Structured-output schema for the title call, shared by both apps. */
+export const TITLE_SCHEMA = {
+  type: "object",
+  properties: {
+    title: {
+      type: "string",
+      description: "A memorable 2 to 6 word music title, at most 60 characters",
+    },
+  },
+  required: ["title"],
+  additionalProperties: false,
+} as const;
+
 export const TRANSITION_SUGGESTIONS_PROMPT = `You are helping a new DJ choose what to play next.
 Based only on the supplied current music prompt and Strudel pattern, propose exactly three musically compatible but meaningfully different next directions.
 Make each label an inviting 2 to 5 word action, such as "Drift into dub".

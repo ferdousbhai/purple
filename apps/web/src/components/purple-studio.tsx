@@ -390,16 +390,17 @@ function usePatternFlow(deps: {
     else setUiError(result.error)
   }
 
-  const acceptPattern = async (raw: string, mode: PatternMode) => {
+  /** Resolves with whether a pattern actually landed in the editor. */
+  const acceptPattern = async (raw: string, mode: PatternMode): Promise<boolean> => {
     const sourcePrompt = lastPromptRef.current
     const pattern = extractPattern(raw)
     if (!pattern) {
       setUiError('Gemini did not return a Strudel pattern.')
-      return
+      return false
     }
     if (pattern.length > 30_000) {
       setUiError('Gemini returned a pattern larger than 30,000 characters.')
-      return
+      return false
     }
 
     deps.setCode(pattern)
@@ -418,7 +419,7 @@ function usePatternFlow(deps: {
     })
     if (mode === 'stage') {
       setStagedCode(validated.code)
-      return
+      return true
     }
 
     const outcome = await attemptWithRepair(validated.code, {
@@ -442,6 +443,7 @@ function usePatternFlow(deps: {
     } else if (outcome.result.kind !== 'cancelled') {
       setUiError(outcome.result.error)
     }
+    return true
   }
 
   return {
@@ -532,6 +534,9 @@ function Composer(props: {
     setIsGenerating(true)
     void props.playback.prepareAudio()
     setInput('')
+    // Ask for a title in parallel with the pattern; sends are disabled while
+    // generating, so the result can only belong to this prompt.
+    const titlePromise = backend.generateTitle(prompt)
     void backend.generatePattern(contextWindow)
       .then(async (raw) => {
         setChat((current) => ({
@@ -539,7 +544,11 @@ function Composer(props: {
           messages: [...history, { role: 'assistant', content: raw }],
         }))
         // isGenerating stays true through acceptPattern's repair round-trips.
-        await flow.acceptPattern(raw, mode)
+        const landed = await flow.acceptPattern(raw, mode)
+        if (landed) {
+          const title = await titlePromise
+          if (title.ok) props.setCustomTitle(title.title)
+        }
       })
       .catch((cause: unknown) => flow.setUiError(errorMessage(cause)))
       .finally(() => setIsGenerating(false))
