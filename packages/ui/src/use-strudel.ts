@@ -111,12 +111,14 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
             await strudel.aliasBank(
               "https://raw.githubusercontent.com/todepond/samples/main/tidal-drum-machines-alias.json",
             );
-            // Dirt-Samples names these ho/cp, but the model vocabulary (and
-            // Strudel's own default prebake) says oh/clap; the drum-machine
-            // pack only registers prefixed names (RolandTR909_oh), so without
-            // the alias bare oh/clap hits are silently dropped.
+            // Dirt-Samples names these ho/cp/rm, but the model vocabulary
+            // (and Strudel's own default prebake) says oh/clap/rim; the
+            // drum-machine pack only registers prefixed names
+            // (RolandTR909_oh), so without the aliases bare oh/clap/rim hits
+            // are silently dropped.
             strudel.soundAlias("ho", "oh");
             strudel.soundAlias("cp", "clap");
+            strudel.soundAlias("rm", "rim");
           },
         });
 
