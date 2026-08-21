@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildCompactionRequest,
   buildContextWindow,
-  COMPACTION_TRIGGER,
+  COMPACTION_TRIGGER_CHARS,
   createFoldScheduler,
   MAX_FOLD_FAILURES,
   parseCompactionSummary,
@@ -11,7 +11,7 @@ import {
   type CompactionSummaryResult,
   type FoldSnapshot,
 } from "./compaction";
-import { MAX_CONTEXT_MESSAGES, type ChatMessage } from "./types";
+import type { ChatMessage } from "./types";
 
 function conversation(length: number): ChatMessage[] {
   return Array.from({ length }, (_, index) => ({
@@ -20,36 +20,45 @@ function conversation(length: number): ChatMessage[] {
   }));
 }
 
+/** A conversation where even one message exceeds the character budget. */
+function largeConversation(length: number): ChatMessage[] {
+  return Array.from({ length }, (_, index) => ({
+    role: index % 2 === 0 ? ("user" as const) : ("assistant" as const),
+    content: "m".repeat(COMPACTION_TRIGGER_CHARS + 1),
+  }));
+}
+
 describe("planCompaction", () => {
-  it("does not fold at or below the trigger", () => {
-    expect(planCompaction(0, 0)).toEqual({ fold: false, foldEnd: 0 });
-    expect(planCompaction(COMPACTION_TRIGGER, 0)).toEqual({
+  it("does not fold at or below the character budget", () => {
+    expect(planCompaction(0, 0, 0)).toEqual({ fold: false, foldEnd: 0 });
+    expect(planCompaction(4, 0, COMPACTION_TRIGGER_CHARS)).toEqual({
       fold: false,
       foldEnd: 0,
     });
   });
 
-  it("folds the entire conversation once the trigger is exceeded", () => {
-    expect(planCompaction(COMPACTION_TRIGGER + 1, 0)).toEqual({
+  it("folds the entire conversation once the budget is exceeded", () => {
+    expect(planCompaction(4, 0, COMPACTION_TRIGGER_CHARS + 1)).toEqual({
       fold: true,
-      foldEnd: COMPACTION_TRIGGER + 1,
+      foldEnd: 4,
     });
   });
 
-  it("counts only uncovered messages against the trigger", () => {
-    expect(planCompaction(21, 8)).toEqual({ fold: false, foldEnd: 8 });
-    expect(planCompaction(22, 8)).toEqual({ fold: true, foldEnd: 22 });
+  it("never folds a lone uncovered message", () => {
+    expect(planCompaction(5, 4, COMPACTION_TRIGGER_CHARS * 2)).toEqual({
+      fold: false,
+      foldEnd: 4,
+    });
   });
 
   it("echoes the covered count when no fold is due", () => {
-    expect(planCompaction(10, 4)).toEqual({ fold: false, foldEnd: 4 });
+    expect(planCompaction(10, 4, 0)).toEqual({ fold: false, foldEnd: 4 });
   });
 
   it("clamps an out-of-range covered count", () => {
-    expect(planCompaction(5, 10)).toEqual({ fold: false, foldEnd: 5 });
-    expect(planCompaction(5, -3)).toEqual({ fold: false, foldEnd: 0 });
+    expect(planCompaction(5, 10, 0)).toEqual({ fold: false, foldEnd: 5 });
+    expect(planCompaction(5, -3, 0)).toEqual({ fold: false, foldEnd: 0 });
   });
-
 });
 
 describe("buildCompactionRequest", () => {
@@ -72,15 +81,8 @@ describe("buildCompactionRequest", () => {
 });
 
 describe("buildContextWindow", () => {
-  it("matches the legacy trim when no artifact exists", () => {
+  it("sends the whole history when no artifact exists", () => {
     const messages = conversation(20);
-    expect(buildContextWindow(null, 0, messages)).toEqual(
-      messages.slice(-MAX_CONTEXT_MESSAGES),
-    );
-  });
-
-  it("sends a short history whole when no artifact exists", () => {
-    const messages = conversation(3);
     expect(buildContextWindow(null, 0, messages)).toEqual(messages);
   });
 
@@ -88,7 +90,7 @@ describe("buildContextWindow", () => {
     const messages = conversation(20);
     expect(
       buildContextWindow({ summary: "  ", latestPattern: "x" }, 5, messages),
-    ).toEqual(messages.slice(-MAX_CONTEXT_MESSAGES));
+    ).toEqual(messages);
   });
 
   it("prepends summary and current pattern before the uncovered tail", () => {
@@ -124,15 +126,15 @@ describe("buildContextWindow", () => {
     expect(window[0]?.content).not.toContain("Current pattern:");
   });
 
-  it("caps a stale uncovered tail at MAX_CONTEXT_MESSAGES", () => {
+  it("sends the full uncovered tail uncapped", () => {
     const messages = conversation(30);
     const window = buildContextWindow(
       { summary: "A stale summary.", latestPattern: "" },
       2,
       messages,
     );
-    expect(window).toHaveLength(MAX_CONTEXT_MESSAGES + 1);
-    expect(window.slice(1)).toEqual(messages.slice(-MAX_CONTEXT_MESSAGES));
+    expect(window).toHaveLength(29);
+    expect(window.slice(1)).toEqual(messages.slice(2));
   });
 
   it("sends only the artifact right after a full fold", () => {
@@ -225,7 +227,7 @@ describe("createFoldScheduler", () => {
     onFoldFailed?: (error: string) => void;
   } = {}) {
     let live: FoldSnapshot<ChatMessage> = {
-      messages: conversation(COMPACTION_TRIGGER + 1),
+      messages: largeConversation(4),
       artifact: null,
       coveredCount: 0,
     };
@@ -236,6 +238,7 @@ describe("createFoldScheduler", () => {
     const scheduler = createFoldScheduler<ChatMessage>({
       summarize,
       isSameMessage: (a, b) => a === b,
+      sizeOf: (message) => message.content.length,
       commit: (accept) => {
         const next = accept(live);
         if (next) live = { ...live, ...next };
@@ -265,15 +268,21 @@ describe("createFoldScheduler", () => {
 
     expect(h.summarize).toHaveBeenCalledExactlyOnceWith(
       null,
-      h.live.messages.slice(0, COMPACTION_TRIGGER + 1),
+      h.live.messages.slice(0, 4),
     );
     expect(h.live.artifact).toEqual(ARTIFACT);
-    expect(h.live.coveredCount).toBe(COMPACTION_TRIGGER + 1);
+    expect(h.live.coveredCount).toBe(4);
   });
 
-  it("does not fold below the trigger", () => {
+  it("does not fold below the character budget", () => {
     const h = harness();
-    h.scheduler.maybeFold({ ...h.live, messages: conversation(COMPACTION_TRIGGER) });
+    h.scheduler.maybeFold({ ...h.live, messages: conversation(20) });
+    expect(h.summarize).not.toHaveBeenCalled();
+  });
+
+  it("never folds a lone oversized message", () => {
+    const h = harness();
+    h.scheduler.maybeFold({ ...h.live, messages: largeConversation(1) });
     expect(h.summarize).not.toHaveBeenCalled();
   });
 

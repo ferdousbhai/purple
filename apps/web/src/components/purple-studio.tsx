@@ -485,6 +485,7 @@ function Composer(props: {
         backendRef.current.generateCompactionSummary(previous, batch),
       // Message objects are stable across appends.
       isSameMessage: (a, b) => a === b,
+      sizeOf: (message) => message.content.length,
       commit: (accept) =>
         setChat((current) => {
           const next = accept(current)

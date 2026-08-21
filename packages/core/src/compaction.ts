@@ -14,19 +14,18 @@
 import { errorMessage } from "./error";
 import { jsonText, parseJsonMembers } from "./json";
 import { extractPattern } from "./pattern";
-import { MAX_CONTEXT_MESSAGES, type ChatMessage } from "./types";
+import type { ChatMessage } from "./types";
 
 /**
- * Compact once the uncovered history grows beyond this many messages.
- *
- * Deliberately aligned with MAX_CONTEXT_MESSAGES, and deliberately the only
- * trigger: compaction exists to preserve what the context-window cap would
- * otherwise silently drop, not to shrink requests. Folding any earlier is
- * counterproductive — Gemini's implicit prefix caching keeps the append-only
- * conversation cache-hot, and a fold rewrites the prefix (invalidating that
- * cache), costs a summarizer call, and loses detail to summarization.
+ * Compact once the uncovered history grows beyond this many characters —
+ * roughly 100k tokens. This is the only bound on the context window: every
+ * request sends the artifact plus the full uncovered history, and nothing is
+ * ever silently dropped. Gemini's implicit prefix caching keeps the
+ * append-only conversation cheap to resend, so folding earlier would only
+ * invalidate that cache, spend a summarizer call, and lose session detail to
+ * summarization.
  */
-export const COMPACTION_TRIGGER = 13;
+export const COMPACTION_TRIGGER_CHARS = 400_000;
 
 export const COMPACTION_PROMPT = `You are the session memory inside Purple, a Strudel live-coding music app.
 Merge the previous rolling summary, if one is given, with the older chat messages below.
@@ -95,14 +94,18 @@ export interface CompactionPlan {
 /**
  * Decide whether a background fold is due. `totalCount` is the length of the
  * full conversation; `coveredCount` is how many leading messages the current
- * artifact already covers (0 when there is none).
+ * artifact already covers (0 when there is none); `uncoveredChars` is the
+ * total content size of the uncovered messages. A lone uncovered message is
+ * never folded — a summary of one exchange loses more than it saves.
  */
 export function planCompaction(
   totalCount: number,
   coveredCount: number,
+  uncoveredChars: number,
 ): CompactionPlan {
   const covered = Math.min(Math.max(coveredCount, 0), totalCount);
-  if (totalCount - covered > COMPACTION_TRIGGER) {
+  const uncovered = totalCount - covered;
+  if (uncovered > 1 && uncoveredChars > COMPACTION_TRIGGER_CHARS) {
     return { fold: true, foldEnd: totalCount };
   }
   return { fold: false, foldEnd: covered };
@@ -142,10 +145,9 @@ function artifactMessage(summary: string, latestPattern: string): ChatMessage {
 /**
  * The context window to send for a generation: the artifact (as a leading
  * user message carrying the summary and, when present, the current pattern)
- * plus every message it does not cover. The uncovered portion is capped at
- * MAX_CONTEXT_MESSAGES — oldest dropped — so a stale or failed compaction
- * degrades to a plain trim, never an unbounded send. Without an artifact
- * this is exactly the legacy `slice(-MAX_CONTEXT_MESSAGES)`.
+ * plus every message it does not cover — uncapped. Nothing is ever silently
+ * dropped; the character-budget fold is the only bound, and Gemini's
+ * implicit prefix caching keeps resending the append-only history cheap.
  */
 export function buildContextWindow(
   artifact: CompactionArtifact | null,
@@ -153,15 +155,11 @@ export function buildContextWindow(
   messages: readonly ChatMessage[],
 ): ChatMessage[] {
   const summary = artifact?.summary.trim();
-  if (!artifact || !summary) return messages.slice(-MAX_CONTEXT_MESSAGES);
+  if (!artifact || !summary) return [...messages];
 
   const covered = Math.min(Math.max(coveredCount, 0), messages.length);
   const uncovered = messages.slice(covered);
-  const tail =
-    uncovered.length > MAX_CONTEXT_MESSAGES
-      ? uncovered.slice(-MAX_CONTEXT_MESSAGES)
-      : uncovered;
-  return [artifactMessage(summary, artifact.latestPattern), ...tail];
+  return [artifactMessage(summary, artifact.latestPattern), ...uncovered];
 }
 
 /** Stop folding after this many consecutive summarizer failures, so a
@@ -208,6 +206,8 @@ export function createFoldScheduler<Message>(options: {
   /** Message identity for the prefix check: `id` equality on desktop, object
    * identity on the web (message objects are stable across appends). */
   isSameMessage: (a: Message, b: Message) => boolean;
+  /** Content size of one message, for the character-budget trigger. */
+  sizeOf: (message: Message) => number;
   onFoldFailed?: (error: string) => void;
 }): FoldScheduler<Message> {
   let inFlight = false;
@@ -221,7 +221,14 @@ export function createFoldScheduler<Message>(options: {
   return {
     maybeFold(snapshot) {
       if (inFlight || consecutiveFailures >= MAX_FOLD_FAILURES) return;
-      const plan = planCompaction(snapshot.messages.length, snapshot.coveredCount);
+      const uncoveredChars = snapshot.messages
+        .slice(Math.max(snapshot.coveredCount, 0))
+        .reduce((total, message) => total + options.sizeOf(message), 0);
+      const plan = planCompaction(
+        snapshot.messages.length,
+        snapshot.coveredCount,
+        uncoveredChars,
+      );
       if (!plan.fold) return;
 
       const folded = snapshot.messages.slice(0, plan.foldEnd);

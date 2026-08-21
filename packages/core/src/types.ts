@@ -28,9 +28,6 @@ export interface ChatMessage {
   content: string;
 }
 
-// An odd limit preserves user/model pairs when the newest turn is a user message.
-export const MAX_CONTEXT_MESSAGES = 13;
-
 export interface StreamOutcome {
   /** The model stopped at its output limit rather than finishing. */
   truncated: boolean;

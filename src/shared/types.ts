@@ -11,7 +11,6 @@ export type {
   TransitionSuggestion,
   TransitionSuggestionsResult,
 } from "@purple/core/types";
-export { MAX_CONTEXT_MESSAGES } from "@purple/core/types";
 
 import type { ChatMessage } from "@purple/core/types";
 
