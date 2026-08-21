@@ -60,14 +60,16 @@ src/
       useKeyboardShortcuts.ts      # Ctrl+., Escape handlers
   shared/                          # Desktop-only types and CLI grammar
     types.ts, cli.ts
-apps/web/                          # @purple/web — local-first web app on Cloudflare Workers
-                                   # (no accounts, no server-side storage/inference; BYOK Gemini
-                                   # key + saved patterns + chat live in the visitor's browser)
-  src/server.ts                    # Worker entry: serves the shell, nothing else
+apps/web/                          # @purple/web — local-first static SPA on an assets-only
+                                   # Worker (zero server code; the BYOK Gemini key, saved
+                                   # patterns and chat live in the visitor's browser)
+  index.html                       # SPA entry: boot shell, fonts, script tag
+  public/404.html                  # Served for unknown paths (assets not_found_handling)
+  src/main.tsx                     # createRoot + crash screen
   src/components/purple-studio.tsx   # The whole web UI
   src/lib/byok.ts                  # Browser → Google inference + chat persistence/compaction
-  src/db-collections/              # TanStack DB localStorage collection (saved patterns)
-  wrangler.jsonc                   # No bindings; custom domains soundspurple.com + www
+  src/lib/patterns.ts              # Saved patterns in localStorage (useSyncExternalStore)
+  wrangler.jsonc                   # Assets-only; custom domains soundspurple.com + www
 packages/core/                     # @purple/core — shared between both apps; dependency-free
                                    # (prompts, parsers, recipes, shared types, PurpleBackend)
 packages/ui/                       # @purple/ui — shared webview modules that need React/CodeMirror/

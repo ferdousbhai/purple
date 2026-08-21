@@ -19,7 +19,6 @@ import { Prec } from '@codemirror/state'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { keymap, type EditorView } from '@codemirror/view'
 import CodeMirror from '@uiw/react-codemirror'
-import { useLiveQuery } from '@tanstack/react-db'
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import {
   clearByokChat,
@@ -30,7 +29,7 @@ import {
   setByokKey,
   type ByokChatState,
 } from '#/lib/byok'
-import { getPatternsCollection } from '#/db-collections'
+import { removePattern, upsertPattern, usePatterns } from '#/lib/patterns'
 import { usePlayback } from '@purple/ui/use-playback'
 import {
   playbackHighlightExtension,
@@ -57,10 +56,7 @@ export function PurpleStudio() {
   const [customTitle, setCustomTitle] = useState<string | null>(null)
   const [sourcePrompt, setSourcePrompt] = useState<string | undefined>()
   const playback = usePlayback()
-  const patterns = getPatternsCollection()
-  const { data: savedPatterns = [] } = useLiveQuery((query) =>
-    query.from({ pattern: patterns }),
-  )
+  const savedPatterns = usePatterns()
 
   /** False when the browser blocks localStorage, so the key cannot outlive this render. */
   const updateByokKey = (key: string | null): boolean => {
@@ -75,27 +71,23 @@ export function PurpleStudio() {
   const title = customTitle ?? titleFromPrompt(sourcePrompt) ?? 'Untitled Pattern'
 
   const save = () => {
-    // Mirror the collection schema's bounds; an out-of-range insert throws.
+    // Mirror the pattern schema's bounds; an out-of-range upsert throws.
     if (!code.trim() || code.length > 30_000) return
     const now = Date.now()
     const name = title.trim() || 'Untitled Pattern'
     const existing = savedPatterns.find((pattern) => pattern.title === name)
-    if (existing) {
-      patterns.update(existing.id, (draft) => {
-        draft.code = code
-        draft.prompt = sourcePrompt
-        draft.updatedAt = now
-      })
-      return
-    }
-    patterns.insert({
-      id: crypto.randomUUID(),
-      title: name,
-      code,
-      prompt: sourcePrompt,
-      createdAt: now,
-      updatedAt: now,
-    })
+    upsertPattern(
+      existing
+        ? { ...existing, code, prompt: sourcePrompt, updatedAt: now }
+        : {
+            id: crypto.randomUUID(),
+            title: name,
+            code,
+            prompt: sourcePrompt,
+            createdAt: now,
+            updatedAt: now,
+          },
+    )
   }
 
   const exportPattern = () => {
@@ -178,7 +170,7 @@ export function PurpleStudio() {
                   <button
                     className="delete"
                     aria-label={`Delete ${pattern.title}`}
-                    onClick={() => patterns.delete(pattern.id)}
+                    onClick={() => removePattern(pattern.id)}
                   >
                     ×
                   </button>

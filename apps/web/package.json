@@ -8,14 +8,12 @@
   },
   "scripts": {
     "dev": "vite dev --port 3000",
-    "generate-routes": "tsr generate",
     "build": "vite build",
     "preview": "vite preview",
     "deploy": "pnpm run build && wrangler deploy",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "check": "pnpm run test && pnpm run typecheck && pnpm run build",
-    "cf-typegen": "wrangler types"
+    "check": "pnpm run test && pnpm run typecheck && pnpm run build"
   },
   "dependencies": {
     "@codemirror/lang-javascript": "^6.2.5",
@@ -24,17 +22,12 @@
     "@codemirror/view": "^6.41.1",
     "@purple/core": "workspace:*",
     "@purple/ui": "workspace:*",
-    "@tanstack/react-db": "^0.1.96",
-    "@tanstack/react-router": "^1.170.27",
-    "@tanstack/react-start": "^1.168.44",
     "@uiw/react-codemirror": "^4.25.9",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.26.0",
-    "@tanstack/router-cli": "^1.132.0",
     "@types/node": "^22.10.2",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",

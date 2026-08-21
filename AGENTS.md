@@ -7,7 +7,7 @@ Index for agents and contributors. Code is self-documenting — read the file yo
 AI music production. Users describe music in natural language, Gemini generates Strudel live-coding patterns, audio plays in the webview. One repo, two apps sharing `packages/*`. MIT.
 
 - Desktop: Tauri 2 shell (Rust) around a WebKitGTK webview (`src/`, `src-tauri/`)
-- Web: local-first TanStack Start app on Cloudflare Workers (`apps/web`) — no accounts, no server-side storage or inference; the visitor's Gemini key, chat, and saved patterns stay in the browser
+- Web: local-first static SPA on an assets-only Cloudflare Worker (`apps/web`) — no server code at all; the visitor's Gemini key, chat, and saved patterns stay in the browser
 
 ## Layout
 
@@ -25,11 +25,12 @@ src/
   shared/         # desktop-only types.ts, cli.ts (+ parser tests)
 apps/
   web/            # @purple/web — hosted app (purple-web Worker, soundspurple.com)
-    src/server.ts             # Worker entry: serves the shell, nothing else
+    index.html                # SPA entry (boot shell, fonts); 404.html lives in public/
+    src/main.tsx              # createRoot + crash screen
     src/components/purple-studio.tsx  # the whole web UI
     src/lib/byok.ts           # browser → Google inference + chat persistence
-    src/db-collections/       # TanStack DB localStorage collection (saved patterns)
-    wrangler.jsonc            # no bindings; custom domains soundspurple.com + www
+    src/lib/patterns.ts       # saved patterns in localStorage (useSyncExternalStore)
+    wrangler.jsonc            # assets-only Worker; custom domains soundspurple.com + www
 packages/
   core/           # @purple/core — shared, dependency-free
     src/pattern.ts, prompts.ts, recipes.ts, transitions.ts, compaction.ts, types.ts, index.ts

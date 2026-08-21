@@ -1,18 +1,16 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  // Fresh Worker created for the Purple rebrand; the retired riff-web Worker
-  // (and its RiffAgent DO migration history) is gone with the old identity.
+  // Assets-only Worker: the app is a static SPA. There is no server code at
+  // all — patterns, chat and the Gemini key live in the visitor's browser,
+  // and generation requests go straight to Google.
   "name": "purple-web",
-  "main": "src/server.ts",
   "compatibility_date": "2026-08-08",
-  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "404-page"
+  },
   "routes": [
     { "pattern": "soundspurple.com", "custom_domain": true },
     { "pattern": "www.soundspurple.com", "custom_domain": true }
-  ],
-  "observability": {
-    "enabled": true,
-    "logs": { "enabled": true, "head_sampling_rate": 1 },
-    "traces": { "enabled": true, "head_sampling_rate": 0.05 }
-  }
+  ]
 }
