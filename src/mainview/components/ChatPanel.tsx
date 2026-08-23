@@ -104,7 +104,15 @@ export function ChatPanel({
     submitPrompt(generateRandomPrompt());
   }
 
-  function handleClear(): void {
+  function handleDelete(): void {
+    if (
+      !window.confirm(
+        "Delete this conversation? This cannot be undone. The pattern in the editor will be kept.",
+      )
+    ) {
+      return;
+    }
+
     setInputValue("");
     onClearChat();
   }
@@ -117,8 +125,7 @@ export function ChatPanel({
   }
 
   const isEmpty = messages.length === 0 && !streamingText;
-  const canClear =
-    messages.length > 0 || Boolean(streamingText) || Boolean(inputValue.trim());
+  const canDelete = messages.length > 0 || Boolean(streamingText);
 
   return (
     <div className="flex flex-col h-full bg-surface/80">
@@ -130,12 +137,12 @@ export function ChatPanel({
           </span>
           <button
             type="button"
-            onClick={handleClear}
-            disabled={!canClear}
-            title="Start over"
-            aria-label="Clear chat and start over"
-            className="ml-auto grid size-7 place-items-center rounded border border-ink/10
-              bg-surface-lighter/30 text-base leading-none text-ink/35 transition-all
+            onClick={handleDelete}
+            disabled={!canDelete}
+            title="Delete conversation"
+            aria-label="Delete conversation"
+            className="ml-auto h-7 rounded border border-ink/10 px-2
+              bg-surface-lighter/30 text-[9px] font-mono font-medium tracking-wider text-ink/35 transition-all
               hover:border-hot/45 hover:bg-hot/10 hover:text-hot
               hover:shadow-glow-hot
               focus:outline-none focus:border-hot/60 focus:text-hot
@@ -144,7 +151,7 @@ export function ChatPanel({
               disabled:hover:bg-surface-lighter/30 disabled:hover:text-ink/35
               disabled:hover:shadow-none"
           >
-            <span aria-hidden="true">↺</span>
+            DELETE
           </button>
         </div>
       </div>
@@ -253,7 +260,7 @@ export function ChatPanel({
           </span>
           <button
             type="button"
-            onClick={handleClear}
+            onClick={handleDelete}
             className="shrink-0 rounded border border-warn/25 px-2.5 py-1 text-[10px] font-mono font-medium text-warn transition-colors hover:border-warn/50 hover:bg-warn/10 focus:outline-none focus:border-warn/60"
           >
             START OVER

@@ -780,6 +780,15 @@ function Composer(props: PatternStateBindings & {
     setInput('')
   }
 
+  const deleteConversation = () => {
+    if (
+      !window.confirm(
+        'Delete this conversation? This cannot be undone. The pattern in the editor will be kept.',
+      )
+    ) return
+    clearSession()
+  }
+
   const onInputKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
@@ -805,16 +814,15 @@ function Composer(props: PatternStateBindings & {
     <section className="composer">
       <div className="session-bar">
         <button
-          className="new-session"
-          title="Clear the conversation and start a new session"
-          aria-label="Clear session and start over"
-          // Disabled while busy: the settled generation would write the old
-          // conversation right back over a mid-flight clear.
-          disabled={busy || (isEmpty && !input.trim())}
-          onClick={clearSession}
+          className="delete-conversation"
+          title="Delete conversation"
+          aria-label="Delete conversation"
+          // A pattern may still be validating after its model stream settles,
+          // so keep deletion unavailable until the whole send has finished.
+          disabled={busy || isEmpty}
+          onClick={deleteConversation}
         >
-          <span aria-hidden="true" className="new-session-mark">＋</span>
-          START NEW SESSION
+          DELETE CONVERSATION
         </button>
       </div>
 
@@ -867,7 +875,7 @@ function Composer(props: PatternStateBindings & {
           <button
             className="chrome"
             disabled={busy}
-            onClick={clearSession}
+            onClick={deleteConversation}
           >
             START OVER
           </button>
