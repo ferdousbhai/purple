@@ -15,6 +15,10 @@ interface FakePattern {
   struct(value: string): FakePattern;
 }
 
+interface NumericCycle {
+  valueOf(): number;
+}
+
 function scope() {
   const gain = vi.fn<(value: number) => FakePattern>();
   const jux = vi.fn<(transform: (value: FakePattern) => FakePattern) => FakePattern>();
@@ -44,7 +48,11 @@ function scope() {
       mini2ast: parseMiniNotation,
       run: vi.fn(() => pattern),
       s: vi.fn(() => pattern),
-      signal: vi.fn((transform: (cycle: number) => number) => transform(12)),
+      // The engine passes the query span's begin as a Fraction, not a plain
+      // number; the fixture mirrors that with a numeric-like object.
+      signal: vi.fn((transform: (cycle: NumericCycle) => number) =>
+        transform({ valueOf: () => 12 }),
+      ),
       stack: vi.fn(() => pattern),
       xfade: vi.fn(() => pattern),
     }),

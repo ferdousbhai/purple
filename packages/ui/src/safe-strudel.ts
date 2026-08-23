@@ -31,10 +31,17 @@ const MINI_PARSER = Symbol("Purple mini-notation parser");
 const EVENT_MULTIPLIER_CALLS = new Set([
   "chop",
   "density",
+  "echo",
+  "echoWith",
   "fast",
+  "hurry",
   "ply",
   "run",
+  "scramble",
   "segment",
+  "shuffle",
+  "striate",
+  "stut",
 ]);
 
 /**
@@ -45,6 +52,8 @@ const EVENT_MULTIPLIER_CALLS = new Set([
 const SAFE_GLOBALS = new Set([
   "add",
   "arrange",
+  "brand",
+  "brandBy",
   "cat",
   "chord",
   "choose",
@@ -74,6 +83,7 @@ const SAFE_GLOBALS = new Set([
   "stack",
   "tri",
   "tri2",
+  "wchoose",
   "xfade",
 ]);
 
@@ -84,11 +94,20 @@ const SAFE_GLOBALS = new Set([
 const SAFE_MEMBERS = new Set([
   "add",
   "adsr",
+  "almostAlways",
+  "almostNever",
+  "always",
+  "arp",
   "attack",
   "bank",
+  "beat",
   "begin",
   "bpf",
+  "bpq",
+  "ceil",
   "chop",
+  "chunk",
+  "chunkBack",
   "clip",
   "coarse",
   "compressor",
@@ -96,26 +115,41 @@ const SAFE_MEMBERS = new Set([
   "crush",
   "cut",
   "decay",
+  "degrade",
   "degradeBy",
   "delay",
   "delaytime",
   "density",
+  "detune",
   "distort",
+  "djf",
+  "drive",
+  "dry",
   "duckattack",
   "duckdepth",
+  "duckonset",
   "duckorbit",
   "early",
   "echo",
+  "echoWith",
   "end",
   "every",
   "fast",
   "firstOf",
   "fit",
+  "floor",
   "fm",
+  "fmenv",
   "fmh",
+  "fmwave",
+  "ftype",
   "gain",
   "hpf",
+  "hpq",
+  "hurry",
+  "invert",
   "iter",
+  "iterBack",
   "jux",
   "juxBy",
   "lastOf",
@@ -136,6 +170,7 @@ const SAFE_MEMBERS = new Set([
   "max",
   "min",
   "n",
+  "never",
   "noise",
   "note",
   "off",
@@ -147,38 +182,65 @@ const SAFE_MEMBERS = new Set([
   "pdecay",
   "penv",
   "phaser",
+  "phasercenter",
+  "phaserdepth",
+  "phasersweep",
   "ply",
-  "rarely",
+  "postgain",
+  "pw",
+  "pwrate",
+  "pwsweep",
   "range",
+  "rangex",
+  "rarely",
   "release",
+  "repeatCycles",
   "rev",
   "room",
+  "roomdim",
+  "roomfade",
+  "roomlp",
   "roomsize",
   "rootNotes",
+  "round",
   "s",
   "scale",
   "scaleTranspose",
+  "scramble",
   "segment",
   "shape",
+  "shuffle",
   "silence",
   "slice",
   "slow",
   "someCycles",
+  "someCyclesBy",
   "sometimes",
   "sometimesBy",
   "sound",
   "speed",
   "splice",
+  "spread",
+  "striate",
   "struct",
+  "stut",
   "superimpose",
   "sustain",
   "swingBy",
   "transpose",
+  "tremolodepth",
+  "tremolophase",
+  "tremoloshape",
+  "tremoloskew",
+  "tremolosync",
+  "undegradeBy",
+  "unison",
   "velocity",
   "vib",
   "voicing",
   "vowel",
   "when",
+  "within",
 ]);
 
 export type SafeStrudelValue =
@@ -189,6 +251,22 @@ export type SafeStrudelValue =
   | null
   | undefined;
 export type SafeStrudelScope = Readonly<Record<string, SafeStrudelValue>>;
+
+export interface QueryablePattern<Hap> {
+  queryArc(begin: number, end: number): Hap[];
+}
+
+/** Narrow the untyped Strudel result before it reaches playback or validation. */
+export function isQueryablePattern<Pattern extends QueryablePattern<unknown>>(
+  value: SafeStrudelValue,
+): value is Pattern {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "queryArc" in value &&
+    typeof value.queryArc === "function"
+  );
+}
 
 type Scope = SafeStrudelScope;
 type Locals = ReadonlyMap<string, unknown>;
@@ -712,7 +790,13 @@ function interpretArrow(
 
   return (...args: unknown[]) => {
     const nested = new Map(locals);
-    names.forEach((name, index) => nested.set(name, args[index]));
+    // Strudel invokes callbacks with Fraction instances for time values
+    // (e.g. signal() passes the query span's begin). The expression language
+    // only does arithmetic on plain numbers, so numeric-like objects are
+    // unwrapped at this boundary; other values (patterns, haps) pass through.
+    names.forEach((name, index) =>
+      nested.set(name, unwrapNumericArgument(args[index])),
+    );
     // Transform callbacks may run for every queried event. Their complexity
     // budget is per invocation rather than being depleted by normal playback.
     const callbackBudget: EvaluationBudget = {
@@ -733,6 +817,17 @@ function interpretArrow(
     );
     return result;
   };
+}
+
+/** Fraction (and other numeric-like) callback arguments become plain numbers;
+ * everything else is returned untouched. A plain object's default valueOf
+ * returns the object itself, so only genuinely numeric values convert. */
+function unwrapNumericArgument(value: unknown): unknown {
+  if (typeof value !== "object" || value === null) return value;
+  const primitive = (value as { valueOf?: () => unknown }).valueOf?.();
+  return typeof primitive === "number" && Number.isFinite(primitive)
+    ? primitive
+    : value;
 }
 
 function resolveMember(
@@ -823,14 +918,12 @@ function interpretCall(
     throw new UnsafePatternError("The selected Strudel value is not callable.", node);
   }
   const result = Reflect.apply(callable, owner, interpretedArgs.values);
-  budget.eventMultiplier = owner
-    ? combineMemberCallEventBounds(
-        callName,
-        ownerEventMultiplier,
-        interpretedArgs.budgets,
-        node,
-      )
-    : combineGlobalCallEventBounds(callName, interpretedArgs.budgets, node);
+  budget.eventMultiplier = combineCallEventBounds(
+    callName,
+    interpretedArgs.budgets,
+    node,
+    owner === undefined ? undefined : ownerEventMultiplier,
+  );
   if (callName && EVENT_MULTIPLIER_CALLS.has(callName)) {
     consumeEventMultiplier(
       budget,
@@ -879,15 +972,24 @@ function interpretCallArguments(
   return { budgets, values };
 }
 
-function combineMemberCallEventBounds(
+function combineCallEventBounds(
   callName: string | undefined,
-  ownerBound: number,
   argumentBudgets: EvaluationBudget[],
   node: Node,
+  ownerBound: number | undefined,
 ): number {
   const bounds = argumentBudgets.map(({ eventMultiplier }) => eventMultiplier);
   let bound: number;
-  if (callName === "layer") {
+  if (ownerBound === undefined && callName === "xfade") {
+    // Xfade receives two patterns that have already passed the same per-pattern
+    // safety limit. Keep them independent so wrapping a valid replacement in a
+    // transition cannot make it invalid; the middle argument is only a signal.
+    bound = Math.max(bounds[0] ?? 1, bounds[2] ?? 1);
+  } else if (ownerBound === undefined && callName === "stack") {
+    bound = bounds.reduce((total, argumentBound) => total + argumentBound, 0);
+  } else if (ownerBound === undefined) {
+    bound = Math.max(1, ...bounds);
+  } else if (callName === "layer") {
     bound = bounds.reduce((total, argumentBound) => total + argumentBound, 0);
   } else if (callName === "superimpose") {
     bound =
@@ -900,32 +1002,14 @@ function combineMemberCallEventBounds(
   } else {
     bound = Math.max(ownerBound, ...bounds);
   }
-  if (!Number.isFinite(bound) || bound > MAX_EVENT_MULTIPLIER) {
-    throw new UnsafePatternError(
-      `${callName ?? "Pattern"}() exceeds the cumulative event multiplier limit of ${MAX_EVENT_MULTIPLIER}.`,
-      node,
-    );
-  }
-  return Math.max(1, bound);
+  return checkedEventBound(callName, bound, node);
 }
 
-function combineGlobalCallEventBounds(
+function checkedEventBound(
   callName: string | undefined,
-  argumentBudgets: EvaluationBudget[],
+  bound: number,
   node: Node,
 ): number {
-  const bounds = argumentBudgets.map(({ eventMultiplier }) => eventMultiplier);
-  let bound: number;
-  if (callName === "xfade") {
-    // Xfade receives two patterns that have already passed the same per-pattern
-    // safety limit. Keep them independent so wrapping a valid replacement in a
-    // transition cannot make it invalid; the middle argument is only a signal.
-    bound = Math.max(bounds[0] ?? 1, bounds[2] ?? 1);
-  } else if (callName === "stack") {
-    bound = bounds.reduce((total, argumentBound) => total + argumentBound, 0);
-  } else {
-    bound = Math.max(1, ...bounds);
-  }
   if (!Number.isFinite(bound) || bound > MAX_EVENT_MULTIPLIER) {
     throw new UnsafePatternError(
       `${callName ?? "Pattern"}() exceeds the cumulative event multiplier limit of ${MAX_EVENT_MULTIPLIER}.`,

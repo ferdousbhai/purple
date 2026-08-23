@@ -89,7 +89,7 @@ declare module "@strudel/web/web.mjs" {
     data?: object;
   }
   /** The engine's registry lookup: the registered sound for `name` (case
-   * folded, aliases resolved), or undefined — exactly what trigger time uses,
+   * folded, aliases resolved), or undefined - exactly what trigger time uses,
    * which makes it the ground truth for validating generated sound names. */
   export function getSound(name: string): RegisteredSound | undefined;
   /** The registry itself; `get()` returns the name -> sound map. */
