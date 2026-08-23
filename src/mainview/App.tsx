@@ -37,6 +37,7 @@ export function App() {
     chatError,
     suggestNewSession,
     clearChat,
+    undoClearChat,
     playbackState,
     error,
     activeCode,
@@ -154,6 +155,7 @@ export function App() {
             onSendMessage={sendMessage}
             onStageNext={stageNext}
             onClearChat={clearChat}
+            onUndoClearChat={undoClearChat}
           />
         </Panel>
       </Group>

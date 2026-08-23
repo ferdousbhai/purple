@@ -223,20 +223,37 @@ a { color: var(--accent); }
   display: flex; align-items: center;
   border-bottom: 1px solid var(--border);
 }
-.delete-conversation {
+.new-session {
   width: 100%; height: 32px;
   display: flex; align-items: center; justify-content: center; gap: 8px;
-  border: 1px solid color-mix(in srgb, var(--hot) 22%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
   border-radius: 6px;
-  background: color-mix(in srgb, var(--hot) 4%, transparent);
-  color: color-mix(in srgb, var(--text) 48%, transparent);
-  font: 600 10px var(--font-mono); letter-spacing: 0.14em;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  color: var(--accent); font: 600 10px var(--font-mono); letter-spacing: 0.16em;
   transition: border-color 150ms ease, background 150ms ease;
 }
-.delete-conversation:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--hot) 50%, transparent);
-  background: color-mix(in srgb, var(--hot) 9%, transparent);
-  color: var(--hot);
+.new-session:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.new-session-mark { font-size: 16px; font-weight: 400; line-height: 1; letter-spacing: 0; }
+
+/* Sits between the session bar and whatever follows, so it never displaces the
+   transcript: a cleared session shows the empty screen underneath it. */
+.undo-strip {
+  flex: none; display: flex; align-items: center; gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--text-dim); font: 400 10px/1.45 var(--font-mono);
+}
+.undo-strip span { flex: 1; min-width: 0; }
+.undo-strip .chrome {
+  flex: none; border-color: color-mix(in srgb, var(--accent) 30%, transparent); color: var(--accent);
+}
+.undo-strip .chrome:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
 }
 
 /* Empty session: the only place presets appear */

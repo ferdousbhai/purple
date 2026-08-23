@@ -72,6 +72,7 @@ const STARTER_PATTERNS = [
   'note("<c3 eb3 g3 bb3>").s("sawtooth").slow(2).lpf(700).gain(0.5)',
 ] as const
 const EMPTY_RANGES: readonly SourceRange[] = []
+const UNDO_CLEAR_WINDOW_MS = 10_000
 const PatternEditor = lazy(async () => {
   const editor = await import('@purple/ui/pattern-editor')
   return { default: editor.PatternEditor }
@@ -645,8 +646,10 @@ function Composer(props: PatternStateBindings & {
   const [isAcceptingPattern, setIsAcceptingPattern] = useState(false)
   const [explanatoryStyle, setExplanatoryStyle] = useState(false)
   const [chatStorageError, setChatStorageError] = useState<string | null>(null)
+  const [showUndo, setShowUndo] = useState(false)
   const patternExplanatoryStyleRef = useRef(false)
   const titleRequestRef = useRef(0)
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const backend = useMemo(() => createByokBackend(props.byokKey), [props.byokKey])
   const chat = useStudioChat(backend, {
     initialState: initialChat,
@@ -670,6 +673,7 @@ function Composer(props: PatternStateBindings & {
 
   useEffect(() => () => {
     titleRequestRef.current++
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
   }, [])
 
   const flow = usePatternFlow({
@@ -732,9 +736,20 @@ function Composer(props: PatternStateBindings & {
     props.playback.playbackState === 'transitioning'
   const streamingProse = visibleTextWithoutCodeBlocks(chat.streamingText)
 
+  const hideUndo = () => {
+    if (undoTimerRef.current) {
+      clearTimeout(undoTimerRef.current)
+      undoTimerRef.current = null
+    }
+    setShowUndo(false)
+  }
+
   const send = (text: string, mode: PatternMode = 'play') => {
     const prompt = text.trim()
     if (!prompt || busy) return
+    // A new turn makes the stashed session unrestorable, so retire the offer
+    // rather than leave a button that would refuse.
+    hideUndo()
     const titleRequest = ++titleRequestRef.current
     // The staged transition belongs to the preceding assistant turn. Once a
     // new turn begins, its one-shot controls are no longer actionable.
@@ -773,20 +788,24 @@ function Composer(props: PatternStateBindings & {
   }
 
   const clearSession = () => {
+    const hadConversation = chat.messages.length > 0
     titleRequestRef.current++
     chat.clearChat()
     flow.setUiError(null)
     flow.setStagedCode(null)
     setInput('')
+    hideUndo()
+    if (!hadConversation) return
+    setShowUndo(true)
+    undoTimerRef.current = setTimeout(() => {
+      undoTimerRef.current = null
+      setShowUndo(false)
+    }, UNDO_CLEAR_WINDOW_MS)
   }
 
-  const deleteConversation = () => {
-    if (
-      !window.confirm(
-        'Delete this conversation? This cannot be undone. The pattern in the editor will be kept.',
-      )
-    ) return
-    clearSession()
+  const undoClearSession = () => {
+    hideUndo()
+    chat.undoClearChat()
   }
 
   const onInputKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -814,17 +833,25 @@ function Composer(props: PatternStateBindings & {
     <section className="composer">
       <div className="session-bar">
         <button
-          className="delete-conversation"
-          title="Delete conversation"
-          aria-label="Delete conversation"
-          // A pattern may still be validating after its model stream settles,
-          // so keep deletion unavailable until the whole send has finished.
-          disabled={busy || isEmpty}
-          onClick={deleteConversation}
+          className="new-session"
+          title="Clear the conversation and start a new session"
+          aria-label="Clear session and start over"
+          // Disabled while busy: the settled generation would write the old
+          // conversation right back over a mid-flight clear.
+          disabled={busy || (isEmpty && !input.trim())}
+          onClick={clearSession}
         >
-          DELETE CONVERSATION
+          <span aria-hidden="true" className="new-session-mark">＋</span>
+          START NEW SESSION
         </button>
       </div>
+
+      {showUndo ? (
+        <div className="undo-strip" role="status">
+          <span>Session cleared</span>
+          <button className="chrome" onClick={undoClearSession}>UNDO</button>
+        </div>
+      ) : null}
 
       {isEmpty ? (
         <div className="empty-session">
@@ -875,7 +902,7 @@ function Composer(props: PatternStateBindings & {
           <button
             className="chrome"
             disabled={busy}
-            onClick={deleteConversation}
+            onClick={clearSession}
           >
             START OVER
           </button>
@@ -938,7 +965,10 @@ function Composer(props: PatternStateBindings & {
         <textarea
           aria-label="Describe the music"
           value={input}
-          onChange={(event) => setInput(event.target.value)}
+          onChange={(event) => {
+            hideUndo()
+            setInput(event.target.value)
+          }}
           onKeyDown={onInputKeyDown}
           placeholder={busy ? 'generating…' : 'describe your sound…'}
           rows={2}

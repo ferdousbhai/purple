@@ -173,6 +173,7 @@ export function useStudioChat(
   const idCounter = useRef(initial.messages.length);
   const streamRef = useRef<StreamSession | null>(null);
   const compactionRef = useRef<CompactionState>(initial.compaction);
+  const undoRef = useRef<StudioChatState | null>(null);
   const [suggestNewSession, setSuggestNewSession] = useState(false);
 
   const refreshNewSessionSuggestion = useCallback((): void => {
@@ -270,6 +271,18 @@ export function useStudioChat(
       streamRef.current = null;
     }
 
+    if (conversationRef.current.length > 0) {
+      const { artifact, coveredCount } = compactionRef.current;
+      undoRef.current = {
+        messages: conversationRef.current.map(({ role, content }) => ({
+          role,
+          content,
+        })),
+        artifact,
+        coveredCount,
+      };
+    }
+
     visibleMessagesRef.current = [];
     conversationRef.current = [];
     compactionRef.current = freshCompactionState();
@@ -279,6 +292,37 @@ export function useStudioChat(
     busyRef.current = false;
     optionsRef.current.onClear?.();
   }, [foldScheduler]);
+
+  /**
+   * Bring back the session the latest clearChat wiped, transcript and
+   * compaction state together, and persist it again. Refuses once a new
+   * conversation has started so a stale undo can never overwrite fresh chat.
+   * Restored messages get fresh monotonic ids: ids never reset, so any fold
+   * still in flight from before the clear fails its prefix check.
+   */
+  const undoClearChat = useCallback((): boolean => {
+    const stash = undoRef.current;
+    if (!stash || busyRef.current || conversationRef.current.length > 0) {
+      return false;
+    }
+    undoRef.current = null;
+
+    const messages = stash.messages.map((message) => ({
+      ...message,
+      id: nextId(),
+    }));
+    conversationRef.current = messages;
+    visibleMessagesRef.current = messages;
+    compactionRef.current = {
+      artifact: stash.artifact,
+      coveredCount: Math.min(stash.coveredCount, messages.length),
+      promptTokens: null,
+    };
+    setView({ messages, streamingText: "", isStreaming: false, error: null });
+    refreshNewSessionSuggestion();
+    persist();
+    return true;
+  }, [persist, refreshNewSessionSuggestion]);
 
   const sendMessage = useCallback(
     async (
@@ -505,6 +549,7 @@ export function useStudioChat(
     sendMessage,
     abortStream,
     clearChat,
+    undoClearChat,
     suggestNewSession,
     replaceLastAssistantPattern,
   };

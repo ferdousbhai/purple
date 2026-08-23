@@ -32,7 +32,10 @@ interface ChatPanelProps {
   onSendMessage: (text: string, explanatoryStyle: boolean) => boolean;
   onStageNext: (text: string, explanatoryStyle: boolean) => boolean;
   onClearChat: () => void;
+  onUndoClearChat: () => boolean;
 }
+
+const UNDO_WINDOW_MS = 10_000;
 export function ChatPanel({
   messages,
   streamingText,
@@ -48,12 +51,15 @@ export function ChatPanel({
   onSendMessage,
   onStageNext,
   onClearChat,
+  onUndoClearChat,
 }: ChatPanelProps) {
   const [inputValue, setInputValue] = useState("");
   const [explanatoryStyle, setExplanatoryStyle] = useState(false);
+  const [showUndo, setShowUndo] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const shouldFollowRef = useRef(true);
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!shouldFollowRef.current) return;
@@ -61,6 +67,33 @@ export function ChatPanel({
       behavior: isStreaming ? "auto" : "smooth",
     });
   }, [isStreaming, messages, streamingText]);
+
+  const hasConversation = messages.length > 0 || Boolean(streamingText);
+
+  // Once a new conversation starts, undoClearChat refuses, so retire the offer
+  // rather than leave a dead button up.
+  useEffect(() => {
+    if (hasConversation) setShowUndo(false);
+  }, [hasConversation]);
+
+  useEffect(() => {
+    return () => {
+      if (undoTimerRef.current !== null) clearTimeout(undoTimerRef.current);
+    };
+  }, []);
+
+  function dismissUndo(): void {
+    if (undoTimerRef.current !== null) {
+      clearTimeout(undoTimerRef.current);
+      undoTimerRef.current = null;
+    }
+    setShowUndo(false);
+  }
+
+  function handleUndo(): void {
+    onUndoClearChat();
+    dismissUndo();
+  }
 
   function submitPrompt(text: string): void {
     if (isInputDisabled) return;
@@ -104,17 +137,20 @@ export function ChatPanel({
     submitPrompt(generateRandomPrompt());
   }
 
-  function handleDelete(): void {
-    if (
-      !window.confirm(
-        "Delete this conversation? This cannot be undone. The pattern in the editor will be kept.",
-      )
-    ) {
-      return;
-    }
+  function handleClear(): void {
+    const hadConversation = hasConversation;
 
     setInputValue("");
     onClearChat();
+
+    if (!hadConversation) return;
+
+    if (undoTimerRef.current !== null) clearTimeout(undoTimerRef.current);
+    setShowUndo(true);
+    undoTimerRef.current = setTimeout(() => {
+      undoTimerRef.current = null;
+      setShowUndo(false);
+    }, UNDO_WINDOW_MS);
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>): void {
@@ -124,8 +160,8 @@ export function ChatPanel({
     }
   }
 
-  const isEmpty = messages.length === 0 && !streamingText;
-  const canDelete = messages.length > 0 || Boolean(streamingText);
+  const isEmpty = !hasConversation;
+  const canClear = hasConversation || Boolean(inputValue.trim());
 
   return (
     <div className="flex flex-col h-full bg-surface/80">
@@ -137,12 +173,12 @@ export function ChatPanel({
           </span>
           <button
             type="button"
-            onClick={handleDelete}
-            disabled={!canDelete}
-            title="Delete conversation"
-            aria-label="Delete conversation"
-            className="ml-auto h-7 rounded border border-ink/10 px-2
-              bg-surface-lighter/30 text-[9px] font-mono font-medium tracking-wider text-ink/35 transition-all
+            onClick={handleClear}
+            disabled={!canClear}
+            title="Start over"
+            aria-label="Clear chat and start over"
+            className="ml-auto grid size-7 place-items-center rounded border border-ink/10
+              bg-surface-lighter/30 text-base leading-none text-ink/35 transition-all
               hover:border-hot/45 hover:bg-hot/10 hover:text-hot
               hover:shadow-glow-hot
               focus:outline-none focus:border-hot/60 focus:text-hot
@@ -151,10 +187,28 @@ export function ChatPanel({
               disabled:hover:bg-surface-lighter/30 disabled:hover:text-ink/35
               disabled:hover:shadow-none"
           >
-            DELETE
+            <span aria-hidden="true">↺</span>
           </button>
         </div>
       </div>
+
+      {showUndo && (
+        <div
+          role="status"
+          className="flex items-center gap-3 border-b border-accent/15 bg-accent/5 px-4 py-1.5"
+        >
+          <span className="min-w-0 flex-1 text-[10px] font-mono text-ink/50">
+            Session cleared
+          </span>
+          <button
+            type="button"
+            onClick={handleUndo}
+            className="shrink-0 rounded border border-accent/25 px-2.5 py-1 text-[10px] font-mono font-medium text-accent transition-colors hover:border-accent/50 hover:bg-accent/10 focus:outline-none focus:border-accent/60"
+          >
+            UNDO
+          </button>
+        </div>
+      )}
 
       <div
         ref={transcriptRef}
@@ -260,7 +314,7 @@ export function ChatPanel({
           </span>
           <button
             type="button"
-            onClick={handleDelete}
+            onClick={handleClear}
             className="shrink-0 rounded border border-warn/25 px-2.5 py-1 text-[10px] font-mono font-medium text-warn transition-colors hover:border-warn/50 hover:bg-warn/10 focus:outline-none focus:border-warn/60"
           >
             START OVER
@@ -340,7 +394,10 @@ export function ChatPanel({
           <textarea
             aria-label="Describe the music to generate"
             value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
+            onChange={(e) => {
+              setInputValue(e.target.value);
+              if (showUndo) dismissUndo();
+            }}
             onKeyDown={handleKeyDown}
             placeholder={
               isStreaming

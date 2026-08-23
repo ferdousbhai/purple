@@ -41,6 +41,7 @@ const studio = vi.hoisted(() => ({
   prepareAudioCalls: 0,
   stopCalls: 0,
   clearChatCalls: 0,
+  saveChatCalls: 0,
   activeCode: '',
 }))
 
@@ -51,7 +52,10 @@ vi.mock('#/lib/byok', () => ({
   },
   getByokKey: () => 'browser-test-key',
   loadByokChat: () => null,
-  saveByokChat: () => true,
+  saveByokChat: () => {
+    studio.saveChatCalls++
+    return true
+  },
   setByokKey: () => undefined,
   createByokBackend: () => ({
     async stream(messages: unknown[], onDelta: (text: string) => void) {
@@ -229,6 +233,7 @@ beforeEach(() => {
   studio.prepareAudioCalls = 0
   studio.stopCalls = 0
   studio.clearChatCalls = 0
+  studio.saveChatCalls = 0
   studio.activeCode = ''
 })
 
@@ -255,29 +260,29 @@ async function startAndStageRevision() {
 }
 
 describe('Purple studio browser flow', () => {
-  it('deletes a conversation only after confirmation', async () => {
+  it('clears the session and brings it back through UNDO', async () => {
     studio.generations.push(FIRST_PATTERN)
     render(<PurpleStudio />)
 
     await sendPrompt('Start a beat')
     await waitFor(() => expect(studio.activeCode).toBe(FIRST_PATTERN))
 
-    const confirm = vi.spyOn(window, 'confirm')
-      .mockReturnValueOnce(false)
-      .mockReturnValueOnce(true)
-    const deleteButton = screen.getByRole('button', { name: 'Delete conversation' })
-
-    await userEvent.click(deleteButton)
-    expect(screen.getByText('Start a beat')).toBeTruthy()
-    expect(studio.clearChatCalls).toBe(0)
-
-    await userEvent.click(deleteButton)
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Clear session and start over' }),
+    )
     await screen.findByText('What do you want to hear?')
 
     expect(screen.queryByText('Start a beat')).toBeNull()
     expect(studio.clearChatCalls).toBe(1)
-    expect(confirm).toHaveBeenCalledTimes(2)
     expect(screen.getByLabelText('Pattern code')).toHaveValue(FIRST_PATTERN)
+
+    const savesBeforeUndo = studio.saveChatCalls
+    await userEvent.click(screen.getByRole('button', { name: 'UNDO' }))
+
+    await screen.findByText('Start a beat')
+    expect(screen.queryByText('What do you want to hear?')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'UNDO' })).toBeNull()
+    expect(studio.saveChatCalls).toBeGreaterThan(savesBeforeUndo)
   })
 
   it('plays the first generation and exposes a one-shot XFADE for a revision', async () => {

@@ -511,6 +511,7 @@ export function usePurpleController() {
     chatError: chat.error,
     suggestNewSession: chat.suggestNewSession,
     clearChat: chat.clearChat,
+    undoClearChat: chat.undoClearChat,
     abortStream: chat.abortStream,
     playbackState: playback.playbackState,
     error: generatedPlaybackError ?? playback.error,
