@@ -27,20 +27,20 @@
     "@purple/core": "workspace:*",
     "@purple/ui": "workspace:*",
     "@tauri-apps/api": "^2.11.1",
-    "react": "^19.2.5",
-    "react-dom": "^19.2.5"
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.78.0",
-    "@tailwindcss/vite": "^4.2.4",
+    "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/cli": "^2.11.4",
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.1",
     "oxlint": "1.78.0",
     "react-resizable-panels": "^4.11.0",
-    "tailwindcss": "^4.2.4",
-    "typescript": "^6.0.3",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
     "vite": "^8.0.10",
     "vitest": "^4.1.5"
   }
