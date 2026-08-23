@@ -14,14 +14,13 @@ import {
   type ValidationProblem,
 } from "@purple/core/validation";
 import { loadPinnedSamples } from "./pinned-samples";
-import {
-  createSafeStrudelScope,
-  evaluateSafeStrudelExpression,
-  type SafeStrudelScope,
-  type SafeStrudelValue,
+import type {
+  SafeStrudelScope,
+  SafeStrudelValue,
 } from "./safe-strudel";
 
 type StrudelModule = typeof import("@strudel/web/web.mjs");
+type SafeStrudelModule = typeof import("./safe-strudel");
 
 /** How many cycles of events the validation audit inspects. Four covers every
  * `<a b c d>` alternation the prompt examples use while staying instant. */
@@ -62,6 +61,7 @@ async function defaultEnsureRunningContext(context: AudioContext): Promise<void>
 
 export function useStrudel(options: StrudelAudioOptions = {}) {
   const strudelRef = useRef<StrudelModule | null>(null);
+  const safeStrudelRef = useRef<SafeStrudelModule | null>(null);
   const replRef = useRef<StrudelRepl | null>(null);
   const expressionScopeRef = useRef<SafeStrudelScope | null>(null);
   const initPromiseRef = useRef<Promise<void> | null>(null);
@@ -80,6 +80,7 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
 
     if (audioCtxRef.current?.state === "closed") {
       strudelRef.current = null;
+      safeStrudelRef.current = null;
       replRef.current = null;
       expressionScopeRef.current = null;
       initPromiseRef.current = null;
@@ -97,7 +98,12 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
       if (initPromiseRef.current) return initPromiseRef.current;
 
       const promise = (async () => {
-        const strudel = await import("@strudel/web/web.mjs");
+        // activate() has already created and resumed ctx synchronously from the
+        // user gesture. Keep parser and engine downloads behind that boundary.
+        const [strudel, safeStrudel] = await Promise.all([
+          import("@strudel/web/web.mjs"),
+          import("./safe-strudel"),
+        ]);
 
         const repl = await strudel.initStrudel({
           audioContext: ctx,
@@ -133,8 +139,9 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
         await strudel.initAudio();
 
         strudelRef.current = strudel;
+        safeStrudelRef.current = safeStrudel;
         replRef.current = repl;
-        expressionScopeRef.current = createSafeStrudelScope(strudel);
+        expressionScopeRef.current = safeStrudel.createSafeStrudelScope(strudel);
       })();
 
       initPromiseRef.current = promise;
@@ -164,9 +171,10 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
     options: { hushBefore?: boolean } = {},
   ): Promise<EvalResult> => {
     const strudel = strudelRef.current;
+    const safeStrudel = safeStrudelRef.current;
     const repl = replRef.current;
     const expressionScope = expressionScopeRef.current;
-    if (!strudel || !repl || !expressionScope) {
+    if (!strudel || !safeStrudel || !repl || !expressionScope) {
       return {
         ok: false,
         error: "Audio engine not initialized - click Play to retry",
@@ -188,7 +196,10 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
       // historical hushBefore distinction is intentionally a no-op. setPattern
       // replaces the scheduler atomically for both direct plays and x-fades.
       void options.hushBefore;
-      const pattern = evaluateSafeStrudelExpression(code, expressionScope);
+      const pattern = safeStrudel.evaluateSafeStrudelExpression(
+        code,
+        expressionScope,
+      );
       if (!isStrudelPattern(pattern)) {
         return {
           ok: false,
@@ -232,12 +243,18 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
       }
     }
     const strudel = strudelRef.current;
+    const safeStrudel = safeStrudelRef.current;
     const expressionScope = expressionScopeRef.current;
-    if (!strudel || !replRef.current || !expressionScope) return null;
+    if (!strudel || !safeStrudel || !replRef.current || !expressionScope) {
+      return null;
+    }
 
     try {
       // Interpretation builds a pattern without mutating the live scheduler.
-      const pattern = evaluateSafeStrudelExpression(code, expressionScope);
+      const pattern = safeStrudel.evaluateSafeStrudelExpression(
+        code,
+        expressionScope,
+      );
       if (!isStrudelPattern(pattern)) {
         return [
           {

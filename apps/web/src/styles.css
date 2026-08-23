@@ -162,6 +162,10 @@ a { color: var(--cyan); }
 .title-input:focus { border-bottom-color: rgba(0, 255, 245, 0.45); }
 .editor-surface { flex: 1; min-height: 0; }
 .editor-surface > div { height: 100%; }
+.editor-loading {
+  height: 100%; margin: 0; padding: 10px 14px; overflow: hidden;
+  color: var(--text); font: 14px/1.4 var(--font-mono); white-space: pre-wrap;
+}
 .cm-editor { height: 100%; font-size: 14px; background: transparent !important; }
 .cm-editor .cm-scroller { font-family: var(--font-mono); }
 .cm-editor .cm-gutters { background: transparent !important; border-right: 1px solid rgba(0, 255, 245, 0.08) !important; }

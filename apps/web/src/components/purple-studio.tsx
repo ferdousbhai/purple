@@ -12,7 +12,15 @@ import {
   withExplanatoryStyle,
   type TransitionSuggestionsResult,
 } from '@purple/core'
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from 'react'
 import {
   clearByokChat,
   createByokBackend,
@@ -35,10 +43,10 @@ import {
   type PatternMode,
 } from '#/lib/playback-flow'
 import { usePlayback } from '@purple/ui/use-playback'
-import { PatternEditor } from '@purple/ui/pattern-editor'
 import { useTransitionSuggestions } from '@purple/ui/use-transition-suggestions'
 import { useStudioChat } from '@purple/ui/use-studio-chat'
 import { useGeneratedPattern } from '@purple/ui/use-generated-pattern'
+import type { PatternEditorProps } from '@purple/ui/pattern-editor'
 import type { SourceRange } from '@purple/core/types'
 
 const STARTER_PATTERNS = [
@@ -48,6 +56,32 @@ const STARTER_PATTERNS = [
 ] as const
 const EMPTY_RANGES: readonly SourceRange[] = []
 const EQ_BAR_DELAYS = [0, 0.15, 0.3, 0.1, 0.25] as const
+const PatternEditor = lazy(async () => {
+  const editor = await import('@purple/ui/pattern-editor')
+  return { default: editor.PatternEditor }
+})
+
+function DeferredPatternEditor(props: PatternEditorProps) {
+  const [ready, setReady] = useState(false)
+  useEffect(() => {
+    // Let the shell and transport paint before requesting CodeMirror. Playback
+    // does not depend on the editor chunk and remains usable in the meantime.
+    const frame = requestAnimationFrame(() => setReady(true))
+    return () => cancelAnimationFrame(frame)
+  }, [])
+
+  const fallback = (
+    <pre aria-label="Pattern editor loading" className="editor-loading">
+      {props.code}
+    </pre>
+  )
+  if (!ready) return fallback
+  return (
+    <Suspense fallback={fallback}>
+      <PatternEditor {...props} />
+    </Suspense>
+  )
+}
 
 type Playback = ReturnType<typeof usePlayback>
 
@@ -274,7 +308,7 @@ export function PurpleStudio() {
           </div>
 
           <div className="editor-surface">
-            <PatternEditor
+            <DeferredPatternEditor
               code={code}
               activeRanges={code === playback.activeCode ? playback.activeRanges : EMPTY_RANGES}
               onCodeChange={setCode}
