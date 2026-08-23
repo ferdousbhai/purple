@@ -2,6 +2,19 @@ import viteReact from '@vitejs/plugin-react'
 import { playwright } from '@vitest/browser-playwright'
 import { defineConfig } from 'vitest/config'
 
+const chromiumArgs = [
+  '--headless',
+  '--no-sandbox',
+  '--remote-debugging-pipe',
+  '--no-startup-window',
+  '--disable-background-networking',
+  '--disable-gpu',
+  // GitHub's job container has a 64 MiB /dev/shm. Playwright normally adds
+  // this safeguard, but ignoreDefaultArgs removes it with the incompatible
+  // revision-specific flags we deliberately replace below.
+  ...(process.env.CI ? ['--disable-dev-shm-usage'] : []),
+]
+
 export default defineConfig({
   server: { host: '127.0.0.1' },
   resolve: { tsconfigPaths: true },
@@ -20,12 +33,7 @@ export default defineConfig({
           // Arch Chromium can reject Playwright's revision-specific defaults.
           // These are the minimum flags needed to control the installed browser.
           ignoreDefaultArgs: true,
-          args: [
-            '--headless',
-            '--no-sandbox',
-            '--remote-debugging-pipe',
-            '--no-startup-window',
-          ],
+          args: chromiumArgs,
         },
       }),
       instances: [{ browser: 'chromium' }],
