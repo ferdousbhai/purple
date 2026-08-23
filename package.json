@@ -1,7 +1,7 @@
 {
   "name": "purple",
   "version": "0.4.0",
-  "description": "AI-powered music production \u2014 Cursor for music",
+  "description": "AI-powered music production - Cursor for music",
   "license": "MIT",
   "packageManager": "pnpm@10.27.0",
   "type": "module",
@@ -21,22 +21,28 @@
     "web:deploy": "pnpm --filter @purple/web run deploy",
     "web:check": "pnpm --filter @purple/web run check",
     "check": "pnpm run lint && pnpm run format:rust && pnpm run lint:rust && pnpm run test && pnpm run test:rust && pnpm run typecheck && pnpm run build:webview && pnpm run web:check",
-    "lint": "oxlint"
+    "lint": "oxlint && pnpm run lint:effect && pnpm run lint:text && pnpm run lint:duplicates",
+    "lint:duplicates": "jscpd apps packages src src-tauri scripts tools",
+    "lint:effect": "effect-language-service diagnostics --strict --project tsconfig.json && effect-language-service diagnostics --strict --project packages/core/tsconfig.json && effect-language-service diagnostics --strict --project packages/ui/tsconfig.json && effect-language-service diagnostics --strict --project apps/web/tsconfig.json",
+    "lint:text": "node scripts/check-no-em-dash.mjs"
   },
   "dependencies": {
     "@purple/core": "workspace:*",
     "@purple/ui": "workspace:*",
     "@tauri-apps/api": "^2.11.1",
+    "effect": "3.22.1",
     "react": "^19.2.5",
     "react-dom": "^19.2.5"
   },
   "devDependencies": {
+    "@effect/language-service": "0.87.2",
     "@oxlint/plugins": "1.78.0",
     "@tailwindcss/vite": "^4.2.4",
     "@tauri-apps/cli": "^2.11.4",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "jscpd": "4.0.5",
     "oxlint": "1.78.0",
     "react-resizable-panels": "^4.11.0",
     "tailwindcss": "^4.2.4",

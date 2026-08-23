@@ -1,5 +1,6 @@
 import { defineRule } from "@oxlint/plugins";
 import type { ESTree, Variable } from "@oxlint/plugins";
+import { stableConstDeclarator } from "../shared/variables.ts";
 
 type BroadTypeKind = "top" | "object" | "record";
 
@@ -188,15 +189,6 @@ function resolvedVariableForIdentifier(
   return null;
 }
 
-function variableDeclarator(variable: Variable): ESTree.VariableDeclarator | null {
-  for (const definition of variable.defs) {
-    if (definition.type === "Variable" && definition.node.type === "VariableDeclarator") {
-      return definition.node;
-    }
-  }
-  return null;
-}
-
 function knownValueEvidence(
   expression: ESTree.Expression,
   scopes: Parameters<typeof resolvedVariableForIdentifier>[0],
@@ -240,13 +232,10 @@ function knownValueEvidence(
     return { type: annotation };
   }
 
-  const declarator = variableDeclarator(variable);
+  const declarator = stableConstDeclarator(variable);
   if (
     declarator === null ||
-    declarator.parent.type !== "VariableDeclaration" ||
-    declarator.parent.kind !== "const" ||
     declarator.init === null ||
-    variable.references.some((reference) => reference.isWrite() && !reference.init) ||
     functionBoundary(declarator) !== boundary
   ) {
     return null;
@@ -269,14 +258,11 @@ function widenedBinding(
   readonly declaredAt: number;
   readonly boundary: ESTree.Node | null;
 } | null {
-  const declarator = variableDeclarator(variable);
+  const declarator = stableConstDeclarator(variable);
   if (
     declarator === null ||
-    declarator.parent.type !== "VariableDeclaration" ||
-    declarator.parent.kind !== "const" ||
     declarator.id.type !== "Identifier" ||
-    declarator.init === null ||
-    variable.references.some((reference) => reference.isWrite() && !reference.init)
+    declarator.init === null
   ) {
     return null;
   }

@@ -1,17 +1,6 @@
-import type { ESTree, Scope, SourceCode, Variable } from "@oxlint/plugins";
-
-function resolveVariable(
-  sourceCode: SourceCode,
-  identifier: ESTree.IdentifierReference,
-): Variable | null {
-  let scope: Scope | null = sourceCode.getScope(identifier);
-  while (scope !== null) {
-    const variable = scope.set.get(identifier.name);
-    if (variable !== undefined) return variable;
-    scope = scope.upper;
-  }
-  return null;
-}
+import { defineRule } from "@oxlint/plugins";
+import type { ESTree, SourceCode } from "@oxlint/plugins";
+import { resolveVariable } from "./variables.ts";
 
 function isGlobalReflect(sourceCode: SourceCode, expression: ESTree.Expression): boolean {
   if (expression.type !== "Identifier" || expression.name !== "Reflect") return false;
@@ -32,4 +21,32 @@ export function isGlobalReflectMethodCall(
   return callee.computed
     ? property.type === "Literal" && property.value === methodName
     : property.type === "Identifier" && property.name === methodName;
+}
+
+/** Build one rule for a forbidden method on the unshadowed global Reflect. */
+export function createNoReflectMethodRule(
+  methodName: string,
+  description: string,
+  message: string,
+) {
+  return defineRule({
+    meta: {
+      type: "problem",
+      docs: { description },
+      messages: { forbiddenReflectMethod: message },
+    },
+    createOnce(context) {
+      return {
+        CallExpression(node) {
+          if (
+            node.callee.type !== "Super" &&
+            node.callee.type !== "V8IntrinsicExpression" &&
+            isGlobalReflectMethodCall(context.sourceCode, node.callee, methodName)
+          ) {
+            context.report({ node, messageId: "forbiddenReflectMethod" });
+          }
+        },
+      };
+    },
+  });
 }
