@@ -88,8 +88,8 @@ async function generateJson(
 }
 
 // Titles, transition suggestions, and compaction summaries share the
-// structured-generation wrappers in @purple/core; only the transport — the
-// Tauri `generate_json` invoke — is supplied here.
+// structured-generation wrappers in @purple/core; only the transport - the
+// Tauri `generate_json` invoke - is supplied here.
 const modelHelpers = createModelHelpers(generateJson);
 
 export const generateTitle = modelHelpers.generateTitle;
@@ -117,9 +117,9 @@ export function onStartupArgs(
   handler: (options: StartupOptions) => void,
 ): Promise<UnlistenFn> {
   return listen<string[]>(STARTUP_ARGS_EVENT, (event) => {
-    // A bare `purple-music` — the launcher icon, or a second click — forwards no
-    // arguments and means "focus the window". Parsing that would hand back a
-    // random preset and overwrite the pattern the user is working on.
+    // A bare `purple-music` - the launcher icon, or a second click - forwards no
+    // arguments and means "focus the window". Re-running startup policy would
+    // overwrite the pattern the user is working on.
     if (event.payload.length === 0) return;
     handler(parseCliArgs(event.payload));
   });

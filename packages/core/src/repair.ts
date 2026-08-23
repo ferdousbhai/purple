@@ -74,7 +74,7 @@ export async function attemptWithRepair(
 export interface ValidationRepairDeps {
   /** Audit the code against the live engine. Resolves with the problems found
    * (empty = plays correctly), or null when the engine is not initialized
-   * yet — validation is then skipped and play-time repair remains the net. */
+   * yet - validation is then skipped and play-time repair remains the net. */
   validate: (code: string) => Promise<ValidationProblem[] | null>;
   /** Send the repair prompt to the model; resolves with the fixed pattern, or
    * null when the request failed or produced no pattern. */

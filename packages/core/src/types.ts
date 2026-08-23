@@ -1,6 +1,6 @@
 /**
  * Types shared by the desktop webview and the hosted app's studio UI.
- * Type declarations plus one constant — `@purple/core` stays dependency-free
+ * Type declarations plus one constant - `@purple/core` stays dependency-free
  * because the hosted build bundles it into a Cloudflare Worker.
  */
 
@@ -46,9 +46,9 @@ export type TransitionSuggestionsResult =
 
 /**
  * Backend capabilities a Purple UI composes. They are split so each app
- * `satisfies` exactly what it implements — the desktop streams over Tauri
+ * `satisfies` exactly what it implements - the desktop streams over Tauri
  * `invoke` + `Channel` (`src/mainview/backend.ts`), while the web streams
- * directly with the visitor's key — and the compiler catches contract drift
+ * directly with the visitor's key - and the compiler catches contract drift
  * on both sides.
  */
 export interface PatternStreamer {

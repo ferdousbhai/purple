@@ -5,6 +5,7 @@
  */
 import { useSyncExternalStore } from 'react'
 import { z } from 'zod'
+import { createPatternStore } from '@purple/ui/session-store'
 
 const patternSchema = z.object({
   id: z.string(),
@@ -135,3 +136,13 @@ export function uniquePatternTitle(
 export function usePatterns(): SavedPattern[] {
   return useSyncExternalStore(subscribe, snapshot)
 }
+
+/**
+ * The pattern the visitor was last working on. The chat transcript already
+ * survives reloads; the editor restores alongside it instead of resetting to
+ * a starter pattern. Validation and bounds live in the shared store.
+ */
+const sessionPatternStore = createPatternStore()
+
+export const loadSessionPattern = sessionPatternStore.load
+export const saveSessionPattern = sessionPatternStore.save

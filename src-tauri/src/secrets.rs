@@ -31,6 +31,20 @@ fn entry() -> Result<Entry, KeyringError> {
     Entry::new(SERVICE, ACCOUNT)
 }
 
+fn read_keyring_entry(
+    entry: Result<Entry, KeyringError>,
+    on_unavailable: impl FnOnce(KeyringError),
+) -> Option<String> {
+    match entry.and_then(|entry| entry.get_password()) {
+        Ok(key) => usable_key(&key),
+        Err(KeyringError::NoEntry) => None,
+        Err(error) => {
+            on_unavailable(error);
+            None
+        }
+    }
+}
+
 fn config_home() -> Option<PathBuf> {
     std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
@@ -110,14 +124,9 @@ fn restrict_to_owner(_dir: &std::path::Path) -> Result<(), String> {
 
 /// The key the user saved in Purple, from the keyring or the fallback file.
 pub fn stored_key() -> Option<String> {
-    let from_keyring = match entry().and_then(|entry| entry.get_password()) {
-        Ok(key) => usable_key(&key),
-        Err(KeyringError::NoEntry) => None,
-        Err(error) => {
-            log::warn!("[Secrets] Credential store unavailable: {error}");
-            None
-        }
-    };
+    let from_keyring = read_keyring_entry(entry(), |error| {
+        log::warn!("[Secrets] Credential store unavailable: {error}");
+    });
     from_keyring.or_else(read_fallback)
 }
 
@@ -209,16 +218,9 @@ fn migrate_legacy_key() {
     }
 
     for (service, label) in LEGACY_SERVICES {
-        let key = match Entry::new(service, ACCOUNT).and_then(|entry| entry.get_password()) {
-            Ok(key) => usable_key(&key),
-            Err(KeyringError::NoEntry) => None,
-            Err(error) => {
-                log::warn!(
-                    "[Secrets] Credential store unavailable while migrating {label}: {error}"
-                );
-                None
-            }
-        };
+        let key = read_keyring_entry(Entry::new(service, ACCOUNT), |error| {
+            log::warn!("[Secrets] Credential store unavailable while migrating {label}: {error}");
+        });
         let Some(key) = key else {
             continue;
         };

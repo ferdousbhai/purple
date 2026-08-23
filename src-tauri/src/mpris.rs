@@ -30,6 +30,7 @@ pub async fn set_playback_state(_status: String, _title: String) {}
 mod linux {
     use std::sync::{Arc, Mutex, OnceLock};
 
+    use crate::focus_main_window;
     use mpris_server::zbus::{self, fdo};
     use mpris_server::{
         LoopStatus, Metadata, PlaybackRate, PlaybackStatus, Property, Server, Time, TrackId, Volume,
@@ -65,7 +66,7 @@ mod linux {
     }
 
     /// Map the webview's `PlaybackState` strings onto the three MPRIS statuses.
-    /// "loading" and "transitioning" count as Playing — the player is engaged,
+    /// "loading" and "transitioning" count as Playing - the player is engaged,
     /// the way a buffering media player still reports Playing.
     fn map_status(status: &str) -> PlaybackStatus {
         match status {
@@ -141,11 +142,7 @@ mod linux {
 
     impl mpris_server::RootInterface for PurplePlayer {
         async fn raise(&self) -> fdo::Result<()> {
-            if let Some(window) = self.app.get_webview_window("main") {
-                let _ = window.unminimize();
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
+            focus_main_window(&self.app);
             Ok(())
         }
 

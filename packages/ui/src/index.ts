@@ -1,4 +1,5 @@
 export * from "./pattern-editor";
+export * from "./playback-flow";
 export * from "./use-generated-pattern";
 export * from "./playback-highlight";
 export * from "./use-playback";

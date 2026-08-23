@@ -95,7 +95,7 @@ function isName(
   return typeof field === "string";
 }
 
-/** Registered names closest to `name`, best first — the did-you-mean list. */
+/** Registered names closest to `name`, best first - the did-you-mean list. */
 export function closestSoundNames(
   name: string,
   available: readonly string[],
@@ -137,7 +137,7 @@ function describeProblem(problem: ValidationProblem): string {
     case "evaluation":
       return `It fails to evaluate: ${problem.error}`;
     case "empty":
-      return "It evaluates but produces no events — nothing would play.";
+      return "It evaluates but produces no events - nothing would play.";
     case "unknown-sounds":
       return `These sound names do not exist, so they play silence: ${problem.sounds
         .map((sound) => describeUnknownSound(sound))

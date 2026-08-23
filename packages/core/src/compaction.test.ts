@@ -325,7 +325,12 @@ describe("createFoldScheduler", () => {
     const folded = h.live;
     h.scheduler.maybeFold(folded);
     // The session was cleared while the summarizer ran.
-    h.live = { messages: [], artifact: null, coveredCount: 0 };
+    h.live = {
+      messages: [],
+      artifact: null,
+      coveredCount: 0,
+      promptTokens: null,
+    };
     await settle();
     expect(h.live.artifact).toBeNull();
     expect(h.live.coveredCount).toBe(0);

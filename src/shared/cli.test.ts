@@ -44,29 +44,19 @@ describe("cli parser", () => {
     expect(res.requestPlayback).toBe(true);
   });
 
-  it("joins unquoted positional prompt arguments", () => {
-    expect(parseCliArgs(["make", "a", "house", "beat"])).toEqual({
+  it.each([
+    ["positional", ["make", "a", "house", "beat"]],
+    ["--prompt", ["--prompt", "make", "a", "house", "beat"]],
+  ])("joins unquoted %s prompt arguments", (_kind, args) => {
+    expect(parseCliArgs(args)).toEqual({
       initialPrompt: "make a house beat",
       requestPlayback: true,
     });
   });
 
-  it("joins unquoted --prompt values", () => {
-    expect(parseCliArgs(["--prompt", "make", "a", "house", "beat"])).toEqual({
-      initialPrompt: "make a house beat",
-      requestPlayback: true,
-    });
-  });
-
-  it("starts with a random built-in recipe when no arguments are provided", () => {
-    expect(parseCliArgs([], () => 0)).toEqual({
-      initialCode: PRESET_PATTERNS.drums,
-      requestPlayback: true,
-    });
-    expect(parseCliArgs([], () => 0.999)).toEqual({
-      initialCode: PRESET_PATTERNS.house,
-      requestPlayback: true,
-    });
+  it("carries no content for a bare launch - startup policy is the controller's", () => {
+    expect(parseCliArgs([])).toEqual({});
+    expect(parseCliArgs([""])).toEqual({});
   });
 
   it("only chooses from the richer startup recipes", () => {

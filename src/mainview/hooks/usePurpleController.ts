@@ -17,8 +17,16 @@ import {
 } from "../backend";
 import { useKeyboardShortcuts } from "./useKeyboardShortcuts";
 import { EXPLANATORY_STYLE_INSTRUCTION } from "@purple/core/prompts";
+import {
+  generatedPlaybackFailureMessage,
+  isTransitionInfrastructureFailure,
+  isValidatedGeneratedPattern,
+  TRANSITION_ERROR,
+  validationFailureMessage,
+} from "@purple/ui/playback-flow";
 import { useGeneratedPattern } from "@purple/ui/use-generated-pattern";
 import { usePlayback } from "@purple/ui/use-playback";
+import { createChatStore, createPatternStore } from "@purple/ui/session-store";
 import { useStudioChat } from "@purple/ui/use-studio-chat";
 import { useTransitionSuggestions } from "@purple/ui/use-transition-suggestions";
 import { requireRunningAudioContext } from "../audio-activation";
@@ -28,12 +36,13 @@ type PromptMode = "stage" | "await-activation";
 const DESKTOP_AUDIO_OPTIONS = {
   ensureRunningContext: requireRunningAudioContext,
 };
-type TitleStatus = "idle" | "generating" | "ready" | "error";
 
-const GENERATED_PATTERN_ERROR =
-  "Purple could not produce a playable pattern. Try describing the change another way.";
-const TRANSITION_ERROR =
-  "The crossfade could not complete. Use Play to resume if playback stopped.";
+// The webview's localStorage persists under the app's data directory, so the
+// session survives restarts without the Rust shell holding any product state.
+const chatStore = createChatStore();
+const patternStore = createPatternStore();
+
+type TitleStatus = "idle" | "generating" | "ready" | "error";
 
 /** One in-flight title generation. Identity is the token: only the request that
  * is still `titleRequestRef.current` may write title state. */
@@ -59,9 +68,16 @@ async function reportRejection(
 }
 
 export function usePurpleController() {
-  const [code, setCode] = useState("");
-  const [patternTitle, setPatternTitle] = useState("Startup Pattern");
-  const [titleStatus, setTitleStatus] = useState<TitleStatus>("idle");
+  // Chat and editor restore together: retaining one without the other would
+  // desync the session (mirrors the web app in purple-studio.tsx).
+  const [restored] = useState(patternStore.load);
+  const [code, setCode] = useState(() => restored?.code ?? "");
+  const [patternTitle, setPatternTitle] = useState(
+    () => restored?.customTitle ?? "Startup Pattern",
+  );
+  const [titleStatus, setTitleStatus] = useState<TitleStatus>(
+    restored?.customTitle ? "ready" : "idle",
+  );
   const [titleError, setTitleError] = useState<string | null>(null);
   const titleRequestRef = useRef<TitleRequest | null>(null);
   const [requiresUserActivation, setRequiresUserActivation] = useState(false);
@@ -76,7 +92,12 @@ export function usePurpleController() {
   const apiKeyStatusRef = useRef(apiKeyStatus);
   apiKeyStatusRef.current = apiKeyStatus;
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const chat = useStudioChat(backend);
+  const [restoredChat] = useState(chatStore.load);
+  const chat = useStudioChat(backend, {
+    initialState: restoredChat,
+    onStateChange: chatStore.save,
+    onClear: chatStore.clear,
+  });
   // The WebKitGTK activation quirks (non-standard "interrupted" state, silent
   // output until primed) stay desktop-side, injected into the shared engine.
   const playback = usePlayback(DESKTOP_AUDIO_OPTIONS);
@@ -91,12 +112,13 @@ export function usePurpleController() {
     validatePattern: playback.validatePattern,
     requestFix: (message) =>
       chat.sendMessage(message, {
-        hiddenUserMessage: true,
+        transient: true,
         requestInstruction: explanatoryStyleRef.current
           ? EXPLANATORY_STYLE_INSTRUCTION
           : undefined,
       }),
     onCodeChange: setCode,
+    onPatternFixed: chat.replaceLastAssistantPattern,
     playingRevision: {
       getPlayingCode: () => {
         const current = playbackRef.current;
@@ -106,9 +128,8 @@ export function usePurpleController() {
         const result = await playbackRef.current.play(fixed, {
           reportEvaluationError: false,
         });
-        if (!result.ok && result.kind === "evaluation") {
-          setGeneratedPlaybackError(GENERATED_PATTERN_ERROR);
-        }
+        const failure = generatedPlaybackFailureMessage(result);
+        if (failure) setGeneratedPlaybackError(failure);
         return result;
       },
     },
@@ -135,6 +156,12 @@ export function usePurpleController() {
   const clearApiKey = useCallback(async () => {
     setApiKeyStatus(await clearBackendApiKey());
   }, []);
+
+  const requireApiKey = useCallback((): boolean => {
+    if (apiKeyStatus.hasKey) return true;
+    setIsSettingsOpen(true);
+    return false;
+  }, [apiKeyStatus.hasKey]);
 
   const applyTitleResult = useCallback(
     (request: TitleRequest, result: TitleGenerationResult) => {
@@ -214,10 +241,7 @@ export function usePurpleController() {
 
   const sendMessage = useCallback(
     (text: string, explanatoryStyle = false): boolean => {
-      if (!apiKeyStatus.hasKey) {
-        setIsSettingsOpen(true);
-        return false;
-      }
+      if (!requireApiKey()) return false;
       if (
         playback.playbackState === "loading" ||
         playback.playbackState === "transitioning"
@@ -233,19 +257,16 @@ export function usePurpleController() {
       return true;
     },
     [
-      apiKeyStatus.hasKey,
       playback.playbackState,
       playback.prepareAudio,
+      requireApiKey,
       runPrompt,
     ],
   );
 
   const stageNext = useCallback(
     (text: string, explanatoryStyle = false): boolean => {
-      if (!apiKeyStatus.hasKey) {
-        setIsSettingsOpen(true);
-        return false;
-      }
+      if (!requireApiKey()) return false;
       if (playback.playbackState !== "playing") return false;
 
       runInBackground(
@@ -253,7 +274,7 @@ export function usePurpleController() {
         "[Chat] Could not stage next pattern",
       );
       return true;
-    }, [apiKeyStatus.hasKey, playback.playbackState, runPrompt],
+    }, [playback.playbackState, requireApiKey, runPrompt],
   );
 
   const play = useCallback(
@@ -267,13 +288,10 @@ export function usePurpleController() {
           reportEvaluationError: generated ? false : undefined,
         }),
       );
-      if (
-        generated &&
-        !outcome.result.ok &&
-        outcome.result.kind === "evaluation"
-      ) {
-        setGeneratedPlaybackError(GENERATED_PATTERN_ERROR);
-      }
+      const failure = generated
+        ? generatedPlaybackFailureMessage(outcome.result)
+        : null;
+      if (failure) setGeneratedPlaybackError(failure);
       return outcome.result;
     },
     [
@@ -300,12 +318,13 @@ export function usePurpleController() {
           : null;
       if (generated) {
         const validated = await generatedPattern.validate(nextCode);
-        if (validated.problems.length > 0) {
-          setGeneratedPlaybackError(GENERATED_PATTERN_ERROR);
+        if (!isValidatedGeneratedPattern(validated)) {
+          const error = validationFailureMessage(validated);
+          setGeneratedPlaybackError(error);
           return {
             ok: false,
             kind: "evaluation",
-            error: GENERATED_PATTERN_ERROR,
+            error,
           } as const;
         }
         candidateCode = validated.code;
@@ -324,11 +343,7 @@ export function usePurpleController() {
           const result = await playback.transition(candidate, durationCycles, {
             reportEvaluationError: generated ? false : undefined,
           });
-          if (
-            !result.ok &&
-            result.kind === "evaluation" &&
-            result.source === "transition"
-          ) {
+          if (isTransitionInfrastructureFailure(result)) {
             transitionFailed = true;
             return { ok: false, kind: "cancelled" };
           }
@@ -337,12 +352,9 @@ export function usePurpleController() {
       );
       if (transitionFailed) {
         setGeneratedPlaybackError(TRANSITION_ERROR);
-      } else if (
-        generated &&
-        !outcome.result.ok &&
-        outcome.result.kind === "evaluation"
-      ) {
-        setGeneratedPlaybackError(GENERATED_PATTERN_ERROR);
+      } else if (generated) {
+        const failure = generatedPlaybackFailureMessage(outcome.result);
+        if (failure) setGeneratedPlaybackError(failure);
       }
       return outcome.result;
     },
@@ -372,14 +384,10 @@ export function usePurpleController() {
     (options: StartupOptions, hasKey: boolean): void => {
       if (options.error) {
         // The window is already open by the time arguments are parsed, so a bad
-        // invocation cannot abort startup. Report it and open on a preset
-        // instead of an empty editor.
+        // invocation cannot abort startup. Report it and fall through to the
+        // default session instead of an empty editor.
         console.error(`[Startup] ${options.error}`);
-        setCode(getRandomStartupPattern());
-        setRequiresUserActivation(true);
-        return;
-      }
-      if (options.initialCode) {
+      } else if (options.initialCode) {
         generatedPattern.adopt(options.initialCode);
         setPatternTitle("Startup Pattern");
         setTitleStatus("ready");
@@ -389,18 +397,23 @@ export function usePurpleController() {
         // disabled "INIT..." state. Keep START enabled instead.
         setRequiresUserActivation(Boolean(options.requestPlayback));
         return;
-      }
-      if (!options.initialPrompt) return;
-      if (!hasKey) {
-        setIsSettingsOpen(true);
+      } else if (options.initialPrompt) {
+        if (!hasKey) {
+          setIsSettingsOpen(true);
+          return;
+        }
+        runInBackground(
+          runPrompt(options.initialPrompt, "await-activation"),
+          "[Startup] Initial prompt failed",
+        );
         return;
       }
-      runInBackground(
-        runPrompt(options.initialPrompt, "await-activation"),
-        "[Startup] Initial prompt failed",
-      );
+      // No explicit arguments: the restored session already fills the editor;
+      // a fresh install opens on a random preset instead.
+      if (!restored) setCode(getRandomStartupPattern());
+      setRequiresUserActivation(true);
     },
-    [generatedPattern.adopt, runPrompt],
+    [generatedPattern.adopt, restored, runPrompt],
   );
 
   useEffect(() => {
@@ -431,6 +444,13 @@ export function usePurpleController() {
   useEffect(() => {
     reportPlaybackState(playback.playbackState, patternTitle);
   }, [playback.playbackState, patternTitle]);
+
+  useEffect(() => {
+    patternStore.save({
+      code,
+      customTitle: patternTitle.trim() ? patternTitle : null,
+    });
+  }, [code, patternTitle]);
 
   // Event listeners registered once still need the current editor state.
   const codeRef = useRef(code);

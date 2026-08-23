@@ -15,7 +15,7 @@ export type JsonObject = { readonly [key: string]: JsonValue };
 
 /**
  * The members of a JSON object, or null for every other JSON value. `JSON.parse`
- * builds objects — and only objects — directly from `Object.prototype`.
+ * builds objects - and only objects - directly from `Object.prototype`.
  */
 export function jsonMembers(
   value: JsonValue,

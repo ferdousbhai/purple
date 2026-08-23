@@ -30,18 +30,23 @@ import {
   setByokKey,
 } from '#/lib/byok'
 import {
+  loadSessionPattern,
   removePattern,
+  saveSessionPattern,
   uniquePatternTitle,
   upsertPattern,
   usePatterns,
 } from '#/lib/patterns'
 import {
+  generatedPlaybackFailureMessage,
   hasUnappliedEditorChanges,
   isTransitionInfrastructureFailure,
   isValidatedGeneratedPattern,
   resolveGeneratedPatternMode,
+  TRANSITION_ERROR,
+  validationFailureMessage,
   type PatternMode,
-} from '#/lib/playback-flow'
+} from '@purple/ui/playback-flow'
 import { usePlayback } from '@purple/ui/use-playback'
 import { useTransitionSuggestions } from '@purple/ui/use-transition-suggestions'
 import { useStudioChat } from '@purple/ui/use-studio-chat'
@@ -91,16 +96,25 @@ export function PurpleStudio() {
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [libraryWasCleared, setLibraryWasCleared] = useState(false)
   const [patternStorageError, setPatternStorageError] = useState<string | null>(null)
-  const [code, setCode] = useState(() => randomStarter())
-  const [customTitle, setCustomTitle] = useState<string | null>(null)
-  const [sourcePrompt, setSourcePrompt] = useState<string | undefined>()
+  // The chat transcript survives reloads (loadByokChat), so the pattern it
+  // produced must too - restoring one without the other desyncs the session.
+  const [restored] = useState(loadSessionPattern)
+  const [code, setCode] = useState(() => restored?.code ?? randomStarter())
+  const [customTitle, setCustomTitle] = useState(restored?.customTitle ?? null)
+  const [sourcePrompt, setSourcePrompt] = useState(restored?.sourcePrompt)
   const playback = usePlayback()
   const savedPatterns = usePatterns()
+  const libraryRef = useRef<HTMLElement | null>(null)
+  const libraryButtonRef = useRef<HTMLButtonElement | null>(null)
   const editorHasUnappliedChanges = hasUnappliedEditorChanges(
     playback.playbackState,
     code,
     playback.activeCode,
   )
+
+  useEffect(() => {
+    saveSessionPattern({ code, customTitle, sourcePrompt })
+  }, [code, customTitle, sourcePrompt])
 
   /** False when the browser blocks localStorage, so the key cannot outlive this render. */
   const updateByokKey = (key: string | null): boolean => {
@@ -183,6 +197,29 @@ export function PurpleStudio() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [playback.stop])
 
+  useEffect(() => {
+    if (!libraryOpen) return
+    // pointerdown, not click: the popover should close before whatever is
+    // underneath reacts. The LIBRARY button is excluded so its own click
+    // stays a toggle instead of close-then-reopen.
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target
+      if (!(target instanceof Node)) return
+      if (libraryRef.current?.contains(target)) return
+      if (libraryButtonRef.current?.contains(target)) return
+      setLibraryOpen(false)
+    }
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') setLibraryOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [libraryOpen])
+
   const audible =
     playback.playbackState === 'playing' || playback.playbackState === 'transitioning'
   const ledState =
@@ -206,7 +243,10 @@ export function PurpleStudio() {
           {audible ? <EqBars /> : null}
           <StatusLed state={ledState} />
           <button
+            ref={libraryButtonRef}
             className={`chrome ${libraryOpen ? 'open' : ''}`}
+            aria-expanded={libraryOpen}
+            aria-haspopup="true"
             onClick={() => setLibraryOpen((open) => !open)}
           >
             LIBRARY
@@ -221,7 +261,13 @@ export function PurpleStudio() {
       </header>
 
       {libraryOpen ? (
-        <section className="library-popover">
+        <section className="library-popover" ref={libraryRef} aria-label="Pattern library">
+          <header className="library-head">
+            <span>LIBRARY</span>
+            <span className="library-count">
+              {savedPatterns.length === 1 ? '1 PATTERN' : `${savedPatterns.length} PATTERNS`}
+            </span>
+          </header>
           {savedPatterns.length === 0 ? (
             <p className="muted" role={libraryWasCleared ? 'status' : undefined}>
               {libraryWasCleared
@@ -426,11 +472,14 @@ function KeyCard(props: {
  * Pattern acceptance: retry playback through the repair function, stage or
  * play, and keep next-move suggestions fresh.
  */
-function usePatternFlow(deps: {
+interface PatternStateBindings {
   playback: Playback
   setCode: (code: string) => void
   setCustomTitle: (title: string | null) => void
   setSourcePrompt: (prompt: string | undefined) => void
+}
+
+function usePatternFlow(deps: PatternStateBindings & {
   /** Send the prepared repair message; the fixed pattern, or null on failure. */
   requestFix: (message: string) => Promise<string | null>
   /** A repair replaced `broken` with `fixed`: propagate it into the stored
@@ -484,11 +533,7 @@ function usePatternFlow(deps: {
     const validated = await generatedPattern.validate(pattern)
     if (!isValidatedGeneratedPattern(validated)) {
       setStagedCode(null)
-      setUiError(
-        validated.validationSkipped
-          ? 'Purple could not verify this pattern because the audio engine is unavailable. Try again.'
-          : 'Purple could not produce a playable pattern. Try describing the change another way.',
-      )
+      setUiError(validationFailureMessage(validated))
       return false
     }
     if (mode === 'stage') {
@@ -505,12 +550,8 @@ function usePatternFlow(deps: {
     if (outcome.result.ok) {
       setStagedCode(null)
       setUiError(null)
-    } else if (outcome.result.kind === 'evaluation') {
-      setUiError(
-        'Purple could not produce a playable pattern. Try describing the change another way.',
-      )
-    } else if (outcome.result.kind === 'audio') {
-      setUiError(outcome.result.error)
+    } else {
+      setUiError(generatedPlaybackFailureMessage(outcome.result))
     }
     return true
   }
@@ -532,11 +573,7 @@ function usePatternFlow(deps: {
     try {
       const validated = await generatedPattern.validate(stagedCandidate)
       if (!isValidatedGeneratedPattern(validated)) {
-        setUiError(
-          validated.validationSkipped
-            ? 'Purple could not verify this pattern because the audio engine is unavailable. Try again.'
-            : 'Purple could not produce a playable pattern. Try describing the change another way.',
-        )
+        setUiError(validationFailureMessage(validated))
         return
       }
       if (
@@ -559,13 +596,9 @@ function usePatternFlow(deps: {
 
       if (outcome.result.ok || (outcome.result.kind === 'cancelled' && !transitionFailed)) return
       if (transitionFailed) {
-        setUiError('The crossfade could not complete. Use PLAY to resume if playback stopped.')
-      } else if (outcome.result.kind === 'evaluation') {
-        setUiError(
-          'Purple could not produce a playable pattern. Try describing the change another way.',
-        )
-      } else if (outcome.result.kind === 'audio') {
-        setUiError(outcome.result.error)
+        setUiError(TRANSITION_ERROR)
+      } else {
+        setUiError(generatedPlaybackFailureMessage(outcome.result))
       }
     } finally {
       setIsTransitionPending(false)
@@ -587,13 +620,9 @@ function usePatternFlow(deps: {
 
 type PatternFlow = ReturnType<typeof usePatternFlow>
 
-function Composer(props: {
+function Composer(props: PatternStateBindings & {
   byokKey: string
   code: string
-  playback: Playback
-  setCode: (code: string) => void
-  setCustomTitle: (title: string | null) => void
-  setSourcePrompt: (prompt: string | undefined) => void
 }) {
   const [input, setInput] = useState('')
   const [initialChat] = useState(

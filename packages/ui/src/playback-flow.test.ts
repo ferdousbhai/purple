@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  GENERATED_PATTERN_ERROR,
+  VALIDATION_UNAVAILABLE_ERROR,
+  generatedPlaybackFailureMessage,
   hasUnappliedEditorChanges,
   isTransitionInfrastructureFailure,
   isValidatedGeneratedPattern,
   resolveGeneratedPatternMode,
+  validationFailureMessage,
 } from "./playback-flow";
 
 describe("resolveGeneratedPatternMode", () => {
@@ -31,8 +35,8 @@ describe("hasUnappliedEditorChanges", () => {
   });
 });
 
-describe("generated transition safety", () => {
-  it("stages only a candidate the live engine actually validated", () => {
+describe("generated pattern safety", () => {
+  it("accepts only a candidate the live engine actually validated", () => {
     expect(
       isValidatedGeneratedPattern({ problems: [], validationSkipped: false }),
     ).toBe(true);
@@ -45,6 +49,30 @@ describe("generated transition safety", () => {
         validationSkipped: false,
       }),
     ).toBe(false);
+  });
+
+  it("owns validation and playback error wording", () => {
+    expect(validationFailureMessage({ validationSkipped: true })).toBe(
+      VALIDATION_UNAVAILABLE_ERROR,
+    );
+    expect(validationFailureMessage({ validationSkipped: false })).toBe(
+      GENERATED_PATTERN_ERROR,
+    );
+    expect(
+      generatedPlaybackFailureMessage({
+        ok: false,
+        kind: "evaluation",
+        error: "engine detail",
+      }),
+    ).toBe(GENERATED_PATTERN_ERROR);
+    expect(
+      generatedPlaybackFailureMessage({
+        ok: false,
+        kind: "audio",
+        error: "audio detail",
+      }),
+    ).toBe("audio detail");
+    expect(generatedPlaybackFailureMessage({ ok: false, kind: "cancelled" })).toBeNull();
   });
 
   it("distinguishes wrapper failures from repairable candidate failures", () => {

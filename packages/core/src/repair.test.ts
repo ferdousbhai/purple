@@ -45,8 +45,12 @@ describe("attemptWithRepair", () => {
 
     expect(outcome).toEqual({ result: OK, code: "fixed()" });
     expect(deps.requestFix).toHaveBeenCalledOnce();
-    expect(vi.mocked(deps.requestFix).mock.calls[0][0]).toContain("bad note");
-    expect(vi.mocked(deps.requestFix).mock.calls[0][0]).toContain("broken()");
+    expect(deps.requestFix).toHaveBeenCalledWith(
+      expect.stringContaining("bad note"),
+    );
+    expect(deps.requestFix).toHaveBeenCalledWith(
+      expect.stringContaining("broken()"),
+    );
     expect(deps.applyFix).toHaveBeenCalledExactlyOnceWith("fixed()");
     expect(attempt).toHaveBeenNthCalledWith(2, "fixed()");
   });
@@ -72,18 +76,10 @@ describe("attemptWithRepair", () => {
     expect(deps.requestFix).not.toHaveBeenCalled();
   });
 
-  it("does not repair audio activation failures", async () => {
-    const result: EvalResult = { ok: false, kind: "audio", error: "blocked" };
-    const deps = createDeps({ attempt: vi.fn().mockResolvedValue(result) });
-
-    const outcome = await attemptWithRepair("s(\"bd\")", deps);
-
-    expect(outcome.result).toEqual(result);
-    expect(deps.requestFix).not.toHaveBeenCalled();
-  });
-
-  it("does not repair cancelled attempts", async () => {
-    const result: EvalResult = { ok: false, kind: "cancelled" };
+  it.each<[string, EvalResult]>([
+    ["audio activation failures", { ok: false, kind: "audio", error: "blocked" }],
+    ["cancelled attempts", { ok: false, kind: "cancelled" }],
+  ])("does not repair %s", async (_case, result) => {
     const deps = createDeps({ attempt: vi.fn().mockResolvedValue(result) });
 
     const outcome = await attemptWithRepair("s(\"bd\")", deps);

@@ -103,6 +103,16 @@ fn generation_config(model: &str) -> Result<Value, String> {
     }
 }
 
+fn request_body(model: &str, system_instruction: String, input: Value) -> Result<Value, String> {
+    Ok(json!({
+        "model": model,
+        "system_instruction": system_instruction,
+        "input": input,
+        "store": false,
+        "generation_config": generation_config(model)?,
+    }))
+}
+
 fn api_key() -> Result<String, String> {
     secrets::effective_key()
         .ok_or_else(|| "Missing Google API key. Add one in Purple settings.".to_owned())
@@ -247,14 +257,12 @@ async fn run_stream(
     emit: &mut impl FnMut(StreamEvent) -> Result<(), String>,
 ) -> Result<(), String> {
     let model = model();
-    let body = json!({
-        "model": model,
-        "system_instruction": system_instruction,
-        "input": steps_from(&messages),
-        "stream": true,
-        "store": false,
-        "generation_config": generation_config(&model)?,
-    });
+    let mut body = request_body(
+        &model,
+        system_instruction,
+        Value::Array(steps_from(&messages)),
+    )?;
+    body["stream"] = Value::Bool(true);
 
     let response = post(state, body, None).await?;
     let mut stream = response.bytes_stream();
@@ -434,18 +442,12 @@ async fn generate_structured(
     schema: Value,
 ) -> Result<String, String> {
     let model = model();
-    let body = json!({
-        "model": model,
-        "system_instruction": system_instruction,
-        "input": input,
-        "store": false,
-        "generation_config": generation_config(&model)?,
-        "response_format": [{
-            "type": "text",
-            "mime_type": "application/json",
-            "schema": schema,
-        }],
-    });
+    let mut body = request_body(&model, system_instruction, Value::String(input))?;
+    body["response_format"] = json!([{
+        "type": "text",
+        "mime_type": "application/json",
+        "schema": schema,
+    }]);
 
     // One-shot requests are background work for the UI, so they get a deadline
     // rather than a spinner that never resolves.

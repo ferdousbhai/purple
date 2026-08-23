@@ -80,26 +80,13 @@ export function isStrudelCode(text: string): boolean {
 // with no cast and no risk of resolving an inherited Object member.
 const PRESET_BY_NAME = new Map(Object.entries(PRESET_PATTERNS));
 
-export function parseCliArgs(
-  argv: string[],
-  random = Math.random,
-): StartupOptions {
+export function parseCliArgs(argv: string[]): StartupOptions {
   const userArgs = argv.filter(Boolean);
 
-  if (userArgs.length === 0) {
-    return {
-      initialCode: getRandomStartupPattern(random),
-      requestPlayback: true,
-    };
-  }
-
   const first = userArgs[0];
-  if (!first) {
-    return {
-      initialCode: getRandomStartupPattern(random),
-      requestPlayback: true,
-    };
-  }
+  // A bare launch carries no content; startup policy (restored session,
+  // then a random preset) belongs to the controller, not the parser.
+  if (!first) return {};
   const rest = userArgs.slice(1);
   if (["-c", "--code", "-e", "--eval"].includes(first)) {
     if (rest.length !== 1) {

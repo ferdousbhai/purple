@@ -15,29 +15,20 @@ describe("replacePlayingRevision", () => {
     expect(result).toEqual({ ok: true });
   });
 
-  it("leaves stopped, unrelated, and already-current playback alone", async () => {
-    const replace = vi.fn().mockResolvedValue({ ok: true });
-    const superseded = ['s("bd*1024")'];
-    const revised = 's("bd*8")';
+  it.each([null, 's("sd")', 's("bd*8")'])(
+    "leaves non-superseded playback alone (%s)",
+    async (playingCode) => {
+      const replace = vi.fn().mockResolvedValue({ ok: true });
+      const superseded = ['s("bd*1024")'];
+      const revised = 's("bd*8")';
 
-    await expect(
-      replacePlayingRevision(superseded, revised, {
-        getPlayingCode: () => null,
-        replace,
-      }),
-    ).resolves.toBeNull();
-    await expect(
-      replacePlayingRevision(superseded, revised, {
-        getPlayingCode: () => 's("sd")',
-        replace,
-      }),
-    ).resolves.toBeNull();
-    await expect(
-      replacePlayingRevision(superseded, revised, {
-        getPlayingCode: () => revised,
-        replace,
-      }),
-    ).resolves.toBeNull();
-    expect(replace).not.toHaveBeenCalled();
-  });
+      await expect(
+        replacePlayingRevision(superseded, revised, {
+          getPlayingCode: () => playingCode,
+          replace,
+        }),
+      ).resolves.toBeNull();
+      expect(replace).not.toHaveBeenCalled();
+    },
+  );
 });

@@ -10,6 +10,15 @@ use tauri::{Emitter, Manager};
 /// A second `purple-music …` invocation hands its arguments to the running window.
 pub const STARTUP_ARGS_EVENT: &str = "purple://startup-args";
 
+#[cfg(desktop)]
+fn focus_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
 /// WebKitGTK's DMABUF renderer paints nothing on some Mesa drivers. Keep the
 /// accelerated default for unaffected systems, but offer a Purple-scoped
 /// workaround instead of asking users to change their session globally.
@@ -72,11 +81,7 @@ pub fn run() {
     #[cfg(desktop)]
     {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.unminimize();
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
+            focus_main_window(app);
             let forwarded: Vec<String> = args.into_iter().skip(1).collect();
             if let Err(error) = app.emit(STARTUP_ARGS_EVENT, forwarded) {
                 log::warn!("[Startup] Could not forward arguments to the window: {error}");

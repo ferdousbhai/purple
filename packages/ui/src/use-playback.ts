@@ -63,6 +63,22 @@ function classifyTransitionResult(
   return { ok: false, kind: "evaluation", error: result.error, source };
 }
 
+interface PlaybackQueue {
+  current: Promise<void>;
+}
+
+/** Serialize scheduler replacements so an overtaken evaluation cannot land late. */
+async function waitForPlaybackTurn(queue: PlaybackQueue): Promise<() => void> {
+  let release = (): void => {};
+  const turn = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const previousTurn = queue.current;
+  queue.current = turn;
+  await previousTurn;
+  return release;
+}
+
 export function usePlayback(options: StrudelAudioOptions = {}) {
   const {
     activate,
@@ -86,6 +102,17 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
     cancelTransitionWaitRef.current = null;
   }, []);
 
+  const beginOperation = useCallback(
+    async (state: "loading" | "transitioning") => {
+      const operation = ++operationRef.current;
+      cancelTransitionWait();
+      dispatch({ type: state });
+      const release = await waitForPlaybackTurn(playQueueRef);
+      return { operation, release };
+    },
+    [cancelTransitionWait],
+  );
+
   const activateAudio = useCallback(async (): Promise<AudioActivationResult> => {
     try {
       await activate();
@@ -104,60 +131,90 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
     return result;
   }, [activateAudio]);
 
+  const activateOperation = useCallback(
+    async (operation: number): Promise<EvalResult> => {
+      if (operation !== operationRef.current) {
+        return { ok: false, kind: "cancelled" };
+      }
+      const activation = await activateAudio();
+      if (operation !== operationRef.current) {
+        return { ok: false, kind: "cancelled" };
+      }
+      if (!activation.ok) dispatch({ type: "error", error: activation.error });
+      return activation;
+    },
+    [activateAudio],
+  );
+
+  const discardOvertakenEvaluation = useCallback(
+    (operation: number): boolean => {
+      if (operation === operationRef.current) return false;
+      hush();
+      return true;
+    },
+    [hush],
+  );
+
+  const commitCandidateResult = useCallback(
+    (
+      result: EvalResult,
+      code: string,
+      attemptOptions: PlaybackAttemptOptions,
+    ): void => {
+      if (result.ok) {
+        dispatch({ type: "playing", code });
+        return;
+      }
+      if (result.kind === "cancelled") return;
+      hush();
+      dispatch(
+        attemptOptions.reportEvaluationError === false &&
+          result.kind === "evaluation"
+          ? { type: "stopped" }
+          : { type: "error", error: result.error },
+      );
+    },
+    [hush],
+  );
+
+  const evaluateCandidate = useCallback(
+    async (
+      code: string,
+      operation: number,
+      attemptOptions: PlaybackAttemptOptions,
+      evaluateOptions?: { hushBefore?: boolean },
+    ): Promise<EvalResult> => {
+      const result = await evaluate(code, evaluateOptions);
+      if (discardOvertakenEvaluation(operation)) {
+        return { ok: false, kind: "cancelled" };
+      }
+      commitCandidateResult(result, code, attemptOptions);
+      return result;
+    },
+    [commitCandidateResult, discardOvertakenEvaluation, evaluate],
+  );
+
   const play = useCallback(
     async (
       code: string,
       attemptOptions: PlaybackAttemptOptions = {},
     ): Promise<EvalResult> => {
-      const operation = ++operationRef.current;
-      cancelTransitionWait();
-      dispatch({ type: "loading" });
-
-      let releaseQueue: () => void = () => {};
-      const queueTurn = new Promise<void>((resolve) => {
-        releaseQueue = resolve;
-      });
-      const previousTurn = playQueueRef.current;
-      playQueueRef.current = queueTurn;
-      await previousTurn;
+      const { operation, release } = await beginOperation("loading");
 
       try {
-        if (operation !== operationRef.current) {
-          return { ok: false, kind: "cancelled" };
-        }
+        const activation = await activateOperation(operation);
+        if (!activation.ok) return activation;
 
-        const activation = await activateAudio();
-        if (operation !== operationRef.current) {
-          return { ok: false, kind: "cancelled" };
-        }
-        if (!activation.ok) {
-          dispatch({ type: "error", error: activation.error });
-          return activation;
-        }
-
-        const result = await evaluate(code);
-        if (operation !== operationRef.current) {
-          hush();
-          return { ok: false, kind: "cancelled" };
-        }
-        if (result.ok) {
-          dispatch({ type: "playing", code });
-        } else {
-          if (result.kind === "cancelled") return result;
-          hush();
-          dispatch(
-            attemptOptions.reportEvaluationError === false &&
-              result.kind === "evaluation"
-              ? { type: "stopped" }
-              : { type: "error", error: result.error },
-          );
-        }
-        return result;
+        return evaluateCandidate(code, operation, attemptOptions);
       } finally {
-        releaseQueue();
+        release();
       }
     },
-    [activateAudio, cancelTransitionWait, evaluate, hush],
+    [
+      activateOperation,
+      beginOperation,
+      evaluateCandidate,
+    ],
   );
 
   const waitForCycle = useCallback(
@@ -242,31 +299,11 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
       }
 
       const fromCode = current.activeCode;
-      const operation = ++operationRef.current;
-      cancelTransitionWait();
-      dispatch({ type: "transitioning" });
-
-      let releaseQueue: () => void = () => {};
-      const queueTurn = new Promise<void>((resolve) => {
-        releaseQueue = resolve;
-      });
-      const previousTurn = playQueueRef.current;
-      playQueueRef.current = queueTurn;
-      await previousTurn;
+      const { operation, release } = await beginOperation("transitioning");
 
       try {
-        if (operation !== operationRef.current) {
-          return { ok: false, kind: "cancelled" };
-        }
-
-        const activation = await activateAudio();
-        if (operation !== operationRef.current) {
-          return { ok: false, kind: "cancelled" };
-        }
-        if (!activation.ok) {
-          dispatch({ type: "error", error: activation.error });
-          return activation;
-        }
+        const activation = await activateOperation(operation);
+        if (!activation.ok) return classifyTransitionResult(activation, "candidate");
 
         let startCycle: number;
         let transitionCode: string;
@@ -296,8 +333,7 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
         const transitionResult = await evaluate(transitionCode, {
           hushBefore: false,
         });
-        if (operation !== operationRef.current) {
-          hush();
+        if (discardOvertakenEvaluation(operation)) {
           return { ok: false, kind: "cancelled" };
         }
         if (!transitionResult.ok) {
@@ -343,31 +379,23 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
           return classifyTransitionResult(waitResult, "transition");
         }
 
-        const finalResult = await evaluate(nextCode, { hushBefore: false });
-        if (operation !== operationRef.current) {
-          hush();
-          return { ok: false, kind: "cancelled" };
-        }
-        if (finalResult.ok) {
-          dispatch({ type: "playing", code: nextCode });
-        } else if (finalResult.kind !== "cancelled") {
-          hush();
-          dispatch(
-            attemptOptions.reportEvaluationError === false &&
-              finalResult.kind === "evaluation"
-              ? { type: "stopped" }
-              : { type: "error", error: finalResult.error },
-          );
-        }
+        const finalResult = await evaluateCandidate(
+          nextCode,
+          operation,
+          attemptOptions,
+          { hushBefore: false },
+        );
         return classifyTransitionResult(finalResult, "candidate");
       } finally {
-        releaseQueue();
+        release();
       }
     },
     [
-      activateAudio,
-      cancelTransitionWait,
+      activateOperation,
+      beginOperation,
+      discardOvertakenEvaluation,
       evaluate,
+      evaluateCandidate,
       getSchedulerPosition,
       hush,
       play,
@@ -443,6 +471,15 @@ const INITIAL_PLAYBACK_STATE: PlaybackSnapshot = {
   activeRanges: [],
 };
 
+function playingSnapshot(code: string, error: string | null = null): PlaybackSnapshot {
+  return {
+    playbackState: "playing",
+    error,
+    activeCode: code,
+    activeRanges: [],
+  };
+}
+
 function playbackReducer(
   state: PlaybackSnapshot,
   action: PlaybackAction,
@@ -451,12 +488,7 @@ function playbackReducer(
     case "loading":
       return { ...INITIAL_PLAYBACK_STATE, playbackState: "loading" };
     case "playing":
-      return {
-        playbackState: "playing",
-        error: null,
-        activeCode: action.code,
-        activeRanges: [],
-      };
+      return playingSnapshot(action.code);
     case "transitioning":
       return {
         ...state,
@@ -465,19 +497,9 @@ function playbackReducer(
         activeRanges: [],
       };
     case "transitionFailed":
-      return {
-        playbackState: "playing",
-        error: action.error,
-        activeCode: action.code,
-        activeRanges: [],
-      };
+      return playingSnapshot(action.code, action.error);
     case "transitionRestored":
-      return {
-        playbackState: "playing",
-        error: null,
-        activeCode: action.code,
-        activeRanges: [],
-      };
+      return playingSnapshot(action.code);
     case "error":
       return {
         ...INITIAL_PLAYBACK_STATE,

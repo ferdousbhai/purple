@@ -35,7 +35,9 @@ export interface UseStudioChatOptions {
 }
 
 export interface SendMessageOptions {
-  hiddenUserMessage?: boolean;
+  /** Run a model exchange without showing or persisting either side. Repairs
+   * use this path, then replace the broken code in the original assistant turn. */
+  transient?: boolean;
   /** Appended to the outbound request only; never shown or persisted. */
   requestInstruction?: string;
 }
@@ -120,7 +122,7 @@ interface CompactionState {
   artifact: CompactionArtifact | null;
   coveredCount: number;
   /** Gemini's reported prompt token count for the latest generation, or null
-   * before the first one — the fold trigger's exact-size signal. */
+   * before the first one - the fold trigger's exact-size signal. */
   promptTokens: number | null;
 }
 
@@ -293,12 +295,12 @@ export function useStudioChat(
       };
       const previousConversation = conversationRef.current;
       const conversation = [...conversationRef.current, userMsg];
-      const visibleMessages = sendOptions.hiddenUserMessage
+      const visibleMessages = sendOptions.transient
         ? visibleMessagesRef.current
         : [...visibleMessagesRef.current, userMsg];
-      conversationRef.current = conversation;
+      if (!sendOptions.transient) conversationRef.current = conversation;
       visibleMessagesRef.current = visibleMessages;
-      persist();
+      if (!sendOptions.transient) persist();
       setView({
         messages: visibleMessages,
         streamingText: "",
@@ -323,6 +325,7 @@ export function useStudioChat(
         }
 
         activeStream.text += delta;
+        if (sendOptions.transient) return;
 
         // Paint the first token immediately; later ones batch on a frame.
         if (!activeStream.firstDeltaSeen) {
@@ -391,6 +394,7 @@ export function useStudioChat(
 
       const rollback = (error: string | null): null => {
         conversationRef.current =
+          !sendOptions.transient &&
           optionsRef.current.failedPromptPolicy === "retain"
             ? conversation
             : previousConversation;
@@ -399,11 +403,11 @@ export function useStudioChat(
           messages: visibleMessages,
           streamingText: "",
           isStreaming: false,
-          error,
+          error: sendOptions.transient ? null : error,
         });
         busyRef.current = false;
         streamRef.current = null;
-        persist();
+        if (!sendOptions.transient) persist();
         return null;
       };
 
@@ -425,6 +429,18 @@ export function useStudioChat(
         );
       }
       const pattern = acceptance.pattern;
+
+      if (sendOptions.transient) {
+        setView({
+          messages: visibleMessages,
+          streamingText: "",
+          isStreaming: false,
+          error: null,
+        });
+        busyRef.current = false;
+        streamRef.current = null;
+        return pattern;
+      }
 
       const assistantMsg: StudioChatMessage = {
         id: activeStream.assistantId,

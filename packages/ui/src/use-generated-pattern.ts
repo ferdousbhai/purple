@@ -71,6 +71,25 @@ export function useGeneratedPattern(options: GeneratedPatternOptions) {
   const contextRef = useRef<GeneratedPatternContext | null>(null);
   const validationRequestRef = useRef<ValidationRequest | null>(null);
 
+  const commitRepair = useCallback(
+    (
+      current: GeneratedPatternContext | null,
+      originalCode: string,
+      fixedCode: string,
+    ): GeneratedPatternContext => {
+      optionsRef.current.onPatternFixed?.(current?.code ?? originalCode, fixedCode);
+      const repaired = {
+        code: fixedCode,
+        sourcePrompt: current?.sourcePrompt,
+        repairsUsed: (current?.repairsUsed ?? 0) + 1,
+      };
+      contextRef.current = repaired;
+      optionsRef.current.onCodeChange(fixedCode);
+      return repaired;
+    },
+    [],
+  );
+
   const adopt = useCallback((code: string, sourcePrompt?: string): void => {
     contextRef.current = { code, sourcePrompt, repairsUsed: 0 };
     optionsRef.current.onCodeChange(code);
@@ -116,18 +135,11 @@ export function useGeneratedPattern(options: GeneratedPatternOptions) {
           applyFix: (fixed) => {
             const broken = context?.code ?? code;
             supersededCodes.push(broken);
-            optionsRef.current.onPatternFixed?.(broken, fixed);
-            context = {
-              code: fixed,
-              sourcePrompt: context?.sourcePrompt,
-              repairsUsed: (context?.repairsUsed ?? 0) + 1,
-            };
-            contextRef.current = context;
+            context = commitRepair(context, code, fixed);
             if (request) {
               request.code = fixed;
               request.context = context;
             }
-            optionsRef.current.onCodeChange(fixed);
           },
           isStale: () => contextRef.current !== context,
           maxRetries: Math.max(0, MAX_RETRIES - (context?.repairsUsed ?? 0)),
@@ -174,7 +186,7 @@ export function useGeneratedPattern(options: GeneratedPatternOptions) {
       );
       return promise;
     },
-    [],
+    [commitRepair],
   );
 
   const attempt = useCallback(
@@ -189,15 +201,7 @@ export function useGeneratedPattern(options: GeneratedPatternOptions) {
         isGeneratedPattern: (candidate) => context?.code === candidate,
         requestFix: optionsRef.current.requestFix,
         applyFix: (fixed) => {
-          const broken = context?.code ?? code;
-          optionsRef.current.onPatternFixed?.(broken, fixed);
-          context = {
-            code: fixed,
-            sourcePrompt: context?.sourcePrompt,
-            repairsUsed: (context?.repairsUsed ?? 0) + 1,
-          };
-          contextRef.current = context;
-          optionsRef.current.onCodeChange(fixed);
+          context = commitRepair(context, code, fixed);
         },
         maxRetries: Math.max(0, MAX_RETRIES - (context?.repairsUsed ?? 0)),
         isStale: () => contextRef.current !== context,
@@ -213,7 +217,7 @@ export function useGeneratedPattern(options: GeneratedPatternOptions) {
       }
       return outcome;
     },
-    [],
+    [commitRepair],
   );
 
   return { adopt, isCurrent, validate, attempt };

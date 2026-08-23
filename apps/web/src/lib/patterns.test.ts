@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { parseStored, uniquePatternTitle } from './patterns'
+import { localStorageStub } from '@purple/ui/testing'
 
 const pattern = {
   id: 'a',
@@ -57,14 +58,8 @@ describe('pattern persistence', () => {
   })
 
   it('reports a successful durable save', async () => {
-    const values = new Map<string, string>()
-    vi.stubGlobal('window', {
-      localStorage: {
-        getItem: (key: string) => values.get(key) ?? null,
-        setItem: (key: string, value: string) => values.set(key, value),
-        removeItem: (key: string) => values.delete(key),
-      },
-    })
+    const { values, window } = localStorageStub()
+    vi.stubGlobal('window', window)
     const { upsertPattern } = await import('./patterns')
 
     expect(upsertPattern(pattern)).toBe(true)

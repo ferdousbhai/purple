@@ -6,10 +6,26 @@ import { cleanup, render, renderHook, screen, waitFor } from '@testing-library/r
 import userEvent from '@testing-library/user-event'
 import { PurpleStudio } from './purple-studio'
 import { useGeneratedPattern } from '@purple/ui/use-generated-pattern'
+import type { TransitionResult } from '@purple/ui/use-playback'
+import type { EvalResult, PlaybackState, SourceRange } from '@purple/core/types'
 
 const FIRST_PATTERN = 's("bd sd")'
 const SECOND_PATTERN = 's("hh*8")'
 const FIXED_PATTERN = 's("hh*4").gain(0.5)'
+
+// The real playback unions, so the mock cannot drift from the contract.
+interface TestPlaybackSnapshot {
+  playbackState: PlaybackState
+  error: string | null
+  activeCode: string
+  activeRanges: readonly SourceRange[]
+}
+
+type TestPlaybackResult = EvalResult | TransitionResult
+
+interface TestPlaybackOptions {
+  reportEvaluationError?: boolean
+}
 
 const studio = vi.hoisted(() => ({
   generations: [] as string[],
@@ -61,7 +77,9 @@ vi.mock('#/lib/byok', () => ({
 }))
 
 vi.mock('#/lib/patterns', () => ({
+  loadSessionPattern: () => null,
   removePattern: () => true,
+  saveSessionPattern: () => undefined,
   uniquePatternTitle: (title: string) => title,
   upsertPattern: () => true,
   usePatterns: () => [],
@@ -93,9 +111,23 @@ vi.mock('@purple/ui/pattern-editor', async () => {
 vi.mock('@purple/ui/use-playback', async () => {
   const React = await import('react')
 
+  function settledSnapshot(
+    result: TestPlaybackResult,
+    code: string,
+    options: TestPlaybackOptions,
+  ): TestPlaybackSnapshot | null {
+    if (result.ok) {
+      return { playbackState: 'playing', error: null, activeCode: code, activeRanges: [] }
+    }
+    if (result.kind === 'cancelled') return null
+    return options.reportEvaluationError === false && result.kind === 'evaluation'
+      ? { playbackState: 'stopped', error: null, activeCode: '', activeRanges: [] }
+      : { playbackState: 'error', error: result.error, activeCode: '', activeRanges: [] }
+  }
+
   return {
     usePlayback() {
-      const [snapshot, setSnapshot] = React.useState({
+      const [snapshot, setSnapshot] = React.useState<TestPlaybackSnapshot>({
         playbackState: 'stopped',
         error: null as string | null,
         activeCode: '',
@@ -114,65 +146,41 @@ vi.mock('@purple/ui/use-playback', async () => {
 
       const play = React.useCallback(async (
         code: string,
-        options: { reportEvaluationError?: boolean } = {},
+        options: TestPlaybackOptions = {},
       ) => {
         studio.playCalls.push(code)
         const operation = ++operationRef.current
         setSnapshot({ playbackState: 'loading', error: null, activeCode: '', activeRanges: [] })
         const queued = studio.playResults.shift()
-        const result = await Promise.resolve(queued ?? { ok: true as const }) as
-          | { ok: true }
-          | { ok: false; kind: 'audio' | 'evaluation'; error: string }
-          | { ok: false; kind: 'cancelled' }
+        const result = await Promise.resolve(queued ?? { ok: true as const }) as TestPlaybackResult
         if (operation !== operationRef.current) return { ok: false as const, kind: 'cancelled' as const }
-        if (result.ok) {
-          setSnapshot({ playbackState: 'playing', error: null, activeCode: code, activeRanges: [] })
-        } else if (result.kind !== 'cancelled') {
-          setSnapshot(
-            options.reportEvaluationError === false && result.kind === 'evaluation'
-              ? { playbackState: 'stopped', error: null, activeCode: '', activeRanges: [] }
-              : { playbackState: 'error', error: result.error, activeCode: '', activeRanges: [] },
-          )
-        }
+        const settled = settledSnapshot(result, code, options)
+        if (settled !== null) setSnapshot(settled)
         return result
       }, [])
 
       const transition = React.useCallback(async (
         code: string,
         _cycles: number,
-        options: { reportEvaluationError?: boolean } = {},
+        options: TestPlaybackOptions = {},
       ) => {
         studio.transitionCalls.push(code)
         const previous = snapshotRef.current.activeCode
         const operation = ++operationRef.current
         setSnapshot((current) => ({ ...current, playbackState: 'transitioning', error: null }))
         const queued = studio.transitionResults.shift()
-        const result = await Promise.resolve(queued ?? { ok: true as const }) as
-          | { ok: true }
-          | { ok: false; kind: 'audio'; error: string }
-          | { ok: false; kind: 'cancelled' }
-          | {
-              ok: false
-              kind: 'evaluation'
-              error: string
-              source: 'candidate' | 'transition'
-            }
+        const result = await Promise.resolve(queued ?? { ok: true as const }) as TestPlaybackResult
         if (operation !== operationRef.current) return { ok: false as const, kind: 'cancelled' as const }
-        if (result.ok) {
-          setSnapshot({ playbackState: 'playing', error: null, activeCode: code, activeRanges: [] })
-        } else if (result.kind === 'evaluation' && result.source === 'transition') {
+        if (!result.ok && result.kind === 'evaluation' && 'source' in result && result.source === 'transition') {
           setSnapshot({
             playbackState: 'playing',
             error: options.reportEvaluationError === false ? null : result.error,
             activeCode: previous,
             activeRanges: [],
           })
-        } else if (result.kind !== 'cancelled') {
-          setSnapshot(
-            options.reportEvaluationError === false && result.kind === 'evaluation'
-              ? { playbackState: 'stopped', error: null, activeCode: '', activeRanges: [] }
-              : { playbackState: 'error', error: result.error, activeCode: '', activeRanges: [] },
-          )
+        } else {
+          const settled = settledSnapshot(result, code, options)
+          if (settled !== null) setSnapshot(settled)
         }
         return result
       }, [])

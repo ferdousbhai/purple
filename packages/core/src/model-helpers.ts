@@ -1,6 +1,6 @@
 /**
  * The structured-generation wrappers shared by both apps: titles, transition
- * suggestions, and compaction summaries all follow the same shape — send a
+ * suggestions, and compaction summaries all follow the same shape - send a
  * system prompt plus one user payload under a JSON schema, parse the reply,
  * and fold failures into a result value. Each app supplies only its
  * transport: the desktop's Tauri `generate_json` invoke, the web's BYOK
@@ -40,61 +40,67 @@ export type ModelHelpers = TitleGenerator &
   TransitionSuggester &
   CompactionSummarizer;
 
+type ParsedGeneration<T> =
+  | { ok: true; value: T }
+  | { ok: false; error: string };
+
+async function generateParsed<T>(
+  generateJson: JsonGenerator,
+  systemInstruction: string,
+  input: string,
+  schema: ResponseSchema,
+  parse: (raw: string) => T | null,
+  invalidResponseError: string,
+): Promise<ParsedGeneration<T>> {
+  try {
+    const value = parse(
+      await generateJson(systemInstruction, input, schema),
+    );
+    return value === null
+      ? { ok: false, error: invalidResponseError }
+      : { ok: true, value };
+  } catch (error) {
+    return { ok: false, error: errorMessage(error) };
+  }
+}
+
 /** Bind a transport into the title/suggestions/compaction helpers. */
 export function createModelHelpers(generateJson: JsonGenerator): ModelHelpers {
   return {
     async generateTitle(prompt) {
-      try {
-        const raw = await generateJson(
-          TITLE_PROMPT,
-          prompt.trim(),
-          TITLE_SCHEMA,
-        );
-        const title = parseGeneratedPatternTitle(raw);
-        if (!title) {
-          return { ok: false, error: "Gemini returned an invalid pattern title." };
-        }
-        return { ok: true, title };
-      } catch (error) {
-        return { ok: false, error: errorMessage(error) };
-      }
+      const result = await generateParsed(
+        generateJson,
+        TITLE_PROMPT,
+        prompt.trim(),
+        TITLE_SCHEMA,
+        parseGeneratedPatternTitle,
+        "Gemini returned an invalid pattern title.",
+      );
+      return result.ok ? { ok: true, title: result.value } : result;
     },
 
     async suggestTransitions(code, sourcePrompt) {
-      try {
-        const raw = await generateJson(
-          TRANSITION_SUGGESTIONS_PROMPT,
-          buildTransitionSuggestionsRequest(code, sourcePrompt),
-          TRANSITION_SUGGESTIONS_SCHEMA,
-        );
-        const suggestions = parseTransitionSuggestions(raw);
-        if (!suggestions) {
-          return {
-            ok: false,
-            error: "Gemini returned invalid transition suggestions.",
-          };
-        }
-        return { ok: true, suggestions };
-      } catch (error) {
-        return { ok: false, error: errorMessage(error) };
-      }
+      const result = await generateParsed(
+        generateJson,
+        TRANSITION_SUGGESTIONS_PROMPT,
+        buildTransitionSuggestionsRequest(code, sourcePrompt),
+        TRANSITION_SUGGESTIONS_SCHEMA,
+        parseTransitionSuggestions,
+        "Gemini returned invalid transition suggestions.",
+      );
+      return result.ok ? { ok: true, suggestions: result.value } : result;
     },
 
     async generateCompactionSummary(previous, messages) {
-      try {
-        const raw = await generateJson(
-          COMPACTION_PROMPT,
-          buildCompactionRequest(previous, messages),
-          COMPACTION_SCHEMA,
-        );
-        const artifact = parseCompactionSummary(raw);
-        if (!artifact) {
-          return { ok: false, error: "Gemini returned an invalid session summary." };
-        }
-        return { ok: true, artifact };
-      } catch (error) {
-        return { ok: false, error: errorMessage(error) };
-      }
+      const result = await generateParsed(
+        generateJson,
+        COMPACTION_PROMPT,
+        buildCompactionRequest(previous, messages),
+        COMPACTION_SCHEMA,
+        parseCompactionSummary,
+        "Gemini returned an invalid session summary.",
+      );
+      return result.ok ? { ok: true, artifact: result.value } : result;
     },
   };
 }

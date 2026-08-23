@@ -10,7 +10,6 @@ import {
   DEFAULT_GEMINI_MODEL,
   SYSTEM_PROMPT,
   createModelHelpers,
-  type CompactionArtifact,
   type CompactionSummarizer,
   type ResponseSchema,
 } from '@purple/core'
@@ -20,6 +19,8 @@ import type {
   TitleGenerator,
   TransitionSuggester,
 } from '@purple/core/types'
+import { createChatStore } from '@purple/ui/session-store'
+import type { StudioChatState } from '@purple/ui/use-studio-chat'
 import { z } from 'zod'
 
 const STORAGE_KEY = 'purple.byok.gemini-key'
@@ -45,24 +46,12 @@ try {
 } catch {
   // Storage unavailable (private mode); nothing to migrate.
 }
-/**
- * Persistence target only - the context sent to Gemini is bounded separately
- * by buildContextWindow. Covered messages may be trimmed after compaction,
- * while uncovered messages are always retained.
- */
-const MAX_STORED_MESSAGES = 200
 const ONE_SHOT_TIMEOUT_MS = 45_000
 const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${DEFAULT_GEMINI_MODEL}:generateContent`
 const STREAM_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${DEFAULT_GEMINI_MODEL}:streamGenerateContent`
 
 /** The BYOK chat a browser carries across reloads. */
-export interface ByokChatState {
-  messages: ChatMessage[]
-  /** Rolling compaction summary, or null before the first fold. */
-  artifact: CompactionArtifact | null
-  /** How many leading messages the artifact covers. */
-  coveredCount: number
-}
+export type ByokChatState = StudioChatState
 
 /** The generation knobs this client sets on Gemini's generateContent call. */
 interface GeminiGenerationConfig {
@@ -122,116 +111,22 @@ export function setByokKey(key: string | null): void {
   }
 }
 
-const storedMessageSchema = z.object({
-  role: z.enum(['user', 'assistant']),
-  content: z.string(),
-})
-
-const storedArtifactSchema = z.object({
-  summary: z.string(),
-  latestPattern: z.string(),
-})
-
-/** Versioned envelope: anything that does not match is discarded silently. */
-const chatEnvelopeSchema = z.object({
-  v: z.literal(2),
-  messages: z.array(storedMessageSchema),
-  artifact: storedArtifactSchema.nullable(),
-  coveredCount: z.number().int().min(0),
-})
-
-/** The v1 envelope stored messages as `{role, text}` before the app unified
- * on core's `ChatMessage`; parsing migrates it in place of discarding. */
-const legacyChatEnvelopeSchema = z.object({
-  v: z.literal(1),
-  messages: z.array(
-    z.object({ role: z.enum(['user', 'assistant']), text: z.string() }),
-  ),
-  artifact: storedArtifactSchema.nullable(),
-  coveredCount: z.number().int().min(0),
-})
-
-type ByokChatEnvelope = z.infer<typeof chatEnvelopeSchema>
-
-/**
- * The envelope written to localStorage. It aims for MAX_STORED_MESSAGES, but
- * only removes a prefix that the compaction artifact already represents. A
- * long uncovered tail is retained in full instead of silently losing chat.
- */
-export function toChatEnvelope(state: ByokChatState): ByokChatEnvelope {
-  const covered = Math.min(Math.max(state.coveredCount, 0), state.messages.length)
-  const represented = state.artifact?.summary.trim() ? covered : 0
-  const dropped = Math.min(
-    Math.max(0, state.messages.length - MAX_STORED_MESSAGES),
-    represented,
-  )
-  return {
-    v: 2,
-    messages: state.messages.slice(dropped),
-    artifact: state.artifact,
-    coveredCount: Math.max(0, represented - dropped),
-  }
-}
-
-/** Decode a stored envelope; null for anything malformed or from another version. */
-export function parseChatEnvelope(raw: string): ByokChatState | null {
-  let value: unknown
-  try {
-    value = JSON.parse(raw)
-  } catch {
-    return null
-  }
-  const parsed = chatEnvelopeSchema.safeParse(value)
-  if (parsed.success) {
-    const { messages, artifact, coveredCount } = parsed.data
-    return { messages, artifact, coveredCount: Math.min(coveredCount, messages.length) }
-  }
-  const legacy = legacyChatEnvelopeSchema.safeParse(value)
-  if (!legacy.success) return null
-  const messages = legacy.data.messages.map(({ role, text }) => ({
-    role,
-    content: text,
-  }))
-  return {
-    messages,
-    artifact: legacy.data.artifact,
-    coveredCount: Math.min(legacy.data.coveredCount, messages.length),
-  }
-}
+/** Envelope handling, trimming and validation live in the shared store. */
+const chatStore = createChatStore(CHAT_STORAGE_KEY)
 
 export function loadByokChat(): ByokChatState | null {
-  try {
-    // A transcript with no key alongside it is an orphan - the key was
-    // removed out-of-band (another tab, devtools), and without a key the
-    // composer that could clear it never renders. Purge instead of loading.
-    if (getByokKey() === null) {
-      window.localStorage.removeItem(CHAT_STORAGE_KEY)
-      return null
-    }
-    const raw = window.localStorage.getItem(CHAT_STORAGE_KEY)
-    return raw ? parseChatEnvelope(raw) : null
-  } catch {
+  // A transcript with no key alongside it is an orphan - the key was removed
+  // out-of-band (another tab, devtools), and without a key the composer that
+  // could clear it never renders. Purge instead of loading.
+  if (getByokKey() === null) {
+    chatStore.clear()
     return null
   }
+  return chatStore.load()
 }
 
-export function saveByokChat(state: ByokChatState): boolean {
-  try {
-    window.localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(toChatEnvelope(state)))
-    return true
-  } catch {
-    return false
-  }
-}
-
-export function clearByokChat(): boolean {
-  try {
-    window.localStorage.removeItem(CHAT_STORAGE_KEY)
-    return true
-  } catch {
-    return false
-  }
-}
+export const saveByokChat = chatStore.save
+export const clearByokChat = chatStore.clear
 
 /**
  * The web app's backend: the shared capability interfaces it implements,

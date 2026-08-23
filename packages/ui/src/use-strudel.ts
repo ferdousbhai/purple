@@ -14,10 +14,7 @@ import {
   type ValidationProblem,
 } from "@purple/core/validation";
 import { loadPinnedSamples } from "./pinned-samples";
-import type {
-  SafeStrudelScope,
-  SafeStrudelValue,
-} from "./safe-strudel";
+import type { SafeStrudelScope } from "./safe-strudel";
 
 type StrudelModule = typeof import("@strudel/web/web.mjs");
 type SafeStrudelModule = typeof import("./safe-strudel");
@@ -25,6 +22,15 @@ type SafeStrudelModule = typeof import("./safe-strudel");
 /** How many cycles of events the validation audit inspects. Four covers every
  * `<a b c d>` alternation the prompt examples use while staying instant. */
 const VALIDATION_CYCLES = 4;
+
+function interpretPattern(
+  safeStrudel: SafeStrudelModule,
+  code: string,
+  scope: SafeStrudelScope,
+): StrudelPattern | null {
+  const pattern = safeStrudel.evaluateSafeStrudelExpression(code, scope);
+  return safeStrudel.isQueryablePattern<StrudelPattern>(pattern) ? pattern : null;
+}
 
 export interface SchedulerPosition {
   cycle: number;
@@ -196,11 +202,8 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
       // historical hushBefore distinction is intentionally a no-op. setPattern
       // replaces the scheduler atomically for both direct plays and x-fades.
       void options.hushBefore;
-      const pattern = safeStrudel.evaluateSafeStrudelExpression(
-        code,
-        expressionScope,
-      );
-      if (!isStrudelPattern(pattern)) {
+      const pattern = interpretPattern(safeStrudel, code, expressionScope);
+      if (pattern === null) {
         return {
           ok: false,
           error: "Pattern did not produce a playable Strudel expression.",
@@ -251,11 +254,8 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
 
     try {
       // Interpretation builds a pattern without mutating the live scheduler.
-      const pattern = safeStrudel.evaluateSafeStrudelExpression(
-        code,
-        expressionScope,
-      );
-      if (!isStrudelPattern(pattern)) {
+      const pattern = interpretPattern(safeStrudel, code, expressionScope);
+      if (pattern === null) {
         return [
           {
             kind: "evaluation",
@@ -369,21 +369,6 @@ function installSchedulerCpm(
     }
     return pattern._fast(cpm / 60 / schedulerCps);
   });
-}
-
-/**
- * Strudel is untyped JavaScript, so the interpreted value is verified to carry
- * a pattern's query interface before it is treated as one.
- */
-function isStrudelPattern(
-  value: SafeStrudelValue,
-): value is StrudelPattern {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "queryArc" in value &&
-    typeof value.queryArc === "function"
-  );
 }
 
 function sourceRangesFromHaps(haps: readonly StrudelHap[]): SourceRange[] {
