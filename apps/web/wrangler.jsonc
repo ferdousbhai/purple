@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   // Assets-only Worker: the app is a static SPA. There is no server code at
-  // all — patterns, chat and the Gemini key live in the visitor's browser,
+  // all - patterns, chat and the Gemini key live in the visitor's browser,
   // and generation requests go straight to Google.
   "name": "purple-web",
   "compatibility_date": "2026-08-08",

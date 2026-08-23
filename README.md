@@ -1,6 +1,6 @@
 # Purple
 
-Purple is an app for making music with AI. It ships two ways: a native desktop app, and a web app at [soundspurple.com](https://soundspurple.com) — same instrument, same shared engine.
+Purple is an app for making music with AI. It ships two ways: a native desktop app, and a web app at [soundspurple.com](https://soundspurple.com) - same instrument, same shared engine.
 
 You type a plain-English music idea, such as "make a slow lo-fi drum loop with warm chords." Purple asks Gemini to write a Strudel music pattern, puts that pattern in the editor, and plays it through your computer speakers.
 
@@ -11,7 +11,7 @@ The app has two main areas:
 
 ## What You Need
 
-- A Linux computer (Arch, Omarchy, Ubuntu, Fedora — anything with a system webview). macOS and Windows build from source too, but the packaging below is Linux-first.
+- A Linux computer (Arch, Omarchy, Ubuntu, Fedora - anything with a system webview). macOS and Windows build from source too, but the packaging below is Linux-first.
 - An internet connection.
 - A Google Gemini API key.
 

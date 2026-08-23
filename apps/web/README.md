@@ -1,7 +1,7 @@
 # Purple Web
 
 The web app is a TanStack Start application on Cloudflare Workers. The Worker
-only serves the app shell — everything stateful is local-first:
+only serves the app shell - everything stateful is local-first:
 
 ```text
 browser ── HTTPS ── generativelanguage.googleapis.com (visitor's own Gemini key)
