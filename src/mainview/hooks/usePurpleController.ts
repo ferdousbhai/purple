@@ -30,6 +30,11 @@ const DESKTOP_AUDIO_OPTIONS = {
 };
 type TitleStatus = "idle" | "generating" | "ready" | "error";
 
+const GENERATED_PATTERN_ERROR =
+  "Purple could not produce a playable pattern. Try describing the change another way.";
+const TRANSITION_ERROR =
+  "The crossfade could not complete. Use Play to resume if playback stopped.";
+
 /** One in-flight title generation. Identity is the token: only the request that
  * is still `titleRequestRef.current` may write title state. */
 interface TitleRequest {
@@ -60,6 +65,9 @@ export function usePurpleController() {
   const [titleError, setTitleError] = useState<string | null>(null);
   const titleRequestRef = useRef<TitleRequest | null>(null);
   const [requiresUserActivation, setRequiresUserActivation] = useState(false);
+  const [generatedPlaybackError, setGeneratedPlaybackError] = useState<
+    string | null
+  >(null);
   const [apiKeyStatus, setApiKeyStatus] = useState<ApiKeyStatus>({
     hasKey: false,
     source: "missing",
@@ -94,9 +102,17 @@ export function usePurpleController() {
         const current = playbackRef.current;
         return current.playbackState === "playing" ? current.activeCode : null;
       },
-      replace: (fixed) => playbackRef.current.play(fixed),
+      replace: async (fixed) => {
+        const result = await playbackRef.current.play(fixed, {
+          reportEvaluationError: false,
+        });
+        if (!result.ok && result.kind === "evaluation") {
+          setGeneratedPlaybackError(GENERATED_PATTERN_ERROR);
+        }
+        return result;
+      },
     },
-    isStopped: () => playback.playbackState === "stopped",
+    getStopToken: playback.getStopToken,
     onPlaybackSuccess: (patternCode, sourcePrompt) =>
       nextMoves.generate({ code: patternCode, sourcePrompt }),
     onValidationProblems: (problems) =>
@@ -146,6 +162,7 @@ export function usePurpleController() {
       explanatoryStyle = false,
     ): Promise<void> => {
       nextMoves.clear();
+      setGeneratedPlaybackError(null);
       explanatoryStyleRef.current = explanatoryStyle;
       const titleRequest: TitleRequest = { patternReady: false, result: null };
       titleRequestRef.current = titleRequest;
@@ -242,30 +259,105 @@ export function usePurpleController() {
   const play = useCallback(
     async (editorCode: string) => {
       setRequiresUserActivation(false);
+      setGeneratedPlaybackError(null);
       nextMoves.clear();
-      return (await generatedPattern.attempt(editorCode, playback.play)).result;
+      const generated = generatedPattern.isCurrent(editorCode);
+      const outcome = await generatedPattern.attempt(editorCode, (candidate) =>
+        playback.play(candidate, {
+          reportEvaluationError: generated ? false : undefined,
+        }),
+      );
+      if (
+        generated &&
+        !outcome.result.ok &&
+        outcome.result.kind === "evaluation"
+      ) {
+        setGeneratedPlaybackError(GENERATED_PATTERN_ERROR);
+      }
+      return outcome.result;
     },
-    [generatedPattern.attempt, nextMoves.clear, playback.play],
+    [
+      generatedPattern.attempt,
+      generatedPattern.isCurrent,
+      nextMoves.clear,
+      playback.play,
+    ],
   );
 
   const transition = useCallback(
     async (nextCode: string, durationCycles: number) => {
       setRequiresUserActivation(false);
+      setGeneratedPlaybackError(null);
       nextMoves.clear();
       // transition() falls back to play() when nothing is playing yet, and a
       // failed transition lands back in "playing", so a repaired pattern can
       // re-attempt the same crossfade.
-      return (
-        await generatedPattern.attempt(nextCode, (candidate) =>
-          playback.transition(candidate, durationCycles),
-        )
-      ).result;
+      const generated = generatedPattern.isCurrent(nextCode);
+      let candidateCode = nextCode;
+      const playingBeforeValidation =
+        playbackRef.current.playbackState === "playing"
+          ? playbackRef.current.activeCode
+          : null;
+      if (generated) {
+        const validated = await generatedPattern.validate(nextCode);
+        if (validated.problems.length > 0) {
+          setGeneratedPlaybackError(GENERATED_PATTERN_ERROR);
+          return {
+            ok: false,
+            kind: "evaluation",
+            error: GENERATED_PATTERN_ERROR,
+          } as const;
+        }
+        candidateCode = validated.code;
+        if (
+          playingBeforeValidation !== null &&
+          (playbackRef.current.playbackState !== "playing" ||
+            playbackRef.current.activeCode !== playingBeforeValidation)
+        ) {
+          return { ok: false, kind: "cancelled" } as const;
+        }
+      }
+      let transitionFailed = false;
+      const outcome = await generatedPattern.attempt(
+        candidateCode,
+        async (candidate) => {
+          const result = await playback.transition(candidate, durationCycles, {
+            reportEvaluationError: generated ? false : undefined,
+          });
+          if (
+            !result.ok &&
+            result.kind === "evaluation" &&
+            result.source === "transition"
+          ) {
+            transitionFailed = true;
+            return { ok: false, kind: "cancelled" };
+          }
+          return result;
+        },
+      );
+      if (transitionFailed) {
+        setGeneratedPlaybackError(TRANSITION_ERROR);
+      } else if (
+        generated &&
+        !outcome.result.ok &&
+        outcome.result.kind === "evaluation"
+      ) {
+        setGeneratedPlaybackError(GENERATED_PATTERN_ERROR);
+      }
+      return outcome.result;
     },
-    [generatedPattern.attempt, nextMoves.clear, playback.transition],
+    [
+      generatedPattern.attempt,
+      generatedPattern.isCurrent,
+      generatedPattern.validate,
+      nextMoves.clear,
+      playback.transition,
+    ],
   );
 
   const stop = useCallback(() => {
     nextMoves.clear();
+    setGeneratedPlaybackError(null);
     playback.stop();
   }, [nextMoves.clear, playback.stop]);
 
@@ -346,7 +438,7 @@ export function usePurpleController() {
 
   // Desktop media keys (MPRIS) arrive outside any user gesture. They can stop
   // playback at any time, but may only *start* it once a real gesture has
-  // already unlocked audio — otherwise the request is silently ignored,
+  // already unlocked audio - otherwise the request is silently ignored,
   // because resuming a never-activated AudioContext would just fail.
   useEffect(() => {
     let active = true;
@@ -401,7 +493,7 @@ export function usePurpleController() {
     clearChat: chat.clearChat,
     abortStream: chat.abortStream,
     playbackState: playback.playbackState,
-    error: playback.error,
+    error: generatedPlaybackError ?? playback.error,
     activeCode: playback.activeCode,
     activeRanges: playback.activeRanges,
     prepareAudio: playback.prepareAudio,

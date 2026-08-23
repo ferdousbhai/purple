@@ -3,7 +3,11 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Purple — not found</title>
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0a0a0f" />
+    <meta name="robots" content="noindex" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>Purple - not found</title>
     <style>
       body {
         margin: 0;
@@ -12,23 +16,34 @@
         place-content: center;
         gap: 10px;
         text-align: center;
-        background: #0a0a0a;
-        color: #e8e8e8;
+        background: #0a0a0f;
+        color: #e0e0e8;
         font-family: 'Outfit', system-ui, sans-serif;
       }
       h1,
       a {
         color: #27e0f0;
       }
+      main {
+        display: grid;
+        justify-items: center;
+        gap: 10px;
+      }
       h1,
       p {
         margin: 0;
       }
+      a:focus-visible {
+        outline: 2px solid #27e0f0;
+        outline-offset: 4px;
+      }
     </style>
   </head>
   <body>
-    <h1>PURPLE</h1>
-    <p>That page does not exist.</p>
-    <a href="/">Return to the studio</a>
+    <main>
+      <h1>PURPLE</h1>
+      <p>That page does not exist.</p>
+      <a href="/">Return to the studio</a>
+    </main>
   </body>
 </html>

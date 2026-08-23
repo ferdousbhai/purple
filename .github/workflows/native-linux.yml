@@ -50,10 +50,15 @@ jobs:
           pnpm install --frozen-lockfile
           cargo fetch --locked --manifest-path src-tauri/Cargo.toml
 
+      - name: Audit production JavaScript dependencies
+        run: pnpm audit --prod --audit-level=high
+
       - name: Parse the Arch package recipe
         run: |
           bash -n packaging/PKGBUILD
-          (cd packaging && makepkg --printsrcinfo >/dev/null)
+          useradd --create-home package-checker
+          chown package-checker:package-checker packaging
+          runuser -u package-checker -- bash -c "cd '$GITHUB_WORKSPACE/packaging' && makepkg --printsrcinfo >/dev/null"
 
       - name: Run project checks offline
         env:

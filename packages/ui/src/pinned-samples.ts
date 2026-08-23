@@ -12,6 +12,7 @@ const BANK_ALIASES_COMMIT = "f58b317308194e9a8523a4ccd687684375f72da5";
 
 const RAW_GITHUB = "https://raw.githubusercontent.com";
 const MAX_MANIFEST_BYTES = 512_000;
+const MANIFEST_TIMEOUT_MS = 8_000;
 const SAFE_NAME = /^[A-Za-z0-9_-]+$/;
 
 interface SampleLoader {
@@ -49,25 +50,42 @@ export async function loadPinnedSamples(strudel: SampleLoader): Promise<void> {
 }
 
 async function fetchJson(url: string): Promise<unknown> {
-  const response = await fetch(url, {
-    credentials: "omit",
-    referrerPolicy: "no-referrer",
-  });
-  if (!response.ok) {
-    throw new Error(`Could not load pinned sample manifest (${response.status}).`);
-  }
-  const declaredSize = Number(response.headers.get("content-length"));
-  if (Number.isFinite(declaredSize) && declaredSize > MAX_MANIFEST_BYTES) {
-    throw new Error("Pinned sample manifest exceeds the size limit.");
-  }
-  const text = await response.text();
-  if (text.length > MAX_MANIFEST_BYTES) {
-    throw new Error("Pinned sample manifest exceeds the size limit.");
-  }
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, MANIFEST_TIMEOUT_MS);
+
   try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    throw new Error("Pinned sample manifest is not valid JSON.");
+    const response = await fetch(url, {
+      credentials: "omit",
+      referrerPolicy: "no-referrer",
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`Could not load pinned sample manifest (${response.status}).`);
+    }
+    const declaredSize = Number(response.headers.get("content-length"));
+    if (Number.isFinite(declaredSize) && declaredSize > MAX_MANIFEST_BYTES) {
+      throw new Error("Pinned sample manifest exceeds the size limit.");
+    }
+    const text = await response.text();
+    if (text.length > MAX_MANIFEST_BYTES) {
+      throw new Error("Pinned sample manifest exceeds the size limit.");
+    }
+    try {
+      return JSON.parse(text) as unknown;
+    } catch {
+      throw new Error("Pinned sample manifest is not valid JSON.");
+    }
+  } catch (error) {
+    if (timedOut) {
+      throw new Error("Pinned sample manifests took too long to load.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

@@ -64,7 +64,9 @@ const RANDOM_STARTUP_PRESET_NAMES = [
 
 export function getRandomStartupPattern(random = Math.random): string {
   const index = Math.floor(random() * RANDOM_STARTUP_PRESET_NAMES.length);
-  return PRESET_PATTERNS[RANDOM_STARTUP_PRESET_NAMES[index]];
+  const name =
+    RANDOM_STARTUP_PRESET_NAMES[index] ?? RANDOM_STARTUP_PRESET_NAMES[0];
+  return PRESET_PATTERNS[name];
 }
 
 export function isStrudelCode(text: string): boolean {
@@ -91,7 +93,14 @@ export function parseCliArgs(
     };
   }
 
-  const [first, ...rest] = userArgs;
+  const first = userArgs[0];
+  if (!first) {
+    return {
+      initialCode: getRandomStartupPattern(random),
+      requestPlayback: true,
+    };
+  }
+  const rest = userArgs.slice(1);
   if (["-c", "--code", "-e", "--eval"].includes(first)) {
     if (rest.length !== 1) {
       return { error: `${first} requires exactly one code argument.` };
@@ -102,11 +111,15 @@ export function parseCliArgs(
     if (rest.length !== 1) {
       return { error: `${first} requires exactly one preset name.` };
     }
-    const preset = PRESET_BY_NAME.get(rest[0].toLowerCase());
+    const requestedPreset = rest[0];
+    if (!requestedPreset) {
+      return { error: `${first} requires exactly one preset name.` };
+    }
+    const preset = PRESET_BY_NAME.get(requestedPreset.toLowerCase());
     return preset
       ? { initialCode: preset, requestPlayback: true }
       : {
-          error: `Unknown preset "${rest[0]}". Expected one of: ${Object.keys(PRESET_PATTERNS).join(", ")}.`,
+          error: `Unknown preset "${requestedPreset}". Expected one of: ${Object.keys(PRESET_PATTERNS).join(", ")}.`,
         };
   }
   if (first === "--prompt") {

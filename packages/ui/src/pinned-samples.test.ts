@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadPinnedSamples } from "./pinned-samples";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 describe("loadPinnedSamples", () => {
   it("ignores upstream bases and supplies commit-addressed asset URLs", async () => {
@@ -43,6 +46,31 @@ describe("loadPinnedSamples", () => {
         aliasBank: vi.fn().mockResolvedValue(undefined),
       }),
     ).rejects.toThrow(/invalid|unsafe|empty/);
+  });
+
+  it("aborts manifest requests that do not settle", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(
+        (_url: string, init: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init.signal?.addEventListener("abort", () => {
+              reject(new DOMException("Aborted", "AbortError"));
+            });
+          }),
+      ),
+    );
+
+    const pending = loadPinnedSamples({
+      samples: vi.fn().mockResolvedValue(undefined),
+      aliasBank: vi.fn().mockResolvedValue(undefined),
+    });
+    const rejection = expect(pending).rejects.toThrow(
+      "Pinned sample manifests took too long to load.",
+    );
+    await vi.advanceTimersByTimeAsync(60_000);
+    await rejection;
   });
 });
 

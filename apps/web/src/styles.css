@@ -91,6 +91,16 @@ a { color: var(--cyan); }
 .chrome:hover:not(:disabled), .chrome.open {
   border-color: rgba(0, 255, 245, 0.45); background: rgba(0, 255, 245, 0.08); color: var(--cyan);
 }
+.chrome.saved {
+  border-color: color-mix(in srgb, var(--lime) 38%, transparent);
+  background: color-mix(in srgb, var(--lime) 10%, transparent);
+  color: var(--lime); font-weight: 600;
+}
+.chrome.saved:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--lime) 65%, transparent);
+  background: color-mix(in srgb, var(--lime) 18%, transparent);
+  color: var(--lime);
+}
 .chrome.apply-changes {
   border-color: color-mix(in srgb, var(--lime) 38%, transparent);
   background: color-mix(in srgb, var(--lime) 10%, transparent);
@@ -242,7 +252,7 @@ a { color: var(--cyan); }
   color: var(--amber);
 }
 
-/* Chips: quiet rows, separated by spacing — no boxes */
+/* Chips: quiet rows, separated by spacing - no boxes */
 .chip-row, .mix-row { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .chip-label { color: var(--text-faint); font: 600 9px var(--font-mono); letter-spacing: 0.22em; margin-right: 2px; }
 .chip-row.next .chip-label { color: rgba(255, 45, 149, 0.55); }

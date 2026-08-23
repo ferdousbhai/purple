@@ -1,10 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
-import { evaluateSafeStrudelExpression } from "./safe-strudel";
+// @strudel/mini does not publish declarations for its parser subpath.
+// @ts-expect-error Test the safety estimator against Strudel's real parser.
+import { parse as parseMiniNotation } from "@strudel/mini/krill-parser.js";
+import {
+  createSafeStrudelScope,
+  evaluateSafeStrudelExpression,
+} from "./safe-strudel";
 
 interface FakePattern {
   fast(value: number): FakePattern;
   gain(value: number): FakePattern;
   jux(transform: (value: FakePattern) => FakePattern): FakePattern;
+  layer(...transforms: Array<(value: FakePattern) => FakePattern>): FakePattern;
+  struct(value: string): FakePattern;
 }
 
 function scope() {
@@ -20,18 +28,26 @@ function scope() {
       jux(transform);
       return transform(pattern);
     },
+    layer: (...transforms) => {
+      transforms.forEach((transform) => transform(pattern));
+      return pattern;
+    },
+    struct: () => pattern,
   };
   return {
     gain,
     pattern,
-    scope: {
+    scope: createSafeStrudelScope({
       Math: Object.freeze({ max: Math.max, min: Math.min }),
+      cat: vi.fn(() => pattern),
       m: vi.fn((value: string) => value),
+      mini2ast: parseMiniNotation,
       run: vi.fn(() => pattern),
       s: vi.fn(() => pattern),
       signal: vi.fn((transform: (cycle: number) => number) => transform(12)),
+      stack: vi.fn(() => pattern),
       xfade: vi.fn(() => pattern),
-    },
+    }),
   };
 }
 
@@ -70,12 +86,81 @@ describe("evaluateSafeStrudelExpression", () => {
     expect(
       evaluateSafeStrudelExpression(transition, fixture.scope),
     ).toBe(fixture.pattern);
+    expect(
+      evaluateSafeStrudelExpression(
+        transition.replaceAll("*32", "*300"),
+        fixture.scope,
+      ),
+    ).toBe(fixture.pattern);
     expect(() =>
       evaluateSafeStrudelExpression(
         `${transition}.fast(32)`,
         fixture.scope,
       ),
     ).toThrow("cumulative event multiplier");
+  });
+
+  it("adds independent stack branches instead of multiplying them", () => {
+    const fixture = scope();
+    expect(
+      evaluateSafeStrudelExpression(
+        'stack(s("bd*32"), s("hh*32"))',
+        fixture.scope,
+      ),
+    ).toBe(fixture.pattern);
+    expect(() =>
+      evaluateSafeStrudelExpression(
+        'stack(s("bd*32"), s("hh*32")).fast(9)',
+        fixture.scope,
+      ),
+    ).toThrow("cumulative event multiplier");
+    expect(
+      evaluateSafeStrudelExpression(
+        'cat(s("bd*300"), s("hh*300"))',
+        fixture.scope,
+      ),
+    ).toBe(fixture.pattern);
+  });
+
+  it("carries patterned method arguments and layered callbacks forward", () => {
+    const fixture = scope();
+    expect(() =>
+      evaluateSafeStrudelExpression(
+        's("bd").struct("x*300").fast(2)',
+        fixture.scope,
+      ),
+    ).toThrow("cumulative event multiplier");
+    expect(() =>
+      evaluateSafeStrudelExpression(
+        's("bd").layer(x => x.fast(300), x => x.fast(300))',
+        fixture.scope,
+      ),
+    ).toThrow("cumulative event multiplier");
+  });
+
+  it("accounts for nested and parallel mini-notation structure", () => {
+    const fixture = scope();
+    expect(
+      evaluateSafeStrudelExpression('s("bd*32, hh*32")', fixture.scope),
+    ).toBe(fixture.pattern);
+    expect(() =>
+      evaluateSafeStrudelExpression('s("bd*300, hh*300")', fixture.scope),
+    ).toThrow("cumulative event multiplier");
+    expect(() =>
+      evaluateSafeStrudelExpression('s("[bd hh]*300")', fixture.scope),
+    ).toThrow("cumulative event multiplier");
+    expect(
+      evaluateSafeStrudelExpression(
+        's("<bd*300 hh*300>")',
+        fixture.scope,
+      ),
+    ).toBe(fixture.pattern);
+    expect(
+      evaluateSafeStrudelExpression(
+        's("[bd*300 hh*300]/2")',
+        fixture.scope,
+      ),
+    ).toBe(fixture.pattern);
   });
 
   it("allows bounded numeric mini-patterns for event transforms", () => {
@@ -126,6 +211,11 @@ describe("evaluateSafeStrudelExpression", () => {
     ['run(2).fast("sine")', "bounded numeric first argument"],
     ['s("bd*1000000000")', "Mini-notation numbers may not exceed"],
     ['s("bd*32").fast(32)', "cumulative event multiplier"],
+    ['s("bd(4096,4096)")', "cumulative event multiplier"],
+    ['s("bd(3,1024)")', "cumulative event multiplier"],
+    ['s("bd(3,[1 .. 4096])")', "cumulative event multiplier"],
+    ['s("bd([1*4096],8)")', "cumulative event multiplier"],
+    ['s("0 .. 4096")', "cumulative event multiplier"],
   ])("rejects resource-exhausting pattern %s", (source, message) => {
     expect(() => evaluateSafeStrudelExpression(source, scope().scope)).toThrow(
       message,

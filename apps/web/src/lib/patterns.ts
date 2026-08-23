@@ -78,15 +78,18 @@ function snapshot(): SavedPattern[] {
   return cache
 }
 
-function commit(next: SavedPattern[]): void {
-  cache = next
-  loaded = true
+function commit(next: SavedPattern[]): boolean {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
   } catch {
-    // Storage unavailable; keep the in-memory copy so the session still works.
+    // Do not update the in-memory view when persistence failed. Otherwise the
+    // UI would claim a pattern was saved even though a reload would lose it.
+    return false
   }
+  cache = next
+  loaded = true
   listeners.forEach((listener) => listener())
+  return true
 }
 
 function subscribe(listener: () => void): () => void {
@@ -104,13 +107,29 @@ function subscribe(listener: () => void): () => void {
 }
 
 /** Insert or replace a pattern by id. Throws if it violates the schema bounds. */
-export function upsertPattern(pattern: SavedPattern): void {
+export function upsertPattern(pattern: SavedPattern): boolean {
   const valid = patternSchema.parse(pattern)
-  commit([...snapshot().filter(({ id }) => id !== valid.id), valid])
+  return commit([...snapshot().filter(({ id }) => id !== valid.id), valid])
 }
 
-export function removePattern(id: string): void {
-  commit(snapshot().filter((pattern) => pattern.id !== id))
+export function removePattern(id: string): boolean {
+  return commit(snapshot().filter((pattern) => pattern.id !== id))
+}
+
+/** Keep a colliding title recognizable without overwriting another pattern. */
+export function uniquePatternTitle(
+  requestedTitle: string,
+  patterns: readonly Pick<SavedPattern, 'title'>[],
+): string {
+  const titles = new Set(patterns.map(({ title }) => title))
+  if (!titles.has(requestedTitle)) return requestedTitle
+
+  for (let copy = 2; ; copy++) {
+    const suffix = ` (${copy})`
+    const base = requestedTitle.slice(0, 60 - suffix.length).trimEnd()
+    const candidate = `${base}${suffix}`
+    if (!titles.has(candidate)) return candidate
+  }
 }
 
 export function usePatterns(): SavedPattern[] {

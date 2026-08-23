@@ -9,6 +9,8 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { PROMPT_EXAMPLES } from "@purple/core/prompts";
 import { buildTransitionCode } from "@purple/core/transitions";
 import { auditHapSounds, type AuditableHap } from "@purple/core/validation";
+// @strudel/core does not publish declarations for this runtime test surface.
+// @ts-expect-error The integration assertions below verify the actual exports.
 import { evalScope, strudelScope } from "@strudel/core";
 import { PRESET_PATTERNS } from "../../../src/shared/cli";
 import {
@@ -18,16 +20,23 @@ import {
   type SafeStrudelValue,
 } from "./safe-strudel";
 
+interface EvaluatedHap extends AuditableHap {
+  context?: { locations?: Array<{ start: number; end: number }> };
+}
+
 interface EvaluatedPattern {
-  queryArc: (begin: number, end: number) => AuditableHap[];
+  queryArc: (begin: number, end: number) => EvaluatedHap[];
 }
 
 let safeScope: SafeStrudelScope;
 
 beforeAll(async () => {
   await evalScope(
+    // @ts-expect-error @strudel/core does not publish declarations.
     import("@strudel/core"),
+    // @ts-expect-error @strudel/mini does not publish declarations.
     import("@strudel/mini"),
+    // @ts-expect-error @strudel/tonal does not publish declarations.
     import("@strudel/tonal"),
     // xfade lives in the webaudio layer, which needs a browser AudioContext.
     // The stub keeps transition code evaluable; only syntax is under test.
@@ -112,7 +121,7 @@ describe("auditHapSounds on real evaluated patterns", () => {
     if (!houseExample) throw new Error("need the house prompt example");
     const pattern = await evaluatePattern(houseExample);
     // An empty registry makes the audit list everything the pattern asks the
-    // engine for — proving extraction works on real haps, banks included.
+    // engine for - proving extraction works on real haps, banks included.
     const requested = auditHapSounds(pattern.queryArc(0, 4), () => false);
     expect(requested).toEqual(
       expect.arrayContaining([

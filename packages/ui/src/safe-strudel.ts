@@ -26,6 +26,7 @@ const MAX_AST_DEPTH = 100;
 const MAX_NUMBER_MAGNITUDE = 1_000_000;
 const MAX_MINI_NUMBER_MAGNITUDE = 4_096;
 const MAX_EVENT_MULTIPLIER = 512;
+const MINI_PARSER = Symbol("Purple mini-notation parser");
 
 const EVENT_MULTIPLIER_CALLS = new Set([
   "chop",
@@ -191,10 +192,31 @@ export type SafeStrudelScope = Readonly<Record<string, SafeStrudelValue>>;
 
 type Scope = SafeStrudelScope;
 type Locals = ReadonlyMap<string, unknown>;
+type InternalScope = Scope & { readonly [MINI_PARSER]?: unknown };
 
 interface EvaluationBudget {
   eventMultiplier: number;
   nodes: number;
+}
+
+interface InterpretedCallArguments {
+  budgets: EvaluationBudget[];
+  values: unknown[];
+}
+
+interface MiniNode {
+  arguments_?: Record<string, unknown>;
+  options_?: {
+    ops?: MiniOperation[];
+    weight?: number;
+  };
+  source_?: unknown;
+  type_?: string;
+}
+
+interface MiniOperation {
+  arguments_?: Record<string, unknown>;
+  type_?: string;
 }
 
 export class UnsafePatternError extends Error {
@@ -260,6 +282,10 @@ export function createSafeStrudelScope(source: object): SafeStrudelScope {
     SafeStrudelValue
   >;
   for (const name of [...SAFE_GLOBALS, "m"]) result[name] = sourceValues[name];
+  Object.defineProperty(result, MINI_PARSER, {
+    enumerable: false,
+    value: sourceValues.mini2ast,
+  });
   result.Math = Object.freeze({ max: Math.max, min: Math.min });
   return Object.freeze(result);
 }
@@ -365,19 +391,249 @@ function callMini(
       );
     }
   }
-  for (const match of value.matchAll(/[*!]\s*(\d+(?:\.\d+)?(?:e[+-]?\d+)?)/gi)) {
-    consumeEventMultiplier(
-      budget,
-      Number(match[1]),
-      node,
-      "Mini-notation repetition",
-    );
+  let miniAst: unknown;
+  const parseMiniNotation = (scope as InternalScope)[MINI_PARSER];
+  if (typeof parseMiniNotation !== "function") {
+    throw new UnsafePatternError("Strudel mini-notation parser is unavailable.", node);
   }
+  try {
+    // This is exactly how Strudel's m() wraps an ordinary double-quoted mini
+    // string. Using its parser keeps the safety accounting aligned with nested
+    // groups, stacks and modifiers instead of guessing with a regular expression.
+    miniAst = Reflect.apply(parseMiniNotation, undefined, [`"${value}"`]);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new UnsafePatternError(`Mini-notation syntax is invalid: ${message}`, node);
+  }
+  consumeEventMultiplier(
+    budget,
+    miniEventBound(miniAst, budget, node),
+    node,
+    "Mini-notation event density",
+  );
   const mini = scope.m;
   if (typeof mini !== "function") {
     throw new UnsafePatternError("Strudel mini-notation is unavailable.", node);
   }
   return Reflect.apply(mini, undefined, [value, offset]);
+}
+
+function miniEventBound(
+  value: unknown,
+  budget: EvaluationBudget,
+  sourceNode: Node,
+): number {
+  const node = asMiniNode(value, sourceNode);
+  budget.nodes += 1;
+  if (budget.nodes > MAX_AST_NODES) {
+    throw new UnsafePatternError("Pattern is too complex.", sourceNode);
+  }
+
+  if (node.type_ === "atom") return 1;
+
+  if (node.type_ === "element") {
+    let bound = miniEventBound(node.source_, budget, sourceNode);
+    for (const operation of node.options_?.ops ?? []) {
+      bound = applyMiniOperationBound(
+        bound,
+        operation,
+        node.source_,
+        budget,
+        sourceNode,
+      );
+    }
+    return bound;
+  }
+
+  if (node.type_ !== "pattern") {
+    throw new UnsafePatternError(
+      "Mini-notation contains an unsupported structure.",
+      sourceNode,
+    );
+  }
+
+  const children = asMiniNodeArray(node.source_, sourceNode);
+  const childBounds = children.map((child) =>
+    miniEventBound(child, budget, sourceNode),
+  );
+  const alignment = node.arguments_?.alignment;
+
+  if (alignment === "rand") {
+    return Math.max(1, ...childBounds);
+  }
+  if (alignment === "polymeter_slowcat") {
+    return addMiniBounds(
+      childBounds.map(
+        (childBound, index) =>
+          childBound / Math.max(1, miniStructuralWeight(children[index])),
+      ),
+    );
+  }
+  if (alignment === "polymeter") {
+    const steps = maxMiniNumber(node.arguments_?.stepsPerCycle) ?? childBounds[0] ?? 1;
+    return addMiniBounds(
+      childBounds.map((childBound) => Math.max(childBound, steps)),
+    );
+  }
+  return addMiniBounds(childBounds);
+}
+
+function applyMiniOperationBound(
+  bound: number,
+  operation: MiniOperation,
+  elementSource: unknown,
+  budget: EvaluationBudget,
+  sourceNode: Node,
+): number {
+  const args = operation.arguments_ ?? {};
+  if (operation.type_ === "stretch") {
+    const values = miniNumbers(args.amount);
+    const amountDensity = miniArgumentEventBound(
+      args.amount,
+      budget,
+      sourceNode,
+    );
+    const factors =
+      args.type === "slow"
+        ? values
+            .filter((value) => value !== 0)
+            .map((value) => 1 / Math.abs(value))
+        : values.filter((value) => value !== 0).map((value) => Math.abs(value));
+    const numericFactor = factors.length > 0 ? Math.max(...factors) : 1;
+    return multiplyMiniBounds(
+      bound,
+      multiplyMiniBounds(numericFactor, amountDensity),
+    );
+  }
+  if (operation.type_ === "replicate") {
+    const amount = typeof args.amount === "number" ? Math.abs(args.amount) : 1;
+    return multiplyMiniBounds(bound, Math.max(1, amount));
+  }
+  if (operation.type_ === "bjorklund") {
+    // Pulses bound emitted events while steps bound the Euclidean grid that
+    // Strudel constructs. Either can exhaust resources even when the other is small.
+    const gridSize = Math.max(
+      1,
+      ...miniNumbers(args.pulse).map(Math.abs),
+      ...miniNumbers(args.step).map(Math.abs),
+    );
+    const parameterDensity = Math.max(
+      miniArgumentEventBound(args.pulse, budget, sourceNode),
+      miniArgumentEventBound(args.step, budget, sourceNode),
+    );
+    return multiplyMiniBounds(
+      bound,
+      multiplyMiniBounds(gridSize, parameterDensity),
+    );
+  }
+  if (operation.type_ === "range") {
+    const starts = miniNumbers(elementSource);
+    const stops = miniNumbers(args.element);
+    const width = Math.max(
+      1,
+      ...starts.flatMap((start) =>
+        stops.map((stop) => Math.floor(Math.abs(stop - start)) + 1),
+      ),
+    );
+    return multiplyMiniBounds(
+      bound,
+      multiplyMiniBounds(
+        width,
+        miniArgumentEventBound(args.element, budget, sourceNode),
+      ),
+    );
+  }
+  if (operation.type_ === "tail") {
+    return multiplyMiniBounds(
+      bound,
+      miniArgumentEventBound(args.element, budget, sourceNode),
+    );
+  }
+
+  // Degradation does not increase queried events. Still walk any nested option
+  // pattern so its parser complexity participates in the same limit.
+  for (const argument of Object.values(args)) {
+    if (isMiniNode(argument)) miniEventBound(argument, budget, sourceNode);
+  }
+  return bound;
+}
+
+function miniArgumentEventBound(
+  value: unknown,
+  budget: EvaluationBudget,
+  sourceNode: Node,
+): number {
+  return isMiniNode(value) ? miniEventBound(value, budget, sourceNode) : 1;
+}
+
+function miniNumbers(value: unknown): number[] {
+  if (typeof value === "number") return Number.isFinite(value) ? [value] : [];
+  if (!isMiniNode(value)) return [];
+  if (value.type_ === "atom") {
+    const number = Number(value.source_);
+    return Number.isFinite(number) ? [number] : [];
+  }
+
+  const nested = Array.isArray(value.source_) ? value.source_ : [value.source_];
+  const numbers = nested.flatMap(miniNumbers);
+  for (const operation of value.options_?.ops ?? []) {
+    if (operation.type_ === "range") {
+      numbers.push(...miniNumbers(operation.arguments_?.element));
+    }
+  }
+  return numbers;
+}
+
+function maxMiniNumber(value: unknown): number | undefined {
+  const numbers = miniNumbers(value).map(Math.abs);
+  return numbers.length > 0 ? Math.max(...numbers) : undefined;
+}
+
+function miniStructuralWeight(value: MiniNode | undefined): number {
+  if (!value) return 1;
+  if (value.type_ === "element") return Math.max(1, value.options_?.weight ?? 1);
+  if (value.type_ !== "pattern" || !Array.isArray(value.source_)) return 1;
+  return Math.max(
+    1,
+    value.source_.reduce(
+      (total, child) =>
+        total + (isMiniNode(child) ? miniStructuralWeight(child) : 1),
+      0,
+    ),
+  );
+}
+
+function addMiniBounds(values: number[]): number {
+  const sum = values.reduce((total, value) => total + value, 0);
+  return Math.max(1, sum);
+}
+
+function multiplyMiniBounds(left: number, right: number): number {
+  return left * right;
+}
+
+function asMiniNode(value: unknown, sourceNode: Node): MiniNode {
+  if (!isMiniNode(value)) {
+    throw new UnsafePatternError(
+      "Mini-notation contains an unsupported structure.",
+      sourceNode,
+    );
+  }
+  return value;
+}
+
+function asMiniNodeArray(value: unknown, sourceNode: Node): MiniNode[] {
+  if (!Array.isArray(value)) {
+    throw new UnsafePatternError(
+      "Mini-notation contains an unsupported structure.",
+      sourceNode,
+    );
+  }
+  return value.map((item) => asMiniNode(item, sourceNode));
+}
+
+function isMiniNode(value: unknown): value is MiniNode {
+  return typeof value === "object" && value !== null && "type_" in value;
 }
 
 function resolveIdentifier(
@@ -404,12 +660,28 @@ function interpretArray(
   depth: number,
   source: string,
 ): unknown[] {
-  return node.elements.map((element) => {
+  let largestElementMultiplier = 1;
+  const values = node.elements.map((element) => {
     if (!element || element.type === "SpreadElement") {
       throw new UnsafePatternError("Array holes and spread syntax are not allowed.", node);
     }
-    return interpret(element, scope, locals, budget, depth, source);
+    const elementBudget: EvaluationBudget = {
+      eventMultiplier: 1,
+      nodes: budget.nodes,
+    };
+    const value = interpret(element, scope, locals, elementBudget, depth, source);
+    budget.nodes = elementBudget.nodes;
+    largestElementMultiplier = Math.max(
+      largestElementMultiplier,
+      elementBudget.eventMultiplier,
+    );
+    return value;
   });
+  budget.eventMultiplier = Math.max(
+    budget.eventMultiplier,
+    largestElementMultiplier,
+  );
+  return values;
 }
 
 function interpretArrow(
@@ -443,14 +715,23 @@ function interpretArrow(
     names.forEach((name, index) => nested.set(name, args[index]));
     // Transform callbacks may run for every queried event. Their complexity
     // budget is per invocation rather than being depleted by normal playback.
-    return interpret(
+    const callbackBudget: EvaluationBudget = {
+      eventMultiplier: inheritedEventMultiplier,
+      nodes: 0,
+    };
+    const result = interpret(
       body,
       scope,
       nested,
-      { eventMultiplier: inheritedEventMultiplier, nodes: 0 },
+      callbackBudget,
       depth,
       source,
     );
+    budget.eventMultiplier = Math.max(
+      budget.eventMultiplier,
+      callbackBudget.eventMultiplier,
+    );
+    return result;
   };
 }
 
@@ -527,28 +808,38 @@ function interpretCall(
       : node.callee.property.type === "Identifier"
         ? node.callee.property.name
         : undefined;
-  const args = interpretCallArguments(
+  const ownerEventMultiplier = budget.eventMultiplier;
+  const interpretedArgs = interpretCallArguments(
     node,
     scope,
     locals,
     budget,
     depth,
     source,
-    callName === "xfade",
+    owner ? ownerEventMultiplier : 1,
   );
 
   if (typeof callable !== "function") {
     throw new UnsafePatternError("The selected Strudel value is not callable.", node);
   }
+  const result = Reflect.apply(callable, owner, interpretedArgs.values);
+  budget.eventMultiplier = owner
+    ? combineMemberCallEventBounds(
+        callName,
+        ownerEventMultiplier,
+        interpretedArgs.budgets,
+        node,
+      )
+    : combineGlobalCallEventBounds(callName, interpretedArgs.budgets, node);
   if (callName && EVENT_MULTIPLIER_CALLS.has(callName)) {
     consumeEventMultiplier(
       budget,
-      eventMultiplierArgument(args[0], node.arguments[0], node),
+      eventMultiplierArgument(interpretedArgs.values[0], node.arguments[0], node),
       node,
       `${callName}()`,
     );
   }
-  return Reflect.apply(callable, owner, args);
+  return result;
 }
 
 function interpretCallArguments(
@@ -558,27 +849,18 @@ function interpretCallArguments(
   budget: EvaluationBudget,
   depth: number,
   source: string,
-  independentBranches: boolean,
-): unknown[] {
-  const inheritedEventMultiplier = budget.eventMultiplier;
-  let largestBranchMultiplier = inheritedEventMultiplier;
-
-  const args = node.arguments.map((argument) => {
+  initialEventMultiplier: number,
+): InterpretedCallArguments {
+  const budgets: EvaluationBudget[] = [];
+  const values = node.arguments.map((argument) => {
     if (argument.type === "SpreadElement") {
       throw new UnsafePatternError("Spread arguments are not allowed.", argument);
     }
 
-    if (!independentBranches) {
-      return interpret(argument, scope, locals, budget, depth, source);
-    }
-
-    // xfade queries its two patterns in parallel. Multiplying one branch's
-    // repetition budget into the other rejects two patterns that each passed
-    // the same safety check on their own. Keep each branch independent, then
-    // carry the largest branch forward so a transform chained after xfade is
-    // still checked against the full per-branch multiplier.
+    // Arguments describe separate patterns, controls or callbacks. The call
+    // combines their resulting bounds according to its semantics.
     const branchBudget: EvaluationBudget = {
-      eventMultiplier: inheritedEventMultiplier,
+      eventMultiplier: initialEventMultiplier,
       nodes: budget.nodes,
     };
     const value = interpret(
@@ -590,17 +872,67 @@ function interpretCallArguments(
       source,
     );
     budget.nodes = branchBudget.nodes;
-    largestBranchMultiplier = Math.max(
-      largestBranchMultiplier,
-      branchBudget.eventMultiplier,
-    );
+    budgets.push(branchBudget);
     return value;
   });
 
-  if (independentBranches) {
-    budget.eventMultiplier = largestBranchMultiplier;
+  return { budgets, values };
+}
+
+function combineMemberCallEventBounds(
+  callName: string | undefined,
+  ownerBound: number,
+  argumentBudgets: EvaluationBudget[],
+  node: Node,
+): number {
+  const bounds = argumentBudgets.map(({ eventMultiplier }) => eventMultiplier);
+  let bound: number;
+  if (callName === "layer") {
+    bound = bounds.reduce((total, argumentBound) => total + argumentBound, 0);
+  } else if (callName === "superimpose") {
+    bound =
+      ownerBound +
+      bounds.reduce((total, argumentBound) => total + argumentBound, 0);
+  } else if (callName === "jux") {
+    bound = ownerBound + (bounds[0] ?? ownerBound);
+  } else if (callName === "juxBy" || callName === "off") {
+    bound = ownerBound + (bounds[1] ?? ownerBound);
+  } else {
+    bound = Math.max(ownerBound, ...bounds);
   }
-  return args;
+  if (!Number.isFinite(bound) || bound > MAX_EVENT_MULTIPLIER) {
+    throw new UnsafePatternError(
+      `${callName ?? "Pattern"}() exceeds the cumulative event multiplier limit of ${MAX_EVENT_MULTIPLIER}.`,
+      node,
+    );
+  }
+  return Math.max(1, bound);
+}
+
+function combineGlobalCallEventBounds(
+  callName: string | undefined,
+  argumentBudgets: EvaluationBudget[],
+  node: Node,
+): number {
+  const bounds = argumentBudgets.map(({ eventMultiplier }) => eventMultiplier);
+  let bound: number;
+  if (callName === "xfade") {
+    // Xfade receives two patterns that have already passed the same per-pattern
+    // safety limit. Keep them independent so wrapping a valid replacement in a
+    // transition cannot make it invalid; the middle argument is only a signal.
+    bound = Math.max(bounds[0] ?? 1, bounds[2] ?? 1);
+  } else if (callName === "stack") {
+    bound = bounds.reduce((total, argumentBound) => total + argumentBound, 0);
+  } else {
+    bound = Math.max(1, ...bounds);
+  }
+  if (!Number.isFinite(bound) || bound > MAX_EVENT_MULTIPLIER) {
+    throw new UnsafePatternError(
+      `${callName ?? "Pattern"}() exceeds the cumulative event multiplier limit of ${MAX_EVENT_MULTIPLIER}.`,
+      node,
+    );
+  }
+  return Math.max(1, bound);
 }
 
 function eventMultiplierArgument(

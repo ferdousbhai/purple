@@ -35,8 +35,8 @@ export interface SchedulerPosition {
 export interface StrudelAudioOptions {
   /**
    * Ensure `context` may produce sound, resuming it if needed. Called inside
-   * the user gesture — before the hook's first await, so the browser's user
-   * activation is preserved — and again after Strudel initializes. Throw to
+   * the user gesture - before the hook's first await, so the browser's user
+   * activation is preserved - and again after Strudel initializes. Throw to
    * fail activation with a user-facing message.
    *
    * The default resumes the context and verifies it reports `running`. Hosts
@@ -107,9 +107,16 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
           // Manifests and audio bases are commit-addressed. The loader parses
           // data instead of executing it and ignores upstream `_base` fields.
           prebake: async () => {
-            await loadPinnedSamples(strudel);
             // z_* chiptune synths (no network involved).
             strudel.registerZZFXSounds();
+            try {
+              await loadPinnedSamples(strudel);
+            } catch (error) {
+              console.warn(
+                "[Strudel] Pinned samples unavailable; synths remain available.",
+                error,
+              );
+            }
             // Dirt-Samples names these ho/cp/rm, but the model vocabulary
             // (and Strudel's own default prebake) says oh/clap/rim; the
             // drum-machine pack only registers prefixed names
@@ -162,7 +169,7 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
     if (!strudel || !repl || !expressionScope) {
       return {
         ok: false,
-        error: "Audio engine not initialized — click Play to retry",
+        error: "Audio engine not initialized - click Play to retry",
         kind: "audio",
       };
     }
@@ -209,7 +216,7 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
    * events it produces, and check every referenced sound name against the
    * engine's registry (Strudel plays SILENCE for unknown names, so evaluation
    * alone cannot catch them). Resolves with the problems found (empty = plays
-   * correctly), or null when the engine is not initialized — the caller then
+   * correctly), or null when the engine is not initialized - the caller then
    * skips validation and play-time repair stays the safety net.
    */
   const validate = useCallback(async (

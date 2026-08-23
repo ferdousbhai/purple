@@ -11,6 +11,58 @@ type AudioActivationResult =
   | { ok: true }
   | { ok: false; kind: "audio"; error: string };
 
+export interface PlaybackAttemptOptions {
+  /** Generated patterns repair evaluation failures out of sight. Audio
+   * failures still surface because asking the model cannot fix them. */
+  reportEvaluationError?: boolean;
+}
+
+export type TransitionResult =
+  | { ok: true }
+  | { ok: false; kind: "audio"; error: string }
+  | { ok: false; kind: "cancelled" }
+  | {
+      ok: false;
+      kind: "evaluation";
+      error: string;
+      source: "candidate" | "transition";
+    };
+
+const DEFAULT_TRANSITION_WAIT_TIMEOUT_MS = 60_000;
+const MIN_TRANSITION_WAIT_TIMEOUT_MS = 30_000;
+const MAX_TRANSITION_WAIT_TIMEOUT_MS = 10 * 60_000;
+
+/** Allow twice the scheduler's expected duration plus startup slack. */
+export function transitionWaitTimeoutMs(
+  remainingCycles: number,
+  cyclesPerSecond: number,
+): number {
+  if (
+    !Number.isFinite(remainingCycles) ||
+    !Number.isFinite(cyclesPerSecond) ||
+    remainingCycles < 0 ||
+    cyclesPerSecond <= 0
+  ) {
+    return DEFAULT_TRANSITION_WAIT_TIMEOUT_MS;
+  }
+  const expectedMs = (remainingCycles / cyclesPerSecond) * 1000;
+  return Math.min(
+    MAX_TRANSITION_WAIT_TIMEOUT_MS,
+    Math.max(MIN_TRANSITION_WAIT_TIMEOUT_MS, expectedMs * 2 + 10_000),
+  );
+}
+
+function classifyTransitionResult(
+  result: EvalResult,
+  source: "candidate" | "transition",
+): TransitionResult {
+  if (result.ok || result.kind === "cancelled") return result;
+  if (result.kind === "audio") {
+    return { ok: false, kind: "audio", error: result.error };
+  }
+  return { ok: false, kind: "evaluation", error: result.error, source };
+}
+
 export function usePlayback(options: StrudelAudioOptions = {}) {
   const {
     activate,
@@ -24,6 +76,7 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
   const [state, dispatch] = useReducer(playbackReducer, INITIAL_PLAYBACK_STATE);
   const stateRef = useRef(state);
   const operationRef = useRef(0);
+  const stopTokenRef = useRef(0);
   const playQueueRef = useRef<Promise<void>>(Promise.resolve());
   const cancelTransitionWaitRef = useRef<(() => void) | null>(null);
   stateRef.current = state;
@@ -52,7 +105,10 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
   }, [activateAudio]);
 
   const play = useCallback(
-    async (code: string): Promise<EvalResult> => {
+    async (
+      code: string,
+      attemptOptions: PlaybackAttemptOptions = {},
+    ): Promise<EvalResult> => {
       const operation = ++operationRef.current;
       cancelTransitionWait();
       dispatch({ type: "loading" });
@@ -89,7 +145,12 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
         } else {
           if (result.kind === "cancelled") return result;
           hush();
-          dispatch({ type: "error", error: result.error });
+          dispatch(
+            attemptOptions.reportEvaluationError === false &&
+              result.kind === "evaluation"
+              ? { type: "stopped" }
+              : { type: "error", error: result.error },
+          );
         }
         return result;
       } finally {
@@ -103,12 +164,14 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
     (targetCycle: number, operation: number): Promise<EvalResult> =>
       new Promise((resolve) => {
         let timeoutId: number | undefined;
+        let deadlineId: number | undefined;
         let settled = false;
 
         const finish = (result: EvalResult) => {
           if (settled) return;
           settled = true;
           if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+          if (deadlineId !== undefined) window.clearTimeout(deadlineId);
           if (cancelTransitionWaitRef.current === cancel) {
             cancelTransitionWaitRef.current = null;
           }
@@ -140,6 +203,25 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
         };
 
         cancelTransitionWaitRef.current = cancel;
+        let deadlineMs = DEFAULT_TRANSITION_WAIT_TIMEOUT_MS;
+        try {
+          const position = getSchedulerPosition();
+          deadlineMs = transitionWaitTimeoutMs(
+            Math.max(0, targetCycle - position.cycle),
+            position.cps,
+          );
+        } catch {
+          // The first poll below reports the scheduler error immediately.
+        }
+        deadlineId = window.setTimeout(
+          () =>
+            finish({
+              ok: false,
+              kind: "evaluation",
+              error: "The crossfade did not finish before its timing deadline.",
+            }),
+          deadlineMs,
+        );
         poll();
       }),
     [getSchedulerPosition],
@@ -149,10 +231,14 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
     async (
       nextCode: string,
       durationCycles = DEFAULT_TRANSITION_CYCLES,
-    ): Promise<EvalResult> => {
+      attemptOptions: PlaybackAttemptOptions = {},
+    ): Promise<TransitionResult> => {
       const current = stateRef.current;
       if (current.playbackState !== "playing" || !current.activeCode) {
-        return play(nextCode);
+        return classifyTransitionResult(
+          await play(nextCode, attemptOptions),
+          "candidate",
+        );
       }
 
       const fromCode = current.activeCode;
@@ -199,8 +285,12 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
             timingError instanceof Error
               ? timingError.message
               : String(timingError);
-          dispatch({ type: "transitionFailed", code: fromCode, error });
-          return { ok: false, kind: "evaluation", error };
+          if (attemptOptions.reportEvaluationError === false) {
+            dispatch({ type: "transitionRestored", code: fromCode });
+          } else {
+            dispatch({ type: "transitionFailed", code: fromCode, error });
+          }
+          return { ok: false, kind: "evaluation", error, source: "transition" };
         }
 
         const transitionResult = await evaluate(transitionCode, {
@@ -212,12 +302,29 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
         }
         if (!transitionResult.ok) {
           if (transitionResult.kind === "cancelled") return transitionResult;
-          dispatch({
-            type: "transitionFailed",
-            code: fromCode,
+          if (transitionResult.kind === "audio") {
+            dispatch({ type: "error", error: transitionResult.error });
+            return {
+              ok: false,
+              kind: "audio",
+              error: transitionResult.error,
+            };
+          }
+          dispatch(
+            attemptOptions.reportEvaluationError === false
+              ? { type: "transitionRestored", code: fromCode }
+              : {
+                  type: "transitionFailed",
+                  code: fromCode,
+                  error: transitionResult.error,
+                },
+          );
+          return {
+            ok: false,
+            kind: "evaluation",
             error: transitionResult.error,
-          });
-          return transitionResult;
+            source: "transition",
+          };
         }
 
         const waitResult = await waitForCycle(
@@ -227,9 +334,13 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
         if (!waitResult.ok) {
           if (waitResult.kind !== "cancelled") {
             hush();
-            dispatch({ type: "error", error: waitResult.error });
+            dispatch(
+              attemptOptions.reportEvaluationError === false
+                ? { type: "stopped" }
+                : { type: "error", error: waitResult.error },
+            );
           }
-          return waitResult;
+          return classifyTransitionResult(waitResult, "transition");
         }
 
         const finalResult = await evaluate(nextCode, { hushBefore: false });
@@ -241,9 +352,14 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
           dispatch({ type: "playing", code: nextCode });
         } else if (finalResult.kind !== "cancelled") {
           hush();
-          dispatch({ type: "error", error: finalResult.error });
+          dispatch(
+            attemptOptions.reportEvaluationError === false &&
+              finalResult.kind === "evaluation"
+              ? { type: "stopped" }
+              : { type: "error", error: finalResult.error },
+          );
         }
-        return finalResult;
+        return classifyTransitionResult(finalResult, "candidate");
       } finally {
         releaseQueue();
       }
@@ -260,11 +376,14 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
   );
 
   const stop = useCallback(() => {
+    stopTokenRef.current++;
     ++operationRef.current;
     cancelTransitionWait();
     hush();
     dispatch({ type: "stopped" });
   }, [cancelTransitionWait, hush]);
+
+  const getStopToken = useCallback(() => stopTokenRef.current, []);
 
   useEffect(() => cancelTransitionWait, [cancelTransitionWait]);
 
@@ -293,6 +412,8 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
     play,
     transition,
     stop,
+    /** Changes only for an explicit Stop action, not an internal eval failure. */
+    getStopToken,
     /** Audit generated code against the live engine without touching playback. */
     validatePattern: validate,
   };
@@ -309,6 +430,7 @@ type PlaybackAction =
   | { type: "loading" }
   | { type: "transitioning" }
   | { type: "playing"; code: string }
+  | { type: "transitionRestored"; code: string }
   | { type: "transitionFailed"; code: string; error: string }
   | { type: "error"; error: string }
   | { type: "stopped" }
@@ -346,6 +468,13 @@ function playbackReducer(
       return {
         playbackState: "playing",
         error: action.error,
+        activeCode: action.code,
+        activeRanges: [],
+      };
+    case "transitionRestored":
+      return {
+        playbackState: "playing",
+        error: null,
         activeCode: action.code,
         activeRanges: [],
       };

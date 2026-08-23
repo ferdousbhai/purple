@@ -1,7 +1,7 @@
 /**
  * Bring-your-own-key mode: the visitor's Gemini API key lives only in this
  * browser's localStorage and every request goes straight from the browser to
- * Google's API. Purple's servers are never in the path — the key is sent in a
+ * Google's API. Purple's servers are never in the path - the key is sent in a
  * request header (never a URL) and is never transmitted to, logged by, or
  * recoverable from Purple.
  */
@@ -46,11 +46,12 @@ try {
   // Storage unavailable (private mode); nothing to migrate.
 }
 /**
- * Persistence cap only — the context sent to Gemini is bounded separately by
- * buildContextWindow. Keeps the stored transcript from growing localStorage
- * without limit.
+ * Persistence target only - the context sent to Gemini is bounded separately
+ * by buildContextWindow. Covered messages may be trimmed after compaction,
+ * while uncovered messages are always retained.
  */
 const MAX_STORED_MESSAGES = 200
+const ONE_SHOT_TIMEOUT_MS = 45_000
 const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${DEFAULT_GEMINI_MODEL}:generateContent`
 const STREAM_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${DEFAULT_GEMINI_MODEL}:streamGenerateContent`
 
@@ -78,7 +79,7 @@ interface GeminiRequestBody {
 
 /**
  * Gemini's wire shapes, decoded at the fetch boundary. Anything Gemini sends
- * that does not match — an HTML error page, a truncated body — decodes to the
+ * that does not match - an HTML error page, a truncated body - decodes to the
  * empty object, which the callers below already handle as "no usable text".
  */
 const geminiErrorSchema = z
@@ -153,19 +154,22 @@ const legacyChatEnvelopeSchema = z.object({
 type ByokChatEnvelope = z.infer<typeof chatEnvelopeSchema>
 
 /**
- * The envelope written to localStorage: last MAX_STORED_MESSAGES messages,
- * with coveredCount shifted down by however many covered messages the cap
- * dropped. Dropping covered messages keeps the artifact valid — it then
- * summarizes a superset of what precedes the stored transcript.
+ * The envelope written to localStorage. It aims for MAX_STORED_MESSAGES, but
+ * only removes a prefix that the compaction artifact already represents. A
+ * long uncovered tail is retained in full instead of silently losing chat.
  */
 export function toChatEnvelope(state: ByokChatState): ByokChatEnvelope {
-  const dropped = Math.max(0, state.messages.length - MAX_STORED_MESSAGES)
   const covered = Math.min(Math.max(state.coveredCount, 0), state.messages.length)
+  const represented = state.artifact?.summary.trim() ? covered : 0
+  const dropped = Math.min(
+    Math.max(0, state.messages.length - MAX_STORED_MESSAGES),
+    represented,
+  )
   return {
     v: 2,
     messages: state.messages.slice(dropped),
     artifact: state.artifact,
-    coveredCount: Math.max(0, covered - dropped),
+    coveredCount: Math.max(0, represented - dropped),
   }
 }
 
@@ -197,7 +201,7 @@ export function parseChatEnvelope(raw: string): ByokChatState | null {
 
 export function loadByokChat(): ByokChatState | null {
   try {
-    // A transcript with no key alongside it is an orphan — the key was
+    // A transcript with no key alongside it is an orphan - the key was
     // removed out-of-band (another tab, devtools), and without a key the
     // composer that could clear it never renders. Purge instead of loading.
     if (getByokKey() === null) {
@@ -211,19 +215,21 @@ export function loadByokChat(): ByokChatState | null {
   }
 }
 
-export function saveByokChat(state: ByokChatState): void {
+export function saveByokChat(state: ByokChatState): boolean {
   try {
     window.localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(toChatEnvelope(state)))
+    return true
   } catch {
-    // Storage unavailable (private mode); the chat simply won't persist.
+    return false
   }
 }
 
-export function clearByokChat(): void {
+export function clearByokChat(): boolean {
   try {
     window.localStorage.removeItem(CHAT_STORAGE_KEY)
+    return true
   } catch {
-    // Nothing stored to clear.
+    return false
   }
 }
 
@@ -246,8 +252,8 @@ export function createByokBackend(key: string): ByokBackend {
 
   return {
     // Titles, transition suggestions, and compaction summaries share the
-    // structured-generation wrappers in @purple/core; only the transport —
-    // one JSON-mode generateContent call — is supplied here.
+    // structured-generation wrappers in @purple/core; only the transport -
+    // one JSON-mode generateContent call - is supplied here.
     ...createModelHelpers((systemInstruction, input, schema) =>
       callGemini(key, systemInstruction, [{ role: 'user', content: input }], {
         responseMimeType: 'application/json',
@@ -335,18 +341,35 @@ async function callGemini(
   messages: readonly ChatMessage[],
   generationConfig?: GeminiGenerationConfig,
 ): Promise<string> {
-  const response = await fetch(ENDPOINT, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-goog-api-key': key,
-    },
-    body: JSON.stringify(buildRequestBody(system, messages, generationConfig)),
-  })
-  if (!response.ok) await throwRequestError(response)
-  const text = chunkText(geminiContentSchema.parse(await response.json()))
-  if (!text) throw new Error('Gemini returned an empty response.')
-  return text
+  const controller = new AbortController()
+  let timedOut = false
+  const timeout = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, ONE_SHOT_TIMEOUT_MS)
+
+  try {
+    const response = await fetch(ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-goog-api-key': key,
+      },
+      body: JSON.stringify(buildRequestBody(system, messages, generationConfig)),
+      signal: controller.signal,
+    })
+    if (!response.ok) await throwRequestError(response)
+    const text = chunkText(geminiContentSchema.parse(await response.json()))
+    if (!text) throw new Error('Gemini returned an empty response.')
+    return text
+  } catch (error) {
+    if (timedOut) {
+      throw new Error('Gemini took too long to respond. Please try again.')
+    }
+    throw error
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
 export interface StreamedGeneration {
@@ -358,8 +381,8 @@ export interface StreamedGeneration {
 
 /**
  * Stream a generation over SSE, delivering text deltas as they arrive and
- * resolving with the full response text. Follows Gemini's SSE framing: each
- * event is one `data: <json>` line holding a partial GenerateContentResponse.
+ * resolving with the full response text. Data lines are joined until the
+ * event's blank-line delimiter, as required by the SSE framing protocol.
  */
 async function streamGemini(
   key: string,
@@ -386,15 +409,17 @@ async function streamGemini(
   let total = ''
   let promptTokens: number | null = null
   let truncated = false
-  const consumeLine = (line: string) => {
-    if (!line.startsWith('data:')) return
+  let eventData: string[] = []
+  const consumeEvent = () => {
+    if (eventData.length === 0) return
     let event: GeminiContent
     try {
-      event = geminiContentSchema.parse(JSON.parse(line.slice('data:'.length).trim()))
+      event = geminiContentSchema.parse(JSON.parse(eventData.join('\n')))
     } catch {
-      // Not a complete JSON event (keep-alive or fragment); skip it.
+      eventData = []
       return
     }
+    eventData = []
     promptTokens = event.usageMetadata?.promptTokenCount ?? promptTokens
     truncated =
       event.candidates?.[0]?.finishReason === 'MAX_TOKENS' || truncated
@@ -402,6 +427,16 @@ async function streamGemini(
     if (!text) return
     total += text
     onDelta(text)
+  }
+  const consumeLine = (rawLine: string) => {
+    const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine
+    if (line === '') {
+      consumeEvent()
+      return
+    }
+    if (!line.startsWith('data:')) return
+    const value = line.slice('data:'.length)
+    eventData.push(value.startsWith(' ') ? value.slice(1) : value)
   }
   for (;;) {
     const { done, value } = await reader.read()
@@ -412,7 +447,9 @@ async function streamGemini(
     buffered = lines.pop() ?? ''
     for (const line of lines) consumeLine(line)
   }
-  consumeLine(buffered)
+  buffered += decoder.decode()
+  if (buffered) consumeLine(buffered)
+  consumeEvent()
   if (!total) throw new Error('Gemini returned an empty response.')
   return { promptTokens, truncated }
 }

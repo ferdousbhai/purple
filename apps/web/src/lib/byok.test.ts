@@ -1,12 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   createByokBackend,
+  clearByokChat,
   parseChatEnvelope,
+  saveByokChat,
   toChatEnvelope,
   type ByokChatState,
 } from './byok'
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 
@@ -103,12 +106,26 @@ describe('byok chat persistence envelope', () => {
     expect(envelope.coveredCount).toBe(190)
   })
 
-  it('never lets the cap push coveredCount below zero', () => {
+  it('retains uncovered messages even when they exceed the persistence target', () => {
     const messages = Array.from({ length: 250 }, () => ({
       role: 'user' as const,
       content: 'x',
     }))
     const envelope = toChatEnvelope(chat({ messages, coveredCount: 10 }))
+    expect(envelope.messages).toHaveLength(240)
+    expect(envelope.messages[0]?.content).toBe('x')
+    expect(envelope.coveredCount).toBe(0)
+  })
+
+  it('does not drop messages when there is no usable artifact', () => {
+    const messages = Array.from({ length: 250 }, (_, index) => ({
+      role: 'user' as const,
+      content: `message ${index}`,
+    }))
+    const envelope = toChatEnvelope(
+      chat({ messages, artifact: null, coveredCount: 240 }),
+    )
+    expect(envelope.messages).toEqual(messages)
     expect(envelope.coveredCount).toBe(0)
   })
 
@@ -116,12 +133,40 @@ describe('byok chat persistence envelope', () => {
     expect(toChatEnvelope(chat({ coveredCount: 99 })).coveredCount).toBe(2)
     expect(toChatEnvelope(chat({ coveredCount: -3 })).coveredCount).toBe(0)
   })
+
+  it('reports blocked chat writes and clears to the caller', () => {
+    vi.stubGlobal('window', {
+      localStorage: {
+        setItem: vi.fn(() => {
+          throw new DOMException('blocked', 'QuotaExceededError')
+        }),
+        removeItem: vi.fn(() => {
+          throw new DOMException('blocked', 'SecurityError')
+        }),
+      },
+    })
+
+    expect(saveByokChat(chat())).toBe(false)
+    expect(clearByokChat()).toBe(false)
+  })
+
+  it('confirms successful chat writes and clears', () => {
+    const setItem = vi.fn()
+    const removeItem = vi.fn()
+    vi.stubGlobal('window', { localStorage: { setItem, removeItem } })
+
+    expect(saveByokChat(chat())).toBe(true)
+    expect(clearByokChat()).toBe(true)
+    expect(setItem).toHaveBeenCalledOnce()
+    expect(removeItem).toHaveBeenCalledOnce()
+  })
 })
 
 describe('BYOK streaming backend', () => {
   it('implements the shared stream outcome and reports truncation', async () => {
     const body = [
       'data: {"candidates":[{"content":{"parts":[{"text":"s(\\"bd*4\\")"}]}}],"usageMetadata":{"promptTokenCount":42}}',
+      '',
       'data: {"candidates":[{"finishReason":"MAX_TOKENS"}]}',
       '',
     ].join('\n')
@@ -149,6 +194,33 @@ describe('BYOK streaming backend', () => {
     expect(new Headers(init.headers).get('x-goog-api-key')).toBe('secret-key')
   })
 
+  it('joins multiline SSE data and consumes an unterminated final event', async () => {
+    const body = [
+      'data: {',
+      'data:   "candidates": [{"content":{"parts":[{"text":"drum"}]}}],',
+      'data:   "usageMetadata": {"promptTokenCount": 7}',
+      'data: }',
+      '',
+      'data: {"candidates":[{"content":{"parts":[{"text":"✨"}]}}]}',
+    ].join('\r\n')
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(body, {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const deltas: string[] = []
+
+    await expect(
+      createByokBackend('secret-key').stream(
+        [{ role: 'user', content: 'drums' }],
+        (delta) => deltas.push(delta),
+      ),
+    ).resolves.toEqual({ promptTokens: 7, truncated: false })
+    expect(deltas).toEqual(['drum', '✨'])
+  })
+
   it('aborts the active stream through the shared backend contract', async () => {
     const fetchMock = vi.fn().mockImplementation(
       (_url: string, init: RequestInit) =>
@@ -168,5 +240,27 @@ describe('BYOK streaming backend', () => {
     await backend.abortStream()
 
     await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+  })
+
+  it('bounds one-shot requests and returns a useful timeout error', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(
+        (_url: string, init: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init.signal?.addEventListener('abort', () => {
+              reject(new DOMException('Aborted', 'AbortError'))
+            })
+          }),
+      ),
+    )
+
+    const pending = createByokBackend('secret-key').repairPattern('fix it')
+    const rejection = expect(pending).rejects.toThrow(
+      'Gemini took too long to respond. Please try again.',
+    )
+    await vi.advanceTimersByTimeAsync(60_000)
+    await rejection
   })
 })
