@@ -24,6 +24,11 @@ jobs:
       - name: Check out source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
+      - name: Snapshot dependency locks
+        run: >-
+          sha256sum pnpm-lock.yaml src-tauri/Cargo.lock
+          > /tmp/purple-dependency-locks.sha256
+
       - name: Install current Arch build dependencies
         run: >-
           pacman -Syu --noconfirm --needed
@@ -81,12 +86,7 @@ jobs:
           appstreamcli validate --no-net packaging/com.soundspurple.Purple.metainfo.xml
 
       - name: Ensure dependency locks stayed unchanged
-        # `git diff` silently becomes a no-index comparison when a container
-        # step loses the checkout working directory. Anchor it explicitly so
-        # the two lockfiles are checked against the index, not against each other.
-        run: >-
-          git -C "$GITHUB_WORKSPACE" diff --exit-code --
-          pnpm-lock.yaml src-tauri/Cargo.lock
+        run: sha256sum --check /tmp/purple-dependency-locks.sha256
 
   browser:
     name: Browser flow
