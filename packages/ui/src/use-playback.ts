@@ -88,6 +88,7 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
     isAudioReady,
     getSchedulerPosition,
     getActiveSourceRanges,
+    getOutputAnalyser,
   } = useStrudel(options);
   const [state, dispatch] = useReducer(playbackReducer, INITIAL_PLAYBACK_STATE);
   const stateRef = useRef(state);
@@ -444,6 +445,8 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
     getStopToken,
     /** Audit generated code against the live engine without touching playback. */
     validatePattern: validate,
+    /** The master-mix tap, or null until the engine initializes. */
+    getOutputAnalyser,
   };
 }
 

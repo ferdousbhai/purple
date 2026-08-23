@@ -91,8 +91,14 @@ a { color: var(--accent); }
 .eq-bars { display: flex; align-items: flex-end; gap: 2px; height: 14px; }
 .eq-bars span {
   width: 3px; height: 100%; border-radius: 2px; background: var(--active);
-  transform-origin: bottom; animation: bar-bounce 0.6s ease-in-out infinite;
+  transform-origin: bottom;
 }
+/* Canned motion only until the real analyser drives the bars (.live). */
+.eq-bars:not(.live) span { animation: bar-bounce 0.6s ease-in-out infinite; }
+.eq-bars:not(.live) span:nth-child(2) { animation-delay: 0.15s; }
+.eq-bars:not(.live) span:nth-child(3) { animation-delay: 0.3s; }
+.eq-bars:not(.live) span:nth-child(4) { animation-delay: 0.1s; }
+.eq-bars:not(.live) span:nth-child(5) { animation-delay: 0.25s; }
 .status-led { width: 8px; height: 8px; border-radius: 50%; background: rgba(255, 255, 255, 0.2); }
 .status-led.active { background: var(--active); box-shadow: var(--glow-active-sm); animation: glow-pulse 2s ease-in-out infinite; }
 .status-led.busy { background: var(--warn); box-shadow: var(--glow-warn-sm); animation: glow-pulse 2s ease-in-out infinite; }

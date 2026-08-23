@@ -8,6 +8,7 @@
 
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { errorMessage } from "@purple/core/error";
 import type { CompactionSummarizer } from "@purple/core/compaction";
 import { createModelHelpers } from "@purple/core/model-helpers";
@@ -189,3 +190,12 @@ export const backend = {
   suggestTransitions,
   generateCompactionSummary,
 } satisfies PurpleBackend & CompactionSummarizer;
+
+/** Purple runs on Strudel; this is its developers' Open Collective. The
+ * capability in `capabilities/default.json` scopes the opener to this URL. */
+export const SUPPORT_STRUDEL_URL = "https://opencollective.com/tidalcycles";
+
+/** Open the Strudel funding page in the system browser. */
+export function openSupportStrudel(): Promise<void> {
+  return openUrl(SUPPORT_STRUDEL_URL);
+}

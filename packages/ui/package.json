@@ -9,6 +9,7 @@
     "./playback-flow": "./src/playback-flow.ts",
     "./playback-highlight": "./src/playback-highlight.ts",
     "./session-store": "./src/session-store.ts",
+    "./spectrum-bars": "./src/spectrum-bars.tsx",
     "./testing": "./src/testing.ts",
     "./use-generated-pattern": "./src/use-generated-pattern.ts",
     "./use-playback": "./src/use-playback.ts",

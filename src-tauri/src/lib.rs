@@ -102,6 +102,7 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(gemini::GeminiState::default())
         .setup(|app| {
             secrets::migrate_legacy_file();

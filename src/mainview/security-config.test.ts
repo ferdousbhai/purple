@@ -10,10 +10,14 @@ describe("desktop webview security boundary", () => {
     expect(csp).not.toContain("unsafe-eval");
   });
 
-  it("grants only the event permissions the main view consumes", () => {
+  it("grants only the event permissions and the URL-scoped opener the main view consumes", () => {
     expect(capability.permissions).toEqual([
       "core:event:allow-listen",
       "core:event:allow-unlisten",
+      {
+        identifier: "opener:allow-open-url",
+        allow: [{ url: "https://opencollective.com/tidalcycles" }],
+      },
     ]);
   });
 });

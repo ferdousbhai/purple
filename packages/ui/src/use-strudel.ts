@@ -73,6 +73,7 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
   const initPromiseRef = useRef<Promise<void> | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const activePatternRef = useRef<StrudelPattern | null>(null);
+  const outputAnalyserRef = useRef<AnalyserNode | null>(null);
   // A ref keeps activate() stable even when the caller passes a fresh options
   // object each render.
   const ensureRunningRef = useRef(defaultEnsureRunningContext);
@@ -91,6 +92,7 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
       expressionScopeRef.current = null;
       initPromiseRef.current = null;
       activePatternRef.current = null;
+      outputAnalyserRef.current = null;
     }
 
     const ctx = new AudioContext();
@@ -143,6 +145,21 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
         installSchedulerCpm(strudel, repl);
 
         await strudel.initAudio();
+
+        try {
+          // Tap superdough's master gain so the UI can render the real output
+          // spectrum. The analyser is a sink; playback routing is untouched.
+          const analyser = ctx.createAnalyser();
+          analyser.fftSize = 64;
+          analyser.smoothingTimeConstant = 0.7;
+          strudel
+            .getSuperdoughAudioController()
+            .output.destinationGain.connect(analyser);
+          outputAnalyserRef.current = analyser;
+        } catch (error) {
+          // Internal superdough surface; without it the UI keeps its fallback.
+          console.warn("[Strudel] Output analyser unavailable:", error);
+        }
 
         strudelRef.current = strudel;
         safeStrudelRef.current = safeStrudel;
@@ -342,6 +359,11 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
     };
   }, []);
 
+  const getOutputAnalyser = useCallback(
+    () => outputAnalyserRef.current,
+    [],
+  );
+
   return {
     activate,
     evaluate,
@@ -350,6 +372,8 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
     isAudioReady,
     getSchedulerPosition,
     getActiveSourceRanges,
+    /** The master-mix tap, or null until the engine initializes. */
+    getOutputAnalyser,
   };
 }
 

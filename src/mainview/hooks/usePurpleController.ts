@@ -516,6 +516,7 @@ export function usePurpleController() {
     error: generatedPlaybackError ?? playback.error,
     activeCode: playback.activeCode,
     activeRanges: playback.activeRanges,
+    getOutputAnalyser: playback.getOutputAnalyser,
     prepareAudio: playback.prepareAudio,
     stop,
     code,

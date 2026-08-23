@@ -47,6 +47,7 @@ import {
   validationFailureMessage,
   type PatternMode,
 } from '@purple/ui/playback-flow'
+import { SpectrumBars } from '@purple/ui/spectrum-bars'
 import { usePlayback } from '@purple/ui/use-playback'
 import { useTransitionSuggestions } from '@purple/ui/use-transition-suggestions'
 import { useStudioChat } from '@purple/ui/use-studio-chat'
@@ -60,7 +61,6 @@ const STARTER_PATTERNS = [
   'note("<c3 eb3 g3 bb3>").s("sawtooth").slow(2).lpf(700).gain(0.5)',
 ] as const
 const EMPTY_RANGES: readonly SourceRange[] = []
-const EQ_BAR_DELAYS = [0, 0.15, 0.3, 0.1, 0.25] as const
 const PatternEditor = lazy(async () => {
   const editor = await import('@purple/ui/pattern-editor')
   return { default: editor.PatternEditor }
@@ -240,7 +240,18 @@ export function PurpleStudio() {
           >
             SOURCE
           </a>
-          {audible ? <EqBars /> : null}
+          <a
+            className="chrome source-link"
+            href="https://opencollective.com/tidalcycles"
+            rel="noreferrer"
+            target="_blank"
+            title="Purple runs on Strudel. Support its developers on Open Collective."
+          >
+            ♥ STRUDEL
+          </a>
+          {audible ? (
+            <SpectrumBars className="eq-bars" getAnalyser={playback.getOutputAnalyser} />
+          ) : null}
           <StatusLed state={ledState} />
           <button
             ref={libraryButtonRef}
@@ -394,16 +405,6 @@ export function PurpleStudio() {
         </aside>
       </div>
     </main>
-  )
-}
-
-function EqBars() {
-  return (
-    <div aria-hidden="true" className="eq-bars">
-      {EQ_BAR_DELAYS.map((delay, index) => (
-        <span key={index} style={{ animationDelay: `${delay}s` }} />
-      ))}
-    </div>
   )
 }
 

@@ -92,6 +92,12 @@ declare module "@strudel/web/web.mjs" {
    * folded, aliases resolved), or undefined - exactly what trigger time uses,
    * which makes it the ground truth for validating generated sound names. */
   export function getSound(name: string): RegisteredSound | undefined;
+
+  /** Superdough's mixer. Every orbit sums into `output.destinationGain`
+   * before the context destination, so tapping it observes the master mix. */
+  export function getSuperdoughAudioController(): {
+    output: { destinationGain: GainNode };
+  };
   /** The registry itself; `get()` returns the name -> sound map. */
   export const soundMap: { get(): Record<string, RegisteredSound> };
   /** Register friendly bank aliases from a parsed `{bank: alias}` map. */

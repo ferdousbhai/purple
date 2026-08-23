@@ -30,6 +30,7 @@
     "@purple/core": "workspace:*",
     "@purple/ui": "workspace:*",
     "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-opener": "^2.5.4",
     "effect": "3.22.1",
     "react": "^19.2.5",
     "react-dom": "^19.2.5"

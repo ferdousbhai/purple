@@ -3,10 +3,11 @@ import { Group, Panel, Separator } from "react-resizable-panels";
 import { EditorPanel } from "./components/EditorPanel";
 import { ChatPanel } from "./components/ChatPanel";
 import { ApiKeyDialog } from "./components/ApiKeyDialog";
+import { SpectrumBars } from "@purple/ui/spectrum-bars";
+import { openSupportStrudel } from "./backend";
 import { usePurpleController } from "./hooks/usePurpleController";
 import type { PlaybackState } from "../shared/types";
 
-const EQ_BAR_DELAYS = [0, 0.15, 0.3, 0.1, 0.25];
 const EMPTY_SOURCE_RANGES = [] as const;
 
 const STATUS_LED_CLASSES = {
@@ -40,6 +41,7 @@ export function App() {
     error,
     activeCode,
     activeRanges,
+    getOutputAnalyser,
     stop,
     saveApiKey,
     clearApiKey,
@@ -75,6 +77,17 @@ export function App() {
         </div>
         <div className="ml-auto flex items-center gap-3">
           <button
+            type="button"
+            onClick={() => void openSupportStrudel()}
+            title="Purple runs on Strudel. Support its developers on Open Collective."
+            className="h-6 px-2 rounded border border-ink/10 bg-surface-lighter/35
+              text-[10px] font-mono tracking-widest text-ink/45 transition-all
+              hover:border-accent/45 hover:bg-accent/10 hover:text-accent
+              focus:outline-none focus:border-accent/60 focus:text-accent"
+          >
+            ♥ STRUDEL
+          </button>
+          <button
             ref={settingsButtonRef}
             type="button"
             onClick={() => setIsSettingsOpen(true)}
@@ -88,7 +101,11 @@ export function App() {
             KEY
           </button>
           {(playbackState === "playing" || playbackState === "transitioning") && (
-            <EqBars />
+            <SpectrumBars
+              className="flex items-end gap-[2px] h-3.5"
+              barClassName="w-[3px] h-full bg-active rounded-full origin-bottom"
+              getAnalyser={getOutputAnalyser}
+            />
           )}
           <StatusLed state={status} />
         </div>
@@ -162,23 +179,6 @@ function getStatusLedState(
   }
   if (isStreaming) return "busy";
   return "idle";
-}
-
-function EqBars() {
-  return (
-    <div aria-hidden="true" className="flex items-end gap-[2px] h-3.5">
-      {EQ_BAR_DELAYS.map((delay, i) => (
-        <div
-          key={i}
-          className="w-[3px] bg-active rounded-full animate-bar-bounce origin-bottom"
-          style={{
-            animationDelay: `${delay}s`,
-            height: "100%",
-          }}
-        />
-      ))}
-    </div>
-  );
 }
 
 function StatusLed({ state }: { state: StatusLedState }) {

@@ -5,6 +5,10 @@
   "windows": ["main"],
   "permissions": [
     "core:event:allow-listen",
-    "core:event:allow-unlisten"
+    "core:event:allow-unlisten",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://opencollective.com/tidalcycles" }]
+    }
   ]
 }
