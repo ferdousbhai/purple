@@ -1,16 +1,28 @@
 @import "tailwindcss";
 
+/*
+ * Palette: mirrors apps/web/src/styles.css - semantic tokens only (accent /
+ * active / hot / warn), never hue names, and rules route every color through
+ * var(...) or color-mix(...). system-theme.ts overrides these same tokens
+ * with the active Omarchy theme at runtime.
+ */
 @theme {
-  --color-surface: #0a0a0f;
-  --color-surface-light: #12121c;
-  --color-surface-lighter: #1a1a2a;
-  --color-text: #e0e0e8;
-  /* Existing text-white/border-white utilities are semantic ink in this UI. */
-  --color-white: #ffffff;
-  --color-neon-cyan: #00fff5;
-  --color-neon-magenta: #ff2d95;
-  --color-neon-lime: #39ff14;
-  --color-neon-amber: #ffb800;
+  --color-surface: #0c0914;
+  --color-surface-light: #171225;
+  --color-surface-lighter: #221a33;
+  --color-text: #e6e1f2;
+  /* Bright ink for emphasis text and hairline borders; dark ink in light themes. */
+  --color-ink: #ffffff;
+  --color-accent: #c77dff; /* brand: wordmark, links, primary actions, focus */
+  --color-hot: #ff2d95; /* stop, errors, next-move emphasis */
+  --color-active: #39ff14; /* playing / saved / success */
+  --color-warn: #ffb800; /* busy, nudges */
+  --shadow-glow-accent: 0 0 12px color-mix(in srgb, var(--color-accent) 19%, transparent);
+  --shadow-glow-accent-lg: 0 0 30px color-mix(in srgb, var(--color-accent) 12%, transparent);
+  --shadow-glow-hot: 0 0 12px color-mix(in srgb, var(--color-hot) 19%, transparent);
+  --shadow-glow-active: 0 0 12px color-mix(in srgb, var(--color-active) 25%, transparent);
+  --shadow-glow-active-sm: 0 0 6px color-mix(in srgb, var(--color-active) 50%, transparent);
+  --shadow-glow-warn-sm: 0 0 6px color-mix(in srgb, var(--color-warn) 50%, transparent);
   --font-display: "Outfit", sans-serif;
   --font-mono: "IBM Plex Mono", "JetBrains Mono", monospace;
   --animate-glow-pulse: glow-pulse 2s ease-in-out infinite;
@@ -27,11 +39,11 @@
   --color-surface-light: #ffffff;
   --color-surface-lighter: #e6e2ec;
   --color-text: #211b29;
-  --color-white: #211b29;
-  --color-neon-cyan: #006b73;
-  --color-neon-magenta: #a0004c;
-  --color-neon-lime: #2e7400;
-  --color-neon-amber: #805500;
+  --color-ink: #211b29;
+  --color-accent: #6b21a8;
+  --color-hot: #a0004c;
+  --color-active: #2e7400;
+  --color-warn: #805500;
 }
 
 @media (prefers-color-scheme: light) {
@@ -41,11 +53,11 @@
     --color-surface-light: #ffffff;
     --color-surface-lighter: #e6e2ec;
     --color-text: #211b29;
-    --color-white: #211b29;
-    --color-neon-cyan: #006b73;
-    --color-neon-magenta: #a0004c;
-    --color-neon-lime: #2e7400;
-    --color-neon-amber: #805500;
+    --color-ink: #211b29;
+    --color-accent: #6b21a8;
+    --color-hot: #a0004c;
+    --color-active: #2e7400;
+    --color-warn: #805500;
   }
 }
 
@@ -83,11 +95,16 @@ body,
 }
 
 /* ── Neon glow utility classes ── */
-.glow-cyan {
-  text-shadow: 0 0 7px #00fff5, 0 0 20px #00fff580, 0 0 40px #00fff540;
+.glow-accent {
+  text-shadow:
+    0 0 7px var(--color-accent),
+    0 0 20px color-mix(in srgb, var(--color-accent) 50%, transparent),
+    0 0 40px color-mix(in srgb, var(--color-accent) 25%, transparent);
 }
-.border-glow-magenta {
-  box-shadow: 0 0 5px #ff2d9540, inset 0 0 5px #ff2d9510;
+.border-glow-hot {
+  box-shadow:
+    0 0 5px color-mix(in srgb, var(--color-hot) 25%, transparent),
+    inset 0 0 5px color-mix(in srgb, var(--color-hot) 6%, transparent);
 }
 
 /* ── Scrollbar styling ── */
@@ -98,11 +115,11 @@ body,
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #00fff530;
+  background: color-mix(in srgb, var(--color-accent) 19%, transparent);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #00fff560;
+  background: color-mix(in srgb, var(--color-accent) 38%, transparent);
 }
 
 /* ── CodeMirror overrides ── */
@@ -116,24 +133,24 @@ body,
 }
 .cm-editor .cm-gutters {
   background: transparent !important;
-  border-right: 1px solid #00fff515 !important;
+  border-right: 1px solid color-mix(in srgb, var(--color-accent) 8%, transparent) !important;
 }
 .cm-editor .cm-activeLineGutter {
-  background: #00fff510 !important;
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent) !important;
 }
 .cm-editor .cm-activeLine {
-  background: #00fff508 !important;
+  background: color-mix(in srgb, var(--color-accent) 3%, transparent) !important;
 }
 .cm-editor .cm-cursor {
-  border-left-color: #00fff5 !important;
+  border-left-color: var(--color-accent) !important;
 }
 .cm-editor .cm-playback-highlight {
-  background: color-mix(in srgb, #39ff14 24%, transparent);
-  outline: 1px solid #39ff14cc;
+  background: color-mix(in srgb, var(--color-active) 24%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--color-active) 80%, transparent);
   border-radius: 3px;
   box-shadow:
-    0 0 8px #39ff1466,
-    inset 0 0 10px #39ff141f;
+    0 0 8px color-mix(in srgb, var(--color-active) 40%, transparent),
+    inset 0 0 10px color-mix(in srgb, var(--color-active) 12%, transparent);
 }
 
 /* ── Panel resize handle ── */
@@ -142,15 +159,18 @@ body,
 }
 [data-panel-resize-handle-id]:hover,
 [data-panel-resize-handle-id][data-resize-handle-active] {
-  background-color: #00fff5 !important;
-  box-shadow: 0 0 10px #00fff580, 0 0 20px #00fff540 !important;
+  background-color: var(--color-accent) !important;
+  box-shadow:
+    0 0 10px color-mix(in srgb, var(--color-accent) 50%, transparent),
+    0 0 20px color-mix(in srgb, var(--color-accent) 25%, transparent) !important;
 }
 
 /* ── Grid background pattern ── */
 .grid-bg {
+  --grid-line: color-mix(in srgb, var(--color-accent) 3%, transparent);
   background-image:
-    linear-gradient(#00fff508 1px, transparent 1px),
-    linear-gradient(90deg, #00fff508 1px, transparent 1px);
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
   background-size: 24px 24px;
 }
 

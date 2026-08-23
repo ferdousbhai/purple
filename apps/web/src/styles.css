@@ -1,13 +1,33 @@
+/*
+ * Palette: every color routes through the tokens below - rules only ever use
+ * var(...) or color-mix(...) tints of them, so restyling the site is a matter
+ * of swapping token values here (and in public/404.html, which duplicates the
+ * accent because it must stay standalone).
+ */
 :root {
-  --surface: #0a0a0f;
-  --text: #e0e0e8;
-  --text-dim: rgba(224, 224, 232, 0.5);
-  --text-faint: rgba(224, 224, 232, 0.28);
+  --surface: #0c0914;
+  --text: #e6e1f2;
+  --text-dim: color-mix(in srgb, var(--text) 50%, transparent);
+  --text-faint: color-mix(in srgb, var(--text) 28%, transparent);
   --border: rgba(255, 255, 255, 0.08);
-  --cyan: #00fff5;
-  --lime: #39ff14;
-  --magenta: #ff2d95;
-  --amber: #ffb800;
+  --accent: #c77dff; /* brand: wordmark, links, primary actions, focus */
+  --active: #39ff14; /* playing / saved / success */
+  --hot: #ff2d95; /* stop, errors, next-move emphasis */
+  --warn: #ffb800; /* busy, nudges */
+  --panel-base: #221a33; /* the raised-surface hue behind every tint below */
+  --panel: color-mix(in srgb, var(--panel-base) 40%, transparent); /* chips, buttons, cards */
+  --panel-strong: color-mix(in srgb, var(--panel-base) 60%, transparent); /* inputs, user bubbles */
+  --panel-hover: color-mix(in srgb, var(--panel-base) 80%, transparent);
+  --bar-bg: color-mix(in srgb, var(--surface) 80%, transparent);
+  --pane-editor: color-mix(in srgb, var(--surface) 55%, transparent);
+  --pane-session: rgba(24, 18, 36, 0.45);
+  --grid-line: color-mix(in srgb, var(--accent) 3%, transparent);
+  --glow-accent: 0 0 12px color-mix(in srgb, var(--accent) 19%, transparent);
+  --glow-active: 0 0 12px color-mix(in srgb, var(--active) 19%, transparent);
+  --glow-hot: 0 0 12px color-mix(in srgb, var(--hot) 19%, transparent);
+  --glow-active-sm: 0 0 6px color-mix(in srgb, var(--active) 50%, transparent);
+  --glow-warn-sm: 0 0 6px color-mix(in srgb, var(--warn) 50%, transparent);
+  --shadow: rgba(0, 0, 0, 0.55);
   --font-display: 'Outfit', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
 
@@ -24,20 +44,20 @@ body { margin: 0; min-width: 320px; background: var(--surface); }
 button, input, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; background: none; border: 0; padding: 0; }
 button:disabled { cursor: not-allowed; opacity: 0.35; }
-a { color: var(--cyan); }
+a { color: var(--accent); }
 
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(0, 255, 245, 0.19); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(0, 255, 245, 0.38); }
+::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--accent) 19%, transparent); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--accent) 38%, transparent); }
 
 .boot-shell {
   min-height: 100vh; display: grid; place-items: center;
-  color: var(--cyan); letter-spacing: 0.35em; font-family: var(--font-mono);
+  color: var(--accent); letter-spacing: 0.35em; font-family: var(--font-mono);
 }
 .route-message { min-height: 100vh; display: grid; place-content: center; gap: 10px; text-align: center; }
 .route-message h1, .route-message p { margin: 0; }
-.route-message h1, .route-message a { color: var(--cyan); }
+.route-message h1, .route-message a { color: var(--accent); }
 
 /* ── Shell: one fixed screen, no page scroll ── */
 .studio-shell {
@@ -48,8 +68,8 @@ a { color: var(--cyan); }
   overflow: hidden;
   position: relative;
   background-image:
-    linear-gradient(rgba(0, 255, 245, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 255, 245, 0.03) 1px, transparent 1px);
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
   background-size: 24px 24px;
 }
 
@@ -59,23 +79,23 @@ a { color: var(--cyan); }
   padding: 0 14px;
   display: flex; align-items: center; justify-content: space-between;
   border-bottom: 1px solid var(--border);
-  background: rgba(10, 10, 15, 0.8);
+  background: var(--bar-bg);
 }
 .brand { display: flex; align-items: baseline; gap: 8px; }
 .brand-name {
-  color: var(--cyan); font-weight: 700; font-size: 14px; letter-spacing: 0.22em;
-  text-shadow: 0 0 7px var(--cyan), 0 0 20px rgba(0, 255, 245, 0.5);
+  color: var(--accent); font-weight: 700; font-size: 14px; letter-spacing: 0.22em;
+  text-shadow: 0 0 7px var(--accent), 0 0 20px color-mix(in srgb, var(--accent) 50%, transparent);
 }
 .topbar-actions { display: flex; align-items: center; gap: 10px; }
 
 .eq-bars { display: flex; align-items: flex-end; gap: 2px; height: 14px; }
 .eq-bars span {
-  width: 3px; height: 100%; border-radius: 2px; background: var(--lime);
+  width: 3px; height: 100%; border-radius: 2px; background: var(--active);
   transform-origin: bottom; animation: bar-bounce 0.6s ease-in-out infinite;
 }
 .status-led { width: 8px; height: 8px; border-radius: 50%; background: rgba(255, 255, 255, 0.2); }
-.status-led.active { background: var(--lime); box-shadow: 0 0 6px rgba(57, 255, 20, 0.5); animation: glow-pulse 2s ease-in-out infinite; }
-.status-led.busy { background: var(--amber); box-shadow: 0 0 6px rgba(255, 184, 0, 0.5); animation: glow-pulse 2s ease-in-out infinite; }
+.status-led.active { background: var(--active); box-shadow: var(--glow-active-sm); animation: glow-pulse 2s ease-in-out infinite; }
+.status-led.busy { background: var(--warn); box-shadow: var(--glow-warn-sm); animation: glow-pulse 2s ease-in-out infinite; }
 
 @keyframes glow-pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
 @keyframes bar-bounce { 0%, 100% { transform: scaleY(0.3); } 50% { transform: scaleY(1); } }
@@ -83,43 +103,39 @@ a { color: var(--cyan); }
 /* ── Buttons ── */
 .chrome {
   padding: 4px 9px; border-radius: 5px;
-  border: 1px solid var(--border); background: rgba(26, 26, 42, 0.35);
+  border: 1px solid var(--border); background: var(--panel);
   color: var(--text-dim); font: 500 10px var(--font-mono); letter-spacing: 0.14em;
   text-decoration: none;
   transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
 }
 .chrome:hover:not(:disabled), .chrome.open {
-  border-color: rgba(0, 255, 245, 0.45); background: rgba(0, 255, 245, 0.08); color: var(--cyan);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--accent);
 }
-.chrome.saved {
-  border-color: color-mix(in srgb, var(--lime) 38%, transparent);
-  background: color-mix(in srgb, var(--lime) 10%, transparent);
-  color: var(--lime); font-weight: 600;
-}
-.chrome.saved:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--lime) 65%, transparent);
-  background: color-mix(in srgb, var(--lime) 18%, transparent);
-  color: var(--lime);
-}
+.chrome.saved,
 .chrome.apply-changes {
-  border-color: color-mix(in srgb, var(--lime) 38%, transparent);
-  background: color-mix(in srgb, var(--lime) 10%, transparent);
-  color: var(--lime); font-weight: 600;
+  border-color: color-mix(in srgb, var(--active) 38%, transparent);
+  background: color-mix(in srgb, var(--active) 10%, transparent);
+  color: var(--active); font-weight: 600;
 }
+.chrome.saved:hover:not(:disabled),
 .chrome.apply-changes:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--lime) 65%, transparent);
-  background: color-mix(in srgb, var(--lime) 18%, transparent);
-  color: var(--lime);
+  border-color: color-mix(in srgb, var(--active) 65%, transparent);
+  background: color-mix(in srgb, var(--active) 18%, transparent);
+  color: var(--active);
 }
 .primary {
   padding: 8px 14px; border-radius: 7px;
-  border: 1px solid rgba(0, 255, 245, 0.3); background: rgba(0, 255, 245, 0.12);
-  color: var(--cyan); font: 500 11px var(--font-mono); letter-spacing: 0.14em;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent); font: 500 11px var(--font-mono); letter-spacing: 0.14em;
   transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
 }
 .primary:hover:not(:disabled) {
-  border-color: rgba(0, 255, 245, 0.6); background: rgba(0, 255, 245, 0.2);
-  box-shadow: 0 0 12px rgba(0, 255, 245, 0.19);
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  box-shadow: var(--glow-accent);
 }
 .transport {
   min-width: 92px; padding: 6px 12px; border-radius: 7px;
@@ -127,13 +143,23 @@ a { color: var(--cyan); }
   transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
 }
 .transport.start {
-  color: var(--lime); border: 1px solid rgba(57, 255, 20, 0.3); background: rgba(57, 255, 20, 0.08);
+  color: var(--active);
+  border: 1px solid color-mix(in srgb, var(--active) 30%, transparent);
+  background: color-mix(in srgb, var(--active) 8%, transparent);
 }
-.transport.start:hover:not(:disabled) { border-color: rgba(57, 255, 20, 0.6); box-shadow: 0 0 12px rgba(57, 255, 20, 0.19); }
+.transport.start:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--active) 60%, transparent);
+  box-shadow: var(--glow-active);
+}
 .transport.stop {
-  color: var(--magenta); border: 1px solid rgba(255, 45, 149, 0.3); background: rgba(255, 45, 149, 0.08);
+  color: var(--hot);
+  border: 1px solid color-mix(in srgb, var(--hot) 30%, transparent);
+  background: color-mix(in srgb, var(--hot) 8%, transparent);
 }
-.transport.stop:hover:not(:disabled) { border-color: rgba(255, 45, 149, 0.6); box-shadow: 0 0 12px rgba(255, 45, 149, 0.19); }
+.transport.stop:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--hot) 60%, transparent);
+  box-shadow: var(--glow-hot);
+}
 
 /* ── Split layout ── */
 .studio-grid {
@@ -146,7 +172,7 @@ a { color: var(--cyan); }
   min-width: 0; min-height: 0;
   display: flex; flex-direction: column;
   border-right: 1px solid var(--border);
-  background: rgba(10, 10, 15, 0.55);
+  background: var(--pane-editor);
 }
 .editor-bar {
   flex: none; height: 46px; padding: 0 10px 0 14px;
@@ -159,7 +185,7 @@ a { color: var(--cyan); }
   color: var(--text); font: 500 14px var(--font-display);
   border-bottom: 1px solid transparent;
 }
-.title-input:focus { border-bottom-color: rgba(0, 255, 245, 0.45); }
+.title-input:focus { border-bottom-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 .editor-surface { flex: 1; min-height: 0; }
 .editor-surface > div { height: 100%; }
 .editor-loading {
@@ -168,20 +194,22 @@ a { color: var(--cyan); }
 }
 .cm-editor { height: 100%; font-size: 14px; background: transparent !important; }
 .cm-editor .cm-scroller { font-family: var(--font-mono); }
-.cm-editor .cm-gutters { background: transparent !important; border-right: 1px solid rgba(0, 255, 245, 0.08) !important; }
-.cm-editor .cm-activeLineGutter { background: rgba(0, 255, 245, 0.06) !important; }
-.cm-editor .cm-activeLine { background: rgba(0, 255, 245, 0.03) !important; }
-.cm-editor .cm-cursor { border-left-color: var(--cyan) !important; }
+.cm-editor .cm-gutters { background: transparent !important; border-right: 1px solid color-mix(in srgb, var(--accent) 8%, transparent) !important; }
+.cm-editor .cm-activeLineGutter { background: color-mix(in srgb, var(--accent) 6%, transparent) !important; }
+.cm-editor .cm-activeLine { background: color-mix(in srgb, var(--accent) 3%, transparent) !important; }
+.cm-editor .cm-cursor { border-left-color: var(--accent) !important; }
 .cm-playback-highlight {
-  background: color-mix(in srgb, var(--lime) 24%, transparent);
-  outline: 1px solid rgba(57, 255, 20, 0.8);
+  background: color-mix(in srgb, var(--active) 24%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--active) 80%, transparent);
   border-radius: 3px;
-  box-shadow: 0 0 8px rgba(57, 255, 20, 0.4), inset 0 0 10px rgba(57, 255, 20, 0.12);
+  box-shadow:
+    0 0 8px color-mix(in srgb, var(--active) 40%, transparent),
+    inset 0 0 10px color-mix(in srgb, var(--active) 12%, transparent);
 }
 .editor-pane > .error { margin: 10px 14px; }
 
 /* ── Session pane ── */
-.session-pane { min-height: 0; display: flex; flex-direction: column; background: rgba(18, 18, 28, 0.45); }
+.session-pane { min-height: 0; display: flex; flex-direction: column; background: var(--pane-session); }
 
 .composer { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 0 14px 14px; }
 .session-bar {
@@ -192,15 +220,15 @@ a { color: var(--cyan); }
 .new-session {
   width: 100%; height: 32px;
   display: flex; align-items: center; justify-content: center; gap: 8px;
-  border: 1px solid color-mix(in srgb, var(--cyan) 28%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
   border-radius: 6px;
-  background: color-mix(in srgb, var(--cyan) 6%, transparent);
-  color: var(--cyan); font: 600 10px var(--font-mono); letter-spacing: 0.16em;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  color: var(--accent); font: 600 10px var(--font-mono); letter-spacing: 0.16em;
   transition: border-color 150ms ease, background 150ms ease;
 }
 .new-session:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--cyan) 55%, transparent);
-  background: color-mix(in srgb, var(--cyan) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 .new-session-mark { font-size: 16px; font-weight: 400; line-height: 1; letter-spacing: 0; }
 
@@ -210,31 +238,39 @@ a { color: var(--cyan); }
   display: flex; flex-direction: column; justify-content: center; gap: 18px;
   text-align: center; padding: 8px 0;
 }
-.empty-session h2 { margin: 0; font: 500 15px var(--font-display); color: rgba(224, 224, 232, 0.9); }
+.empty-session h2 { margin: 0; font: 500 15px var(--font-display); color: color-mix(in srgb, var(--text) 90%, transparent); }
 .empty-session p { margin: 4px 0 0; color: var(--text-dim); font: 400 11px var(--font-mono); }
 .preset-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .preset-grid button {
   display: grid; gap: 3px; padding: 10px 11px; text-align: left;
-  border: 1px solid var(--border); border-radius: 8px; background: rgba(26, 26, 42, 0.4);
+  border: 1px solid var(--border); border-radius: 8px; background: var(--panel);
   transition: border-color 150ms ease, background 150ms ease;
 }
-.preset-grid button:hover:not(:disabled) { border-color: rgba(0, 255, 245, 0.4); background: rgba(26, 26, 42, 0.8); }
-.preset-title { font: 600 12px var(--font-display); color: rgba(224, 224, 232, 0.85); }
+.preset-grid button:hover:not(:disabled) { border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: var(--panel-hover); }
+.preset-title { font: 600 12px var(--font-display); color: color-mix(in srgb, var(--text) 85%, transparent); }
 .preset-genre { font: 400 10px var(--font-mono); color: var(--text-faint); }
 .random {
   justify-self: center; margin: 0 auto; padding: 6px 14px; border-radius: 999px;
-  border: 1px solid rgba(0, 255, 245, 0.3); background: rgba(0, 255, 245, 0.08);
-  color: var(--cyan); font: 400 11px var(--font-mono);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--accent); font: 400 11px var(--font-mono);
   transition: border-color 150ms ease, background 150ms ease;
 }
-.random:hover:not(:disabled) { border-color: rgba(0, 255, 245, 0.6); background: rgba(0, 255, 245, 0.16); }
+.random:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
 
 /* Transcript */
 .transcript { flex: 1; min-height: 0; overflow-y: auto; display: grid; gap: 8px; align-content: start; padding-top: 2px; }
 .transcript p { margin: 0; padding: 8px 11px; border-radius: 8px; line-height: 1.45; font-size: 13px; }
-.transcript .user { background: rgba(26, 26, 42, 0.7); color: rgba(224, 224, 232, 0.85); justify-self: end; max-width: 88%; }
-.transcript .assistant { background: rgba(0, 255, 245, 0.05); border: 1px solid rgba(0, 255, 245, 0.1); max-width: 92%; }
-.stream-dots { display: inline-flex; width: max-content; color: var(--cyan); letter-spacing: 0.12em; }
+.transcript .user { background: var(--panel-strong); color: color-mix(in srgb, var(--text) 85%, transparent); justify-self: end; max-width: 88%; }
+.transcript .assistant {
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 10%, transparent);
+  max-width: 92%;
+}
+.stream-dots { display: inline-flex; width: max-content; color: var(--accent); letter-spacing: 0.12em; }
 .stream-dots span { animation: dot-bounce 0.9s infinite alternate; }
 .stream-dots span:nth-child(2) { animation-delay: 0.12s; }
 .stream-dots span:nth-child(3) { animation-delay: 0.24s; }
@@ -242,42 +278,52 @@ a { color: var(--cyan); }
 
 .session-nudge {
   flex: none; display: flex; align-items: center; gap: 10px;
-  padding: 7px 0; border-top: 1px solid rgba(255, 184, 0, 0.16);
-  border-bottom: 1px solid rgba(255, 184, 0, 0.16);
+  padding: 7px 0;
+  border-top: 1px solid color-mix(in srgb, var(--warn) 16%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--warn) 16%, transparent);
   color: var(--text-dim); font: 400 10px/1.45 var(--font-mono);
 }
 .session-nudge span { flex: 1; min-width: 0; }
 .session-nudge .chrome {
-  flex: none; border-color: rgba(255, 184, 0, 0.28); color: var(--amber);
+  flex: none; border-color: color-mix(in srgb, var(--warn) 28%, transparent); color: var(--warn);
 }
 .session-nudge .chrome:hover:not(:disabled) {
-  border-color: rgba(255, 184, 0, 0.5);
-  background: rgba(255, 184, 0, 0.08);
-  color: var(--amber);
+  border-color: color-mix(in srgb, var(--warn) 50%, transparent);
+  background: color-mix(in srgb, var(--warn) 8%, transparent);
+  color: var(--warn);
 }
 
 /* Chips: quiet rows, separated by spacing - no boxes */
 .chip-row, .mix-row { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .chip-label { color: var(--text-faint); font: 600 9px var(--font-mono); letter-spacing: 0.22em; margin-right: 2px; }
-.chip-row.next .chip-label { color: rgba(255, 45, 149, 0.55); }
+.chip-row.next .chip-label { color: color-mix(in srgb, var(--hot) 55%, transparent); }
 .chip {
   padding: 3px 10px; border-radius: 999px;
-  border: 1px solid var(--border); background: rgba(26, 26, 42, 0.4);
-  color: rgba(224, 224, 232, 0.7); font: 400 11px var(--font-mono); white-space: nowrap;
+  border: 1px solid var(--border); background: var(--panel);
+  color: color-mix(in srgb, var(--text) 70%, transparent); font: 400 11px var(--font-mono); white-space: nowrap;
   transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
 }
-.chip:hover:not(:disabled) { border-color: rgba(0, 255, 245, 0.4); background: rgba(0, 255, 245, 0.08); color: var(--cyan); }
-.chip-row.next .chip:hover:not(:disabled), .chip.selected {
-  border-color: rgba(255, 45, 149, 0.45); background: rgba(255, 45, 149, 0.08); color: var(--magenta);
+.chip:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--accent);
 }
-.mix-row .chip-label { color: rgba(255, 45, 149, 0.55); }
+.chip-row.next .chip:hover:not(:disabled), .chip.selected {
+  border-color: color-mix(in srgb, var(--hot) 45%, transparent);
+  background: color-mix(in srgb, var(--hot) 8%, transparent);
+  color: var(--hot);
+}
+.mix-row .chip-label { color: color-mix(in srgb, var(--hot) 55%, transparent); }
 .mix-row .primary {
   padding: 4px 12px; margin-left: auto;
-  border-color: rgba(255, 45, 149, 0.35); background: rgba(255, 45, 149, 0.1); color: var(--magenta);
+  border-color: color-mix(in srgb, var(--hot) 35%, transparent);
+  background: color-mix(in srgb, var(--hot) 10%, transparent);
+  color: var(--hot);
 }
 .mix-row .primary:hover:not(:disabled) {
-  border-color: rgba(255, 45, 149, 0.65); background: rgba(255, 45, 149, 0.18);
-  box-shadow: 0 0 12px rgba(255, 45, 149, 0.19);
+  border-color: color-mix(in srgb, var(--hot) 65%, transparent);
+  background: color-mix(in srgb, var(--hot) 18%, transparent);
+  box-shadow: var(--glow-hot);
 }
 
 /* Prompt input */
@@ -288,29 +334,32 @@ a { color: var(--cyan); }
   color: var(--text-faint); font: 400 10px var(--font-mono); cursor: pointer;
 }
 .explanatory-toggle:has(input:disabled) { cursor: not-allowed; opacity: 0.5; }
-.explanatory-toggle input { margin: 0; accent-color: var(--cyan); }
+.explanatory-toggle input { margin: 0; accent-color: var(--accent); }
 .explanatory-toggle strong { color: var(--text-dim); font-weight: 600; }
 .prompt-form textarea, .key-card input {
   width: 100%; resize: none; outline: none;
-  color: var(--text); background: rgba(26, 26, 42, 0.5);
+  color: var(--text); background: var(--panel-strong);
   border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px;
   font: 400 13px var(--font-mono);
   transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 .prompt-form textarea::placeholder, .key-card input::placeholder { color: var(--text-faint); }
 .prompt-form textarea:focus, .key-card input:focus {
-  border-color: rgba(0, 255, 245, 0.4); box-shadow: 0 0 8px rgba(0, 255, 245, 0.12);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .error {
   flex: none; margin: 0; padding: 8px 11px; border-radius: 7px; font-size: 12px;
-  color: var(--magenta); background: rgba(255, 45, 149, 0.08); border: 1px solid rgba(255, 45, 149, 0.25);
+  color: var(--hot);
+  background: color-mix(in srgb, var(--hot) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--hot) 25%, transparent);
 }
 .muted { color: var(--text-dim); font-size: 13px; }
 
 /* ── Key card ── */
 .key-card { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 12px; padding: 22px; }
-.key-card h2 { margin: 0; color: rgba(0, 255, 245, 0.7); font: 600 11px var(--font-mono); letter-spacing: 0.3em; }
+.key-card h2 { margin: 0; color: color-mix(in srgb, var(--accent) 70%, transparent); font: 600 11px var(--font-mono); letter-spacing: 0.3em; }
 .key-card p { margin: 0; color: var(--text-dim); font-size: 13px; line-height: 1.55; }
 .key-card form { display: grid; gap: 10px; }
 .key-card-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -319,23 +368,45 @@ a { color: var(--cyan); }
 .library-popover {
   position: absolute; top: 44px; right: 10px; z-index: 20;
   width: min(320px, calc(100vw - 20px)); max-height: 55vh; overflow-y: auto;
-  display: grid; gap: 4px; padding: 10px;
-  border: 1px solid var(--border); border-radius: 10px;
-  background: rgba(18, 18, 28, 0.97);
-  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.55);
+  display: grid; gap: 4px; padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow:
+    0 12px 34px var(--shadow),
+    0 0 22px color-mix(in srgb, var(--accent) 9%, transparent);
+  animation: popover-in 140ms ease;
 }
+@keyframes popover-in { from { opacity: 0; transform: translateY(-5px); } }
+.library-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding: 4px 9px 8px; margin-bottom: 2px;
+  border-bottom: 1px solid var(--border);
+  color: color-mix(in srgb, var(--accent) 72%, transparent);
+  font: 600 10px var(--font-mono); letter-spacing: 0.3em;
+}
+.library-count { color: var(--text-faint); font-weight: 400; letter-spacing: 0.14em; }
+.library-popover .muted { margin: 0; padding: 6px 9px 4px; font: 400 12px/1.55 var(--font-mono); }
 .library-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px; }
 .library-row button:first-child {
   text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  padding: 7px 9px; border-radius: 6px; font-size: 13px; color: rgba(224, 224, 232, 0.85);
-  transition: background 150ms ease, color 150ms ease;
+  padding: 7px 9px; border-radius: 6px; font-size: 13px;
+  color: color-mix(in srgb, var(--text) 85%, transparent);
+  border: 1px solid transparent;
+  transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
 }
-.library-row button:first-child:hover { background: rgba(0, 255, 245, 0.08); color: var(--cyan); }
+.library-row button:first-child:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 22%, transparent);
+}
 .library-row .delete {
   padding: 0 9px; border-radius: 6px; color: var(--text-faint); font-size: 14px;
   transition: color 150ms ease, background 150ms ease;
 }
-.library-row .delete:hover { color: var(--magenta); background: rgba(255, 45, 149, 0.08); }
+.library-row .delete:hover { color: var(--hot); background: color-mix(in srgb, var(--hot) 8%, transparent); }
 
 /* ── Small screens: stack, editor stays the hero ── */
 @media (max-width: 880px) {
@@ -356,38 +427,21 @@ a { color: var(--cyan); }
   :root {
     --surface: #f4f2f7;
     --text: #211b29;
-    --text-dim: rgba(33, 27, 41, 0.62);
-    --text-faint: rgba(33, 27, 41, 0.42);
+    --text-dim: color-mix(in srgb, var(--text) 62%, transparent);
+    --text-faint: color-mix(in srgb, var(--text) 42%, transparent);
     --border: rgba(33, 27, 41, 0.14);
-    --cyan: #006b73;
-    --lime: #2e7400;
-    --magenta: #a0004c;
-    --amber: #805500;
+    --accent: #6b21a8;
+    --active: #2e7400;
+    --hot: #a0004c;
+    --warn: #805500;
+    --panel: rgba(33, 27, 41, 0.05);
+    --panel-strong: rgba(33, 27, 41, 0.08);
+    --panel-hover: rgba(33, 27, 41, 0.1);
+    --bar-bg: rgba(255, 255, 255, 0.86);
+    --pane-editor: rgba(255, 255, 255, 0.62);
+    --pane-session: rgba(230, 226, 236, 0.62);
+    --grid-line: color-mix(in srgb, var(--accent) 5%, transparent);
+    --shadow: rgba(33, 27, 41, 0.18);
     color-scheme: light;
-  }
-
-  .studio-shell {
-    background-image:
-      linear-gradient(rgba(0, 107, 115, 0.05) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(0, 107, 115, 0.05) 1px, transparent 1px);
-  }
-  .topbar { background: rgba(255, 255, 255, 0.86); }
-  .editor-pane { background: rgba(255, 255, 255, 0.62); }
-  .session-pane { background: rgba(230, 226, 236, 0.62); }
-  .chrome,
-  .preset-grid button,
-  .chip { background: rgba(33, 27, 41, 0.05); }
-  .preset-grid button:hover:not(:disabled) { background: rgba(33, 27, 41, 0.1); }
-  .prompt-form textarea,
-  .key-card input,
-  .transcript .user { background: rgba(33, 27, 41, 0.08); }
-  .empty-session h2,
-  .preset-title,
-  .transcript .user,
-  .library-row button:first-child { color: rgba(33, 27, 41, 0.9); }
-  .chip { color: rgba(33, 27, 41, 0.72); }
-  .library-popover {
-    background: rgba(255, 255, 255, 0.98);
-    box-shadow: 0 12px 34px rgba(33, 27, 41, 0.18);
   }
 }

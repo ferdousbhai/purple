@@ -122,10 +122,10 @@ export function ChatPanel({
 
   return (
     <div className="flex flex-col h-full bg-surface/80">
-      <div className="px-4 py-2 border-b border-neon-cyan/10 bg-surface/60">
+      <div className="px-4 py-2 border-b border-accent/10 bg-surface/60">
         <div className="flex items-center gap-2">
-          <div aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-neon-cyan/60" />
-          <span className="text-[11px] font-mono font-medium text-neon-cyan/70 tracking-widest uppercase">
+          <div aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-accent/60" />
+          <span className="text-[11px] font-mono font-medium text-accent/70 tracking-widest uppercase">
             Chat
           </span>
           <button
@@ -134,14 +134,14 @@ export function ChatPanel({
             disabled={!canClear}
             title="Start over"
             aria-label="Clear chat and start over"
-            className="ml-auto grid size-7 place-items-center rounded border border-white/10
-              bg-surface-lighter/30 text-base leading-none text-white/35 transition-all
-              hover:border-neon-magenta/45 hover:bg-neon-magenta/10 hover:text-neon-magenta
-              hover:shadow-[0_0_12px_#ff2d9525]
-              focus:outline-none focus:border-neon-magenta/60 focus:text-neon-magenta
-              focus:shadow-[0_0_12px_#ff2d9530]
-              disabled:opacity-25 disabled:cursor-not-allowed disabled:hover:border-white/10
-              disabled:hover:bg-surface-lighter/30 disabled:hover:text-white/35
+            className="ml-auto grid size-7 place-items-center rounded border border-ink/10
+              bg-surface-lighter/30 text-base leading-none text-ink/35 transition-all
+              hover:border-hot/45 hover:bg-hot/10 hover:text-hot
+              hover:shadow-glow-hot
+              focus:outline-none focus:border-hot/60 focus:text-hot
+              focus:shadow-glow-hot
+              disabled:opacity-25 disabled:cursor-not-allowed disabled:hover:border-ink/10
+              disabled:hover:bg-surface-lighter/30 disabled:hover:text-ink/35
               disabled:hover:shadow-none"
           >
             <span aria-hidden="true">↺</span>
@@ -166,14 +166,14 @@ export function ChatPanel({
         {isEmpty && (
           <div className="flex flex-col h-full justify-between py-2 space-y-4">
             <div className="text-center space-y-1 pt-2">
-              <div className="inline-flex items-center justify-center size-10 rounded-full bg-neon-cyan/10 border border-neon-cyan/25 text-xl mb-1 shadow-[0_0_15px_#00fff520]">
+              <div className="inline-flex items-center justify-center size-10 rounded-full bg-accent/10 border border-accent/25 text-xl mb-1 shadow-glow-accent">
                 🎹
               </div>
-              <h2 className="text-sm font-display font-medium text-white/90">
+              <h2 className="text-sm font-display font-medium text-ink/90">
                 What do you want to create?
               </h2>
-              <p className="text-[11px] font-mono text-white/40">
-                pick a pattern — try a preset or randomize
+              <p className="text-[11px] font-mono text-ink/40">
+                pick a pattern - try a preset or randomize
               </p>
             </div>
 
@@ -184,21 +184,21 @@ export function ChatPanel({
                   type="button"
                   onClick={() => handleSelectPreset(preset)}
                   disabled={isInputDisabled}
-                  className="group relative flex flex-col items-start p-2.5 rounded-lg border border-white/8
-                    bg-surface-lighter/40 hover:bg-surface-lighter/80 hover:border-neon-cyan/40
-                    text-left transition-all hover:shadow-[0_0_14px_#00fff515]
-                    focus:outline-none focus:border-neon-cyan/50 disabled:opacity-40"
+                  className="group relative flex flex-col items-start p-2.5 rounded-lg border border-ink/8
+                    bg-surface-lighter/40 hover:bg-surface-lighter/80 hover:border-accent/40
+                    text-left transition-all hover:shadow-glow-accent
+                    focus:outline-none focus:border-accent/50 disabled:opacity-40"
                 >
                   <div className="flex items-center gap-1.5 w-full">
                     <span aria-hidden="true" className="text-sm">{preset.emoji}</span>
-                    <span className="text-xs font-display font-semibold text-white/80 group-hover:text-neon-cyan transition-colors">
+                    <span className="text-xs font-display font-semibold text-ink/80 group-hover:text-accent transition-colors">
                       {preset.title}
                     </span>
-                    <span className="ml-auto text-[9px] font-mono text-white/30 group-hover:text-neon-cyan/60">
+                    <span className="ml-auto text-[9px] font-mono text-ink/30 group-hover:text-accent/60">
                       {preset.genre}
                     </span>
                   </div>
-                  <p className="mt-1 text-[10px] font-mono text-white/40 line-clamp-2 leading-relaxed">
+                  <p className="mt-1 text-[10px] font-mono text-ink/40 line-clamp-2 leading-relaxed">
                     {preset.prompt}
                   </p>
                 </button>
@@ -210,9 +210,9 @@ export function ChatPanel({
                 type="button"
                 onClick={handleSurpriseMe}
                 disabled={isInputDisabled}
-                className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-neon-cyan/30
-                  bg-neon-cyan/10 hover:bg-neon-cyan/20 text-neon-cyan text-xs font-mono
-                  transition-all hover:shadow-[0_0_15px_#00fff525] hover:border-neon-cyan/60
+                className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-accent/30
+                  bg-accent/10 hover:bg-accent/20 text-accent text-xs font-mono
+                  transition-all hover:shadow-glow-accent hover:border-accent/60
                   focus:outline-none disabled:opacity-40"
               >
                 <span aria-hidden="true">🎲</span>
@@ -228,14 +228,14 @@ export function ChatPanel({
 
         {isStreaming && (
           <div role="status" className="flex justify-start mb-3">
-            <div className="max-w-[85%] px-3 py-2 rounded-lg bg-surface-lighter/80 border border-neon-cyan/10 text-gray-200">
+            <div className="max-w-[85%] px-3 py-2 rounded-lg bg-surface-lighter/80 border border-accent/10 text-gray-200">
               <StreamingText text={streamingText} />
             </div>
           </div>
         )}
 
         {error && (
-          <div role="alert" className="mb-3 rounded-lg border border-neon-magenta/20 bg-neon-magenta/10 px-3 py-2 text-xs font-mono text-neon-magenta">
+          <div role="alert" className="mb-3 rounded-lg border border-hot/20 bg-hot/10 px-3 py-2 text-xs font-mono text-hot">
             {error}
           </div>
         )}
@@ -246,15 +246,15 @@ export function ChatPanel({
       {suggestNewSession && !isEmpty && (
         <div
           role="status"
-          className="flex items-center gap-3 border-t border-neon-amber/15 bg-neon-amber/5 px-3 py-2"
+          className="flex items-center gap-3 border-t border-warn/15 bg-warn/5 px-3 py-2"
         >
-          <span className="min-w-0 flex-1 text-[10px] font-mono leading-relaxed text-white/50">
+          <span className="min-w-0 flex-1 text-[10px] font-mono leading-relaxed text-ink/50">
             This session is getting long. Start fresh for the clearest results.
           </span>
           <button
             type="button"
             onClick={handleClear}
-            className="shrink-0 rounded border border-neon-amber/25 px-2.5 py-1 text-[10px] font-mono font-medium text-neon-amber transition-colors hover:border-neon-amber/50 hover:bg-neon-amber/10 focus:outline-none focus:border-neon-amber/60"
+            className="shrink-0 rounded border border-warn/25 px-2.5 py-1 text-[10px] font-mono font-medium text-warn transition-colors hover:border-warn/50 hover:bg-warn/10 focus:outline-none focus:border-warn/60"
           >
             START OVER
           </button>
@@ -263,8 +263,8 @@ export function ChatPanel({
 
       {/* Modifier chips for continuous music evolution */}
       {!isEmpty && (
-        <div className="px-3 py-1.5 border-t border-neon-cyan/10 bg-surface-light/40 flex flex-wrap items-center gap-1.5">
-          <span className="text-[10px] font-mono uppercase tracking-wider text-neon-cyan/50 whitespace-nowrap mr-1">
+        <div className="px-3 py-1.5 border-t border-accent/10 bg-surface-light/40 flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] font-mono uppercase tracking-wider text-accent/50 whitespace-nowrap mr-1">
             Effect:
           </span>
           {PROMPT_MODIFIERS.map((mod) => (
@@ -275,8 +275,8 @@ export function ChatPanel({
               disabled={isInputDisabled}
               title={mod.prompt}
               className="px-2.5 py-0.5 rounded-full text-[10px] font-mono whitespace-nowrap
-                border border-white/10 bg-surface-lighter/40 text-white/70
-                hover:border-neon-cyan/40 hover:bg-neon-cyan/10 hover:text-neon-cyan
+                border border-ink/10 bg-surface-lighter/40 text-ink/70
+                hover:border-accent/40 hover:bg-accent/10 hover:text-accent
                 transition-all focus:outline-none disabled:opacity-30 disabled:cursor-not-allowed"
             >
               {mod.label}
@@ -286,8 +286,8 @@ export function ChatPanel({
       )}
 
       {canStageNext && transitionSuggestions.length > 0 && (
-        <div className="px-3 py-1.5 border-t border-neon-magenta/10 bg-surface-light/40 flex flex-wrap items-center gap-1.5">
-          <span className="text-[10px] font-mono uppercase tracking-wider text-neon-magenta/55 whitespace-nowrap mr-1">
+        <div className="px-3 py-1.5 border-t border-hot/10 bg-surface-light/40 flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] font-mono uppercase tracking-wider text-hot/55 whitespace-nowrap mr-1">
             Xfade:
           </span>
           {transitionSuggestions.map((suggestion) => (
@@ -298,8 +298,8 @@ export function ChatPanel({
               disabled={isInputDisabled}
               title={suggestion.prompt}
               className="px-2.5 py-0.5 rounded-full text-[10px] font-mono
-                border border-neon-magenta/15 bg-neon-magenta/5 text-white/70
-                hover:border-neon-magenta/45 hover:bg-neon-magenta/12 hover:text-neon-magenta
+                border border-hot/15 bg-hot/5 text-ink/70
+                hover:border-hot/45 hover:bg-hot/12 hover:text-hot
                 transition-all focus:outline-none disabled:opacity-30 disabled:cursor-not-allowed"
             >
               {suggestion.label}
@@ -311,22 +311,22 @@ export function ChatPanel({
       {canStageNext &&
         transitionSuggestionsStatus === "error" &&
         transitionSuggestionsError && (
-          <div role="alert" className="px-3 py-1.5 border-t border-neon-magenta/10 bg-neon-magenta/5 text-[10px] font-mono text-neon-magenta/75">
-            <span className="mr-2 text-neon-magenta/50">NEXT ERR</span>
+          <div role="alert" className="px-3 py-1.5 border-t border-hot/10 bg-hot/5 text-[10px] font-mono text-hot/75">
+            <span className="mr-2 text-hot/50">NEXT ERR</span>
             {transitionSuggestionsError}
           </div>
         )}
 
-      <div className="border-t border-neon-magenta/10 p-3 bg-surface/60">
-        <label className="mb-2 inline-flex items-center gap-2 text-[10px] font-mono text-white/45">
+      <div className="border-t border-hot/10 p-3 bg-surface/60">
+        <label className="mb-2 inline-flex items-center gap-2 text-[10px] font-mono text-ink/45">
           <input
             type="checkbox"
             checked={explanatoryStyle}
             disabled={isInputDisabled}
             onChange={(event) => setExplanatoryStyle(event.target.checked)}
-            className="size-3.5 accent-neon-cyan"
+            className="size-3.5 accent-accent"
           />
-          <span className="font-medium text-white/65">Explanatory</span>
+          <span className="font-medium text-ink/65">Explanatory</span>
           <span>comment every line</span>
         </label>
         <div className="flex gap-2">
@@ -346,9 +346,9 @@ export function ChatPanel({
             }
             disabled={isInputDisabled}
             rows={1}
-            className="min-w-0 flex-1 bg-surface-lighter/60 border border-white/8 rounded-lg px-3 py-2
-              text-sm font-mono text-white/90 placeholder-white/20 resize-none
-              focus:outline-none focus:border-neon-cyan/40 focus:shadow-[0_0_8px_#00fff520]
+            className="min-w-0 flex-1 bg-surface-lighter/60 border border-ink/8 rounded-lg px-3 py-2
+              text-sm font-mono text-ink/90 placeholder-ink/20 resize-none
+              focus:outline-none focus:border-accent/40 focus:shadow-glow-accent
               disabled:opacity-40 transition-all"
           />
           {canStageNext && (
@@ -357,10 +357,10 @@ export function ChatPanel({
               onClick={handleStageNext}
               disabled={isInputDisabled || !inputValue.trim()}
               title="Generate and stage the next pattern without interrupting playback"
-              className="flex items-center px-2.5 py-2 bg-neon-magenta/10
-                hover:bg-neon-magenta/20 text-neon-magenta border border-neon-magenta/25
-                hover:border-neon-magenta/55 rounded-lg text-[10px] font-mono font-medium
-                tracking-wider transition-all hover:shadow-[0_0_12px_#ff2d9530]
+              className="flex items-center px-2.5 py-2 bg-hot/10
+                hover:bg-hot/20 text-hot border border-hot/25
+                hover:border-hot/55 rounded-lg text-[10px] font-mono font-medium
+                tracking-wider transition-all hover:shadow-glow-hot
                 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:shadow-none"
             >
               XFADE NEXT
@@ -370,16 +370,16 @@ export function ChatPanel({
             type="button"
             onClick={handleSubmit}
             disabled={isInputDisabled || !inputValue.trim()}
-            className="px-4 py-2 bg-neon-cyan/15 hover:bg-neon-cyan/25 text-neon-cyan
-              border border-neon-cyan/30 hover:border-neon-cyan/60
+            className="px-4 py-2 bg-accent/15 hover:bg-accent/25 text-accent
+              border border-accent/30 hover:border-accent/60
               rounded-lg text-xs font-mono font-medium tracking-wider transition-all
-              hover:shadow-[0_0_12px_#00fff530]
+              hover:shadow-glow-accent
               disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:shadow-none"
           >
             SEND
           </button>
         </div>
-        <div className="mt-1.5 flex gap-3 text-[9px] font-mono text-white/15 tracking-wider">
+        <div className="mt-1.5 flex gap-3 text-[9px] font-mono text-ink/15 tracking-wider">
           <span>⏎ send</span>
           <span>⇧⏎ newline</span>
           <span>esc cancel</span>

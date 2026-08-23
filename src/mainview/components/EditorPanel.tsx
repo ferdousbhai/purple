@@ -95,9 +95,9 @@ export const EditorPanel = memo(function EditorPanel({
 
   return (
     <div className="flex flex-col h-full bg-surface-light/50 relative">
-      <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-neon-cyan/10 bg-surface/60">
+      <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-accent/10 bg-surface/60">
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <div aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-neon-cyan/60" />
+          <div aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-accent/60" />
           <label className="sr-only" htmlFor="pattern-title">
             Pattern title
           </label>
@@ -115,13 +115,13 @@ export const EditorPanel = memo(function EditorPanel({
                 : "Untitled pattern"
             }
             className="min-w-0 w-full max-w-sm bg-transparent text-xs font-display font-medium
-              tracking-wide text-white/85 placeholder-neon-cyan/35 focus:outline-none
-              focus:text-neon-cyan"
+              tracking-wide text-ink/85 placeholder-accent/35 focus:outline-none
+              focus:text-accent"
           />
           {titleStatus === "generating" && (
             <span
               aria-label="Generating pattern title"
-              className="shrink-0 text-[10px] font-mono text-neon-cyan/50"
+              className="shrink-0 text-[10px] font-mono text-accent/50"
             >
               ···
             </span>
@@ -137,8 +137,8 @@ export const EditorPanel = memo(function EditorPanel({
           }
           title="Choose a folder and save this pattern as a .strudel file"
           className="px-2.5 py-1 text-[10px] font-mono font-medium tracking-wider
-            bg-white/5 hover:bg-neon-cyan/10 text-white/55 hover:text-neon-cyan
-            border border-white/10 hover:border-neon-cyan/40 rounded transition-all
+            bg-ink/5 hover:bg-accent/10 text-ink/55 hover:text-accent
+            border border-ink/10 hover:border-accent/40 rounded transition-all
             disabled:opacity-30 disabled:cursor-not-allowed"
         >
           {saveState.status === "saving" ? "SAVING…" : "SAVE"}
@@ -169,41 +169,41 @@ export const EditorPanel = memo(function EditorPanel({
       </div>
 
       {error && (
-        <div role="alert" className="px-4 py-2 text-xs font-mono text-neon-magenta bg-neon-magenta/10 border-t border-neon-magenta/20 truncate border-glow-magenta">
-          <span className="text-neon-magenta/60 mr-2">ERR</span>
+        <div role="alert" className="px-4 py-2 text-xs font-mono text-hot bg-hot/10 border-t border-hot/20 truncate border-glow-hot">
+          <span className="text-hot/60 mr-2">ERR</span>
           {error}
         </div>
       )}
 
       {titleStatus === "error" && titleError && (
-        <div role="alert" className="px-4 py-2 text-xs font-mono text-neon-magenta bg-neon-magenta/10 border-t border-neon-magenta/20 truncate">
-          <span className="text-neon-magenta/60 mr-2">TITLE ERR</span>
+        <div role="alert" className="px-4 py-2 text-xs font-mono text-hot bg-hot/10 border-t border-hot/20 truncate">
+          <span className="text-hot/60 mr-2">TITLE ERR</span>
           {titleError}
         </div>
       )}
 
       {saveState.status === "error" && (
-        <div role="alert" className="px-4 py-2 text-xs font-mono text-neon-magenta bg-neon-magenta/10 border-t border-neon-magenta/20 truncate">
-          <span className="text-neon-magenta/60 mr-2">SAVE ERR</span>
+        <div role="alert" className="px-4 py-2 text-xs font-mono text-hot bg-hot/10 border-t border-hot/20 truncate">
+          <span className="text-hot/60 mr-2">SAVE ERR</span>
           {saveState.error}
         </div>
       )}
 
       {saveState.status === "saved" && (
-        <div role="status" title={saveState.path} className="px-4 py-2 text-xs font-mono text-neon-lime bg-neon-lime/10 border-t border-neon-lime/20 truncate">
-          <span className="text-neon-lime/60 mr-2">SAVED</span>
+        <div role="status" title={saveState.path} className="px-4 py-2 text-xs font-mono text-active bg-active/10 border-t border-active/20 truncate">
+          <span className="text-active/60 mr-2">SAVED</span>
           {savedFilename(saveState.path)}
         </div>
       )}
 
       {requiresUserActivation && playbackState !== "error" && (
-        <div role="status" className="px-4 py-2 text-xs font-mono text-neon-amber bg-neon-amber/10 border-t border-neon-amber/20">
-          Pattern ready — click START to begin playback.
+        <div role="status" className="px-4 py-2 text-xs font-mono text-warn bg-warn/10 border-t border-warn/20">
+          Pattern ready - click START to begin playback.
         </div>
       )}
 
       {(playbackState === "playing" || playbackState === "transitioning") && (
-        <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-neon-lime/0 via-neon-lime/60 to-neon-lime/0 animate-glow-pulse" />
+        <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-active/0 via-active/60 to-active/0 animate-glow-pulse" />
       )}
     </div>
   );

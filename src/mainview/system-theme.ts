@@ -21,8 +21,8 @@ export type SystemThemeVariables = {
   "--color-surface-light"?: string;
   "--color-surface-lighter"?: string;
   "--color-text"?: string;
-  "--color-white"?: string;
-  "--color-neon-cyan"?: string;
+  "--color-ink"?: string;
+  "--color-accent"?: string;
 };
 
 /** The CSS custom properties a system theme overrides, as name → value. */
@@ -40,11 +40,11 @@ export function systemThemeVariables(theme: SystemTheme): SystemThemeVariables {
   }
   if (theme.foreground) {
     variables["--color-text"] = theme.foreground;
-    variables["--color-white"] = theme.foreground;
+    variables["--color-ink"] = theme.foreground;
   }
   if (theme.accent) {
-    // The dominant accent across the UI; the other neons stay as-is.
-    variables["--color-neon-cyan"] = theme.accent;
+    // The dominant accent across the UI; hot/active/warn stay as-is.
+    variables["--color-accent"] = theme.accent;
   }
   return variables;
 }

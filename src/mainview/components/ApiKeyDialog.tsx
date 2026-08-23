@@ -103,18 +103,18 @@ export function ApiKeyDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="api-key-title"
-        className="w-[min(92vw,440px)] rounded-lg border border-neon-cyan/25
-          bg-surface-light shadow-[0_0_30px_#00fff51f]"
+        className="w-[min(92vw,440px)] rounded-lg border border-accent/25
+          bg-surface-light shadow-glow-accent-lg"
       >
-        <div className="flex items-center border-b border-neon-cyan/10 px-4 py-3">
+        <div className="flex items-center border-b border-accent/10 px-4 py-3">
           <div>
             <h2
               id="api-key-title"
-              className="font-display text-sm font-semibold text-white/85"
+              className="font-display text-sm font-semibold text-ink/85"
             >
               Google Gemini API Key
             </h2>
-            <p className="mt-0.5 text-[10px] font-mono uppercase tracking-widest text-neon-cyan/55">
+            <p className="mt-0.5 text-[10px] font-mono uppercase tracking-widest text-accent/55">
               {sourceText}
             </p>
           </div>
@@ -123,17 +123,17 @@ export function ApiKeyDialog({
             onClick={onClose}
             disabled={isSaving}
             aria-label="Close settings"
-            className="ml-auto grid size-7 place-items-center rounded border border-white/10
-              bg-surface-lighter/30 text-white/45 transition-all
-              hover:border-neon-magenta/45 hover:text-neon-magenta
-              focus:outline-none focus:border-neon-magenta/60 disabled:opacity-35"
+            className="ml-auto grid size-7 place-items-center rounded border border-ink/10
+              bg-surface-lighter/30 text-ink/45 transition-all
+              hover:border-hot/45 hover:text-hot
+              focus:outline-none focus:border-hot/60 disabled:opacity-35"
           >
             ×
           </button>
         </div>
 
         <div className="space-y-3 p-4">
-          <label htmlFor="gemini-api-key" className="text-xs font-mono text-white/60">
+          <label htmlFor="gemini-api-key" className="text-xs font-mono text-ink/60">
             Gemini API key
           </label>
           <input
@@ -147,19 +147,19 @@ export function ApiKeyDialog({
             type="password"
             autoComplete="off"
             placeholder="Paste Gemini API key"
-            className="w-full rounded-lg border border-white/10 bg-surface/80 px-3 py-2
-              font-mono text-sm text-white/90 placeholder-white/20 transition-all
-              focus:border-neon-cyan/45 focus:outline-none focus:shadow-[0_0_10px_#00fff520]"
+            className="w-full rounded-lg border border-ink/10 bg-surface/80 px-3 py-2
+              font-mono text-sm text-ink/90 placeholder-ink/20 transition-all
+              focus:border-accent/45 focus:outline-none focus:shadow-glow-accent"
           />
 
-          <p className="text-[10px] leading-relaxed font-mono text-white/35">
+          <p className="text-[10px] leading-relaxed font-mono text-ink/35">
             Saved in your system keyring when available. Otherwise Purple uses an
             unencrypted fallback file in your config directory (owner-only on
             Linux).
           </p>
 
           {error && (
-            <p role="alert" className="text-xs font-mono text-neon-magenta/85">
+            <p role="alert" className="text-xs font-mono text-hot/85">
               {error}
             </p>
           )}
@@ -168,9 +168,9 @@ export function ApiKeyDialog({
             <button
               type="submit"
               disabled={isSaving}
-              className="rounded-lg border border-neon-cyan/35 bg-neon-cyan/15 px-3 py-2
-                text-xs font-mono font-medium tracking-wider text-neon-cyan transition-all
-                hover:border-neon-cyan/60 hover:bg-neon-cyan/25
+              className="rounded-lg border border-accent/35 bg-accent/15 px-3 py-2
+                text-xs font-mono font-medium tracking-wider text-accent transition-all
+                hover:border-accent/60 hover:bg-accent/25
                 disabled:cursor-not-allowed disabled:opacity-35"
             >
               SAVE
@@ -179,9 +179,9 @@ export function ApiKeyDialog({
               type="button"
               onClick={() => void handleClear()}
               disabled={isSaving || status.source !== "app"}
-              className="rounded-lg border border-white/10 bg-surface-lighter/35 px-3 py-2
-                text-xs font-mono font-medium tracking-wider text-white/45 transition-all
-                hover:border-neon-magenta/45 hover:text-neon-magenta
+              className="rounded-lg border border-ink/10 bg-surface-lighter/35 px-3 py-2
+                text-xs font-mono font-medium tracking-wider text-ink/45 transition-all
+                hover:border-hot/45 hover:text-hot
                 disabled:cursor-not-allowed disabled:opacity-30"
             >
               CLEAR APP KEY

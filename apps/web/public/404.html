@@ -4,11 +4,17 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
-    <meta name="theme-color" content="#0a0a0f" />
+    <meta name="theme-color" content="#0c0914" />
     <meta name="robots" content="noindex" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <title>Purple - not found</title>
     <style>
+      /* Standalone page: duplicates the palette tokens from src/styles.css. */
+      :root {
+        --surface: #0c0914;
+        --text: #e6e1f2;
+        --accent: #c77dff;
+      }
       body {
         margin: 0;
         min-height: 100vh;
@@ -16,13 +22,13 @@
         place-content: center;
         gap: 10px;
         text-align: center;
-        background: #0a0a0f;
-        color: #e0e0e8;
+        background: var(--surface);
+        color: var(--text);
         font-family: 'Outfit', system-ui, sans-serif;
       }
       h1,
       a {
-        color: #27e0f0;
+        color: var(--accent);
       }
       main {
         display: grid;
@@ -34,7 +40,7 @@
         margin: 0;
       }
       a:focus-visible {
-        outline: 2px solid #27e0f0;
+        outline: 2px solid var(--accent);
         outline-offset: 4px;
       }
     </style>

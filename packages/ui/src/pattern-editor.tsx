@@ -1,10 +1,10 @@
 import { javascript } from "@codemirror/lang-javascript";
 import { Prec } from "@codemirror/state";
-import { oneDark } from "@codemirror/theme-one-dark";
 import { keymap, type EditorView } from "@codemirror/view";
 import CodeMirror from "@uiw/react-codemirror";
 import type { SourceRange } from "@purple/core/types";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { purpleEditorDark, purpleEditorLight } from "./editor-theme";
 import {
   playbackHighlightExtension,
   updatePlaybackHighlights,
@@ -82,7 +82,7 @@ export function PatternEditor({
     <CodeMirror
       value={code}
       height="100%"
-      theme={darkTheme ? oneDark : "light"}
+      theme={darkTheme ? purpleEditorDark : purpleEditorLight}
       extensions={extensions}
       basicSetup={BASIC_SETUP}
       onChange={onCodeChange}

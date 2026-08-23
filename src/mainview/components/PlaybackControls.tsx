@@ -29,9 +29,9 @@ export function PlaybackControls({
           type="button"
           onClick={() => onTransition(DEFAULT_TRANSITION_CYCLES)}
           className="flex items-center gap-1.5 px-3 py-1 text-xs font-mono font-medium
-              bg-neon-cyan/15 hover:bg-neon-cyan/25 text-neon-cyan
-              border border-neon-cyan/30 hover:border-neon-cyan/60
-              rounded transition-all hover:shadow-[0_0_12px_#00fff540]"
+              bg-accent/15 hover:bg-accent/25 text-accent
+              border border-accent/30 hover:border-accent/60
+              rounded transition-all hover:shadow-glow-accent"
           title={`xfade over ${DEFAULT_TRANSITION_CYCLES} cycles`}
         >
           <span aria-hidden="true">↝</span>
@@ -42,7 +42,7 @@ export function PlaybackControls({
       {isTransitioning && (
         <span
           role="status"
-          className="px-2 py-1 text-[10px] font-mono tracking-wider text-neon-cyan"
+          className="px-2 py-1 text-[10px] font-mono tracking-wider text-accent"
         >
           ↝ XFADING
         </span>
@@ -53,12 +53,12 @@ export function PlaybackControls({
           type="button"
           onClick={onStop}
           className="group flex items-center gap-1.5 px-3 py-1 text-xs font-mono font-medium
-            bg-neon-magenta/15 hover:bg-neon-magenta/25 text-neon-magenta
-            border border-neon-magenta/30 hover:border-neon-magenta/60
-            rounded transition-all hover:shadow-[0_0_12px_#ff2d9540]"
+            bg-hot/15 hover:bg-hot/25 text-hot
+            border border-hot/30 hover:border-hot/60
+            rounded transition-all hover:shadow-glow-hot"
           title="Stop (Ctrl+.)"
         >
-          <span aria-hidden="true" className="inline-block w-2 h-2 bg-neon-magenta rounded-[1px]" />
+          <span aria-hidden="true" className="inline-block w-2 h-2 bg-hot rounded-[1px]" />
           STOP
         </button>
       ) : (
@@ -67,9 +67,9 @@ export function PlaybackControls({
           onClick={onPlay}
           disabled={isLoading || isTransitioning}
           className="group flex items-center gap-1.5 px-3 py-1 text-xs font-mono font-medium
-            bg-neon-lime/10 hover:bg-neon-lime/20 text-neon-lime
-            border border-neon-lime/30 hover:border-neon-lime/60
-            rounded transition-all hover:shadow-[0_0_12px_#39ff1440]
+            bg-active/10 hover:bg-active/20 text-active
+            border border-active/30 hover:border-active/60
+            rounded transition-all hover:shadow-glow-active
             disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:shadow-none"
           title="Play (Ctrl+Enter)"
         >

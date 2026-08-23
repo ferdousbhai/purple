@@ -11,7 +11,7 @@ function WaitingDots() {
     <div className="h-5 flex items-center">
       <span
         aria-label="Waiting for response"
-        className="inline-flex items-center gap-1 text-neon-cyan/60"
+        className="inline-flex items-center gap-1 text-accent/60"
       >
         {DOT_DELAYS_MS.map((delay) => (
           <span
@@ -33,7 +33,7 @@ export function StreamingText({ text }: StreamingTextProps) {
   return (
     <div className="whitespace-pre-wrap text-sm leading-relaxed">
       {visibleText}
-      <span className="inline-block w-[2px] h-[14px] bg-neon-cyan ml-0.5 animate-glow-pulse align-middle" />
+      <span className="inline-block w-[2px] h-[14px] bg-accent ml-0.5 animate-glow-pulse align-middle" />
     </div>
   );
 }
