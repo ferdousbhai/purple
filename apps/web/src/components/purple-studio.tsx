@@ -492,7 +492,13 @@ function Composer(props: {
   useEffect(() => {
     const transcript = transcriptRef.current
     if (transcript) transcript.scrollTop = transcript.scrollHeight
-  }, [chat.messages, chat.isStreaming, chat.streamingText, isAcceptingPattern])
+  }, [
+    chat.messages,
+    chat.isStreaming,
+    chat.streamingText,
+    flow.stagedCode,
+    isAcceptingPattern,
+  ])
 
   const busy =
     chat.isStreaming ||
@@ -503,6 +509,9 @@ function Composer(props: {
   const send = (text: string, mode: PatternMode = 'play') => {
     const prompt = text.trim()
     if (!prompt || busy) return
+    // The staged transition belongs to the preceding assistant turn. Once a
+    // new turn begins, its one-shot controls are no longer actionable.
+    flow.setStagedCode(null)
     flow.lastPromptRef.current = prompt
     patternExplanatoryStyleRef.current = explanatoryStyle
     flow.setUiError(null)
@@ -615,6 +624,9 @@ function Composer(props: {
               <span>.</span><span>.</span><span>.</span>
             </span>
           ) : null}
+          {flow.stagedCode ? (
+            <MixRow flow={flow} playback={props.playback} />
+          ) : null}
         </div>
       )}
 
@@ -665,10 +677,6 @@ function Composer(props: {
         </div>
       ) : null}
 
-      {flow.stagedCode ? (
-        <MixRow code={props.code} flow={flow} playback={props.playback} />
-      ) : null}
-
       {sessionError ? <p className="error" role="alert">{sessionError}</p> : null}
 
       <form
@@ -703,8 +711,8 @@ function Composer(props: {
   )
 }
 
-function MixRow(props: { code: string; flow: PatternFlow; playback: Playback }) {
-  const { code, flow, playback } = props
+function MixRow(props: { flow: PatternFlow; playback: Playback }) {
+  const { flow, playback } = props
   const [transitionCycles, setTransitionCycles] = useState(DEFAULT_TRANSITION_CYCLES)
   const mixing = playback.playbackState === 'transitioning'
   return (
@@ -725,11 +733,14 @@ function MixRow(props: { code: string; flow: PatternFlow; playback: Playback }) 
         className="primary"
         disabled={mixing}
         onClick={() => {
-          if (!flow.stagedCode) return
-          void playback.transition(code, transitionCycles).then((result) => {
+          const stagedCode = flow.stagedCode
+          if (!stagedCode) return
+          // This action belongs to one generated turn. Consume it immediately
+          // so it cannot be clicked twice while the async crossfade starts.
+          flow.setStagedCode(null)
+          void playback.transition(stagedCode, transitionCycles).then((result) => {
             if (!result.ok) return
-            flow.setStagedCode(null)
-            void flow.refreshSuggestions(code, flow.lastPromptRef.current)
+            void flow.refreshSuggestions(stagedCode, flow.lastPromptRef.current)
           })
         }}
       >

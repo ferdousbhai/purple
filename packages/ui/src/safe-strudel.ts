@@ -521,22 +521,25 @@ function interpretCall(
     );
   }
 
-  const args = node.arguments.map((argument) => {
-    if (argument.type === "SpreadElement") {
-      throw new UnsafePatternError("Spread arguments are not allowed.", argument);
-    }
-    return interpret(argument, scope, locals, budget, depth, source);
-  });
-
-  if (typeof callable !== "function") {
-    throw new UnsafePatternError("The selected Strudel value is not callable.", node);
-  }
   const callName =
     node.callee.type === "Identifier"
       ? node.callee.name
       : node.callee.property.type === "Identifier"
         ? node.callee.property.name
         : undefined;
+  const args = interpretCallArguments(
+    node,
+    scope,
+    locals,
+    budget,
+    depth,
+    source,
+    callName === "xfade",
+  );
+
+  if (typeof callable !== "function") {
+    throw new UnsafePatternError("The selected Strudel value is not callable.", node);
+  }
   if (callName && EVENT_MULTIPLIER_CALLS.has(callName)) {
     consumeEventMultiplier(
       budget,
@@ -546,6 +549,58 @@ function interpretCall(
     );
   }
   return Reflect.apply(callable, owner, args);
+}
+
+function interpretCallArguments(
+  node: CallExpression,
+  scope: Scope,
+  locals: Locals,
+  budget: EvaluationBudget,
+  depth: number,
+  source: string,
+  independentBranches: boolean,
+): unknown[] {
+  const inheritedEventMultiplier = budget.eventMultiplier;
+  let largestBranchMultiplier = inheritedEventMultiplier;
+
+  const args = node.arguments.map((argument) => {
+    if (argument.type === "SpreadElement") {
+      throw new UnsafePatternError("Spread arguments are not allowed.", argument);
+    }
+
+    if (!independentBranches) {
+      return interpret(argument, scope, locals, budget, depth, source);
+    }
+
+    // xfade queries its two patterns in parallel. Multiplying one branch's
+    // repetition budget into the other rejects two patterns that each passed
+    // the same safety check on their own. Keep each branch independent, then
+    // carry the largest branch forward so a transform chained after xfade is
+    // still checked against the full per-branch multiplier.
+    const branchBudget: EvaluationBudget = {
+      eventMultiplier: inheritedEventMultiplier,
+      nodes: budget.nodes,
+    };
+    const value = interpret(
+      argument,
+      scope,
+      locals,
+      branchBudget,
+      depth,
+      source,
+    );
+    budget.nodes = branchBudget.nodes;
+    largestBranchMultiplier = Math.max(
+      largestBranchMultiplier,
+      branchBudget.eventMultiplier,
+    );
+    return value;
+  });
+
+  if (independentBranches) {
+    budget.eventMultiplier = largestBranchMultiplier;
+  }
+  return args;
 }
 
 function eventMultiplierArgument(

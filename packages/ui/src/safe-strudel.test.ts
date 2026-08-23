@@ -30,6 +30,7 @@ function scope() {
       run: vi.fn(() => pattern),
       s: vi.fn(() => pattern),
       signal: vi.fn((transform: (cycle: number) => number) => transform(12)),
+      xfade: vi.fn(() => pattern),
     },
   };
 }
@@ -56,6 +57,25 @@ describe("evaluateSafeStrudelExpression", () => {
         fixture.scope,
       ),
     ).toBe(1);
+  });
+
+  it("checks xfade repetition budgets per parallel branch", () => {
+    const fixture = scope();
+    const transition = `xfade(
+      s("bd*32"),
+      signal(cycle => Math.max(0, Math.min(1, (cycle - 8) / 4))),
+      s("hh*32")
+    )`;
+
+    expect(
+      evaluateSafeStrudelExpression(transition, fixture.scope),
+    ).toBe(fixture.pattern);
+    expect(() =>
+      evaluateSafeStrudelExpression(
+        `${transition}.fast(32)`,
+        fixture.scope,
+      ),
+    ).toThrow("cumulative event multiplier");
   });
 
   it("allows bounded numeric mini-patterns for event transforms", () => {

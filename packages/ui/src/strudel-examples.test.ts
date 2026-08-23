@@ -75,6 +75,14 @@ describe("PROMPT_EXAMPLES", () => {
     expect(pattern.queryArc(0, 4).length).toBeGreaterThan(0);
   });
 
+  it("xfades repeated patterns without multiplying parallel safety budgets", async () => {
+    await expect(
+      evaluatePattern(
+        buildTransitionCode('s("bd*32")', 's("hh*32")', 8, 4),
+      ),
+    ).resolves.toBeDefined();
+  });
+
   it("preserves mini-notation source locations for playback highlighting", async () => {
     const pattern = await evaluatePattern('s("bd hh")');
     const locations = pattern
