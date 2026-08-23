@@ -233,7 +233,7 @@ export function PurpleStudio() {
         </div>
         <div className="topbar-actions">
           <a
-            className="chrome"
+            className="chrome source-link"
             href="https://github.com/ferdousbhai/purple"
             rel="noreferrer"
             target="_blank"
@@ -334,7 +334,7 @@ export function PurpleStudio() {
             >
               <span aria-live="polite">{currentPatternSaved ? 'SAVED ✓' : 'SAVE'}</span>
             </button>
-            <button className="chrome" onClick={exportPattern}>EXPORT</button>
+            <button className="chrome export" onClick={exportPattern}>EXPORT</button>
             {editorHasUnappliedChanges ? (
               <button
                 className="chrome apply-changes"

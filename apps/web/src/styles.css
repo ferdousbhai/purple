@@ -422,6 +422,16 @@ a { color: var(--accent); }
   /* The session row sizes to its content; keep the preset picker (and, in
      landscape, the composer) from crowding out the editor. */
   .session-pane { max-height: 60vh; max-height: 60dvh; overflow-y: auto; }
+  /* Developer chrome; widen the window to reach the repo. */
+  .source-link { display: none; }
+}
+
+/* ── Phone widths: every pixel goes to the music ── */
+@media (max-width: 560px) {
+  /* File downloads are awkward on phones; SAVE and the session store keep work. */
+  .editor-bar .export { display: none; }
+  /* Line numbers spend ~7% of the viewport on navigation nobody does here. */
+  .cm-editor .cm-gutters { display: none !important; }
 }
 
 @media (prefers-reduced-motion: reduce) {
