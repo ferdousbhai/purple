@@ -79,4 +79,9 @@ jobs:
           appstreamcli validate --no-net packaging/com.soundspurple.Purple.metainfo.xml
 
       - name: Ensure dependency locks stayed unchanged
-        run: git diff --exit-code -- pnpm-lock.yaml src-tauri/Cargo.lock
+        # `git diff` silently becomes a no-index comparison when a container
+        # step loses the checkout working directory. Anchor it explicitly so
+        # the two lockfiles are checked against the index, not against each other.
+        run: >-
+          git -C "$GITHUB_WORKSPACE" diff --exit-code --
+          pnpm-lock.yaml src-tauri/Cargo.lock
