@@ -12,6 +12,7 @@
     "preview": "vite preview",
     "deploy": "pnpm run build && wrangler deploy",
     "test": "vitest run",
+    "test:browser": "vitest run --config vitest.browser.config.ts",
     "typecheck": "tsc --noEmit",
     "check": "pnpm run test && pnpm run typecheck && pnpm run build"
   },
@@ -23,10 +24,14 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@testing-library/react": "16.3.2",
+    "@testing-library/user-event": "14.6.1",
     "@types/node": "^22.10.2",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^6.0.1",
+    "@vitest/browser-playwright": "4.1.5",
+    "playwright": "1.62.1",
     "typescript": "^6.0.2",
     "vite": "^8.0.0",
     "vitest": "^4.1.5",

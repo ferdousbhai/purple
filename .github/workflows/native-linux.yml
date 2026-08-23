@@ -46,6 +46,8 @@ jobs:
           pnpm --version
 
       - name: Fetch locked dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
         run: |
           pnpm install --frozen-lockfile
           cargo fetch --locked --manifest-path src-tauri/Cargo.toml
@@ -64,6 +66,11 @@ jobs:
         env:
           CARGO_NET_OFFLINE: "true"
         run: pnpm run check
+
+      - name: Run browser flow smoke tests
+        env:
+          CHROMIUM_PATH: /usr/bin/chromium
+        run: pnpm --filter @purple/web run test:browser
 
       - name: Verify AudioWorklet under the production CSP
         run: node scripts/verify-worklet-csp.mjs
