@@ -1,4 +1,7 @@
 import { Buffer } from "node:buffer";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Plugin, ResolvedConfig } from "vite";
 
 const DEV_WORKLET_PATH = "/__purple/superdough-worklets.js";
@@ -12,6 +15,19 @@ const EMBEDDED_WORKLET =
  * rewrite only that static module reference. Generated `dough()` worklets stay
  * blocked and are not exposed by Purple's safe expression language.
  */
+/** superdough's package directory, resolved the way its consumers reach it:
+ * repo root -> @purple/ui -> @strudel/web -> @strudel/webaudio -> superdough. */
+function superdoughPackageRoot(): string {
+  const fromUi = createRequire(
+    fileURLToPath(new URL("../packages/ui/package.json", import.meta.url)),
+  );
+  const web = fromUi.resolve("@strudel/web");
+  const webaudio = createRequire(web).resolve("@strudel/webaudio");
+  const entry = createRequire(webaudio).resolve("superdough");
+  // The entry is dist/index.mjs; subpath imports live at the package root.
+  return path.join(entry.slice(0, entry.lastIndexOf("/superdough/")), "superdough");
+}
+
 export function sameOriginSuperdoughWorklet(): Plugin {
   let config: ResolvedConfig | undefined;
   let workletSource: string | undefined;
@@ -20,7 +36,17 @@ export function sameOriginSuperdoughWorklet(): Plugin {
   return {
     name: "purple-same-origin-superdough-worklet",
     enforce: "pre",
-    config: () => ({ optimizeDeps: { exclude: ["superdough"] } }),
+    // superdough must stay unbundled so the rewrite below sees its source.
+    // The optimized @strudel chunks then keep `import "superdough"` as a bare
+    // external, which pnpm's isolated node_modules cannot resolve from the
+    // dev server's deps directory - the alias pins it to the copy the strudel
+    // packages themselves resolve.
+    config: () => ({
+      optimizeDeps: { exclude: ["superdough"] },
+      resolve: {
+        alias: { superdough: superdoughPackageRoot() },
+      },
+    }),
     configResolved: (resolved) => {
       config = resolved;
     },
