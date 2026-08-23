@@ -410,9 +410,18 @@ a { color: var(--accent); }
 
 /* ── Small screens: stack, editor stays the hero ── */
 @media (max-width: 880px) {
-  .studio-grid { grid-template-columns: 1fr; grid-template-rows: minmax(0, 52%) minmax(0, 48%); }
+  .studio-grid { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
   .editor-pane { border-right: 0; border-bottom: 1px solid var(--border); }
   .transport { min-width: 0; }
+  /* The squeezed chat history is unreadable here, so the editor takes its
+     room. The staged-mix control still renders inside the transcript and
+     must survive; chips, suggestions and the composer keep working. */
+  .transcript { flex: 0 0 auto; }
+  .transcript > :not(.mix-row) { display: none; }
+  .explanatory-toggle { display: none; }
+  /* The session row sizes to its content; keep the preset picker (and, in
+     landscape, the composer) from crowding out the editor. */
+  .session-pane { max-height: 60vh; max-height: 60dvh; overflow-y: auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {
