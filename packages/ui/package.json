@@ -8,6 +8,7 @@
     "./pattern-editor": "./src/pattern-editor.tsx",
     "./playback-flow": "./src/playback-flow.ts",
     "./playback-highlight": "./src/playback-highlight.ts",
+    "./purple-mark": "./src/purple-mark.tsx",
     "./session-store": "./src/session-store.ts",
     "./spectrum-bars": "./src/spectrum-bars.tsx",
     "./testing": "./src/testing.ts",

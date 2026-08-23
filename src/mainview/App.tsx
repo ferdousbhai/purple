@@ -3,6 +3,7 @@ import { Group, Panel, Separator } from "react-resizable-panels";
 import { EditorPanel } from "./components/EditorPanel";
 import { ChatPanel } from "./components/ChatPanel";
 import { ApiKeyDialog } from "./components/ApiKeyDialog";
+import { PurpleMark } from "@purple/ui/purple-mark";
 import { SpectrumBars } from "@purple/ui/spectrum-bars";
 import { openSupportStrudel } from "./backend";
 import { usePurpleController } from "./hooks/usePurpleController";
@@ -69,6 +70,7 @@ export function App() {
     <div className="h-screen bg-surface text-ink relative noise grid-bg overflow-hidden">
       <div className="h-9 flex items-center px-4 border-b border-accent/10 bg-surface/80 backdrop-blur-sm relative z-10">
         <div className="flex items-center gap-2">
+          <PurpleMark className="shrink-0" />
           <span className="text-accent glow-accent font-display font-bold text-sm tracking-wider">
             PURPLE
           </span>

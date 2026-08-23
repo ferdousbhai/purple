@@ -47,6 +47,7 @@ import {
   validationFailureMessage,
   type PatternMode,
 } from '@purple/ui/playback-flow'
+import { PurpleMark } from '@purple/ui/purple-mark'
 import { SpectrumBars } from '@purple/ui/spectrum-bars'
 import { usePlayback } from '@purple/ui/use-playback'
 import { defaultEnsureRunningContext } from '@purple/ui/use-strudel'
@@ -242,6 +243,7 @@ export function PurpleStudio() {
     <main className="studio-shell">
       <header className="topbar">
         <div className="brand">
+          <PurpleMark className="brand-mark" />
           <span className="brand-name">PURPLE</span>
         </div>
         <div className="topbar-actions">
