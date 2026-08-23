@@ -37,6 +37,7 @@ declare module "@strudel/web/web.mjs" {
   }
 
   export interface StrudelPattern {
+    _fast: (factor: number) => StrudelPattern;
     queryArc: (
       begin: number,
       end: number,
@@ -45,15 +46,11 @@ declare module "@strudel/web/web.mjs" {
   }
 
   export interface StrudelRepl {
-    /**
-     * Resolves to the evaluated pattern, or to `undefined` when evaluation
-     * failed — the reason is delivered separately to `onEvalError`.
-     */
-    evaluate: (
-      code: string,
-      autoplay?: boolean,
-      shouldHush?: boolean,
-    ) => Promise<StrudelPattern | undefined>;
+    scheduler: { cps: number };
+    setPattern: (
+      pattern: StrudelPattern,
+      autostart?: boolean,
+    ) => Promise<StrudelPattern>;
   }
 
   export interface InitStrudelOptions {
@@ -71,7 +68,22 @@ declare module "@strudel/web/web.mjs" {
   export function initStrudel(
     options: InitStrudelOptions,
   ): Promise<StrudelRepl>;
-  export function samples(source: string): Promise<void>;
+  export function register(
+    name: "cpm",
+    implementation: (
+      cyclesPerMinute: number,
+      pattern: StrudelPattern,
+    ) => StrudelPattern,
+  ): void;
+  export type StrudelSampleLeaf = string | readonly string[];
+  export type StrudelSampleMap = Record<
+    string,
+    StrudelSampleLeaf | Readonly<Record<string, StrudelSampleLeaf>>
+  >;
+  export function samples(
+    source: StrudelSampleMap,
+    baseUrl?: string,
+  ): Promise<void>;
   /** One sound-registry entry. Purple only ever tests for presence. */
   export interface RegisteredSound {
     data?: object;
@@ -82,15 +94,12 @@ declare module "@strudel/web/web.mjs" {
   export function getSound(name: string): RegisteredSound | undefined;
   /** The registry itself; `get()` returns the name -> sound map. */
   export const soundMap: { get(): Record<string, RegisteredSound> };
-  /** Register friendly bank aliases from a `{alias: bank}` JSON map at `source`. */
-  export function aliasBank(source: string): Promise<void>;
+  /** Register friendly bank aliases from a parsed `{bank: alias}` map. */
+  export function aliasBank(
+    aliases: Record<string, string | readonly string[]>,
+  ): Promise<void>;
   /** Register `alias` as another name for the already-loaded sound `original`. */
   export function soundAlias(original: string, alias: string): void;
   /** Register the z_* ZZFX chiptune synths (no network involved). */
   export function registerZZFXSounds(): void;
-}
-
-declare module "@strudel/soundfonts" {
-  /** Register the gm_* General MIDI soundfont instruments. */
-  export function registerSoundfonts(): Promise<void>;
 }

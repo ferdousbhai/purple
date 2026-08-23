@@ -3,10 +3,12 @@ import {
   buildCompactionRequest,
   buildContextWindow,
   COMPACTION_TRIGGER_TOKENS,
+  COMPACTION_WARNING_TOKENS,
   createFoldScheduler,
   MAX_FOLD_FAILURES,
   parseCompactionSummary,
   planCompaction,
+  shouldSuggestNewSession,
   SUMMARY_CONTEXT_PREFIX,
   type CompactionSummaryResult,
   type FoldSnapshot,
@@ -52,6 +54,30 @@ describe("planCompaction", () => {
   it("clamps an out-of-range covered count", () => {
     expect(planCompaction(5, 10, null)).toEqual({ fold: false, foldEnd: 5 });
     expect(planCompaction(5, -3, null)).toEqual({ fold: false, foldEnd: 0 });
+  });
+});
+
+describe("shouldSuggestNewSession", () => {
+  it("appears before compaction is due", () => {
+    expect(
+      shouldSuggestNewSession(4, 0, COMPACTION_WARNING_TOKENS - 1),
+    ).toBe(false);
+    expect(
+      shouldSuggestNewSession(4, 0, COMPACTION_WARNING_TOKENS),
+    ).toBe(true);
+  });
+
+  it("stays visible while a due fold is pending", () => {
+    expect(shouldSuggestNewSession(4, 0, OVER_BUDGET)).toBe(true);
+  });
+
+  it("disappears after the long history is compacted", () => {
+    expect(shouldSuggestNewSession(4, 4, OVER_BUDGET)).toBe(false);
+  });
+
+  it("does not appear without a token count or meaningful uncovered history", () => {
+    expect(shouldSuggestNewSession(4, 0, null)).toBe(false);
+    expect(shouldSuggestNewSession(4, 3, OVER_BUDGET)).toBe(false);
   });
 });
 

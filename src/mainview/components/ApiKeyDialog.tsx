@@ -152,6 +152,12 @@ export function ApiKeyDialog({
               focus:border-neon-cyan/45 focus:outline-none focus:shadow-[0_0_10px_#00fff520]"
           />
 
+          <p className="text-[10px] leading-relaxed font-mono text-white/35">
+            Saved in your system keyring when available. Otherwise Purple uses an
+            unencrypted fallback file in your config directory (owner-only on
+            Linux).
+          </p>
+
           {error && (
             <p role="alert" className="text-xs font-mono text-neon-magenta/85">
               {error}

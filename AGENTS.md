@@ -21,7 +21,7 @@ src/
     backend.ts    # the only module that imports @tauri-apps/api
     audio-activation.ts, audio-shim.ts
     components/   # EditorPanel, ChatPanel, PlaybackControls, MessageBubble, StreamingText, CodeBlockRenderer, ApiKeyDialog
-    hooks/        # useChat, usePurpleController, useKeyboardShortcuts, useTransitionSuggestions
+    hooks/        # desktop composition: usePurpleController, useKeyboardShortcuts
   shared/         # desktop-only types.ts, cli.ts (+ parser tests)
 apps/
   web/            # @purple/web — hosted app (purple-web Worker, soundspurple.com)
@@ -35,8 +35,9 @@ packages/
   core/           # @purple/core — shared, dependency-free
     src/pattern.ts, prompts.ts, recipes.ts, transitions.ts, compaction.ts, types.ts, index.ts
   ui/             # @purple/ui — shared webview modules (React/CodeMirror/@strudel/web)
-    src/use-strudel.ts, use-playback.ts, playback-highlight.ts, strudel-web.d.ts
-packaging/        # PKGBUILD + purple.desktop
+    src/use-strudel.ts, use-playback.ts, pattern-editor.tsx, playback-highlight.ts
+    src/use-studio-chat.ts, use-generated-pattern.ts, use-transition-suggestions.ts
+packaging/        # PKGBUILD + com.soundspurple.Purple desktop/AppStream metadata
 scripts/          # install-user.sh
 ```
 
@@ -53,25 +54,25 @@ pnpm run web:check    # web test/typecheck/build
 pnpm run test         # vitest run (desktop + packages)
 pnpm run test:rust    # cargo test
 pnpm run typecheck    # tsc --noEmit
-pnpm run check        # lint + test + test:rust + typecheck + build:webview + web:check
+pnpm run check        # JS/Rust lint+format, tests, typechecks, and both webview builds
 ```
 
 ## CI and deployment
 
-There is no GitHub Actions workflow — Cloudflare **Workers Builds** is the
-only automated gate. It deploys `apps/web` on every push to `master`: build
-command `pnpm run web:check`, deploy command
-`pnpm --filter @purple/web exec wrangler deploy`. `web:check` fails the build
-before the deploy command runs when a test or typecheck breaks. Everything
-else (desktop tests, cargo, lint) is covered by running `pnpm run check`
-locally before pushing.
+GitHub Actions runs the complete JavaScript/Rust/native Linux gate on pushes
+and pull requests, reviews new dependencies on pull requests, and builds an
+attested Arch package plus SBOM/checksums from version tags. Cloudflare
+**Workers Builds** independently deploys `apps/web` on every push to `master`:
+build command `pnpm run web:check`, deploy command
+`pnpm --filter @purple/web exec wrangler deploy`. Repository-side workflows
+never deploy the web app or publish to the AUR.
 
 ## Key files to read before changing
 
 - `src/mainview/backend.ts` + `src-tauri/src/gemini.rs` — the whole desktop backend contract: `stream_pattern` over a `tauri::ipc::Channel`, `generate_json` for structured output (the caller passes the prompt and schema, so Rust stays generic)
-- `src/mainview/hooks/useChat.ts` — `busyRef` guard, auto-retry (max 2) on eval failure, background compaction
+- `packages/ui/src/use-studio-chat.ts` + `use-generated-pattern.ts` — shared streaming/compaction and the ten-revision validation/playback repair budget
 - `apps/web/src/lib/byok.ts` — the web app's only inference path: browser → Google with the visitor's key (header, never URL); chat persists in localStorage and compacts with the shared `@purple/core` policy
-- `packages/ui/src/use-strudel.ts` + `src/mainview/audio-activation.ts` — AudioContext must be created synchronously in user gesture, then passed to `initStrudel({ prebake })` with `samples("github:tidalcycles/Dirt-Samples/master")`; the desktop injects `requireRunningAudioContext` via `StrudelAudioOptions`
+- `packages/ui/src/use-strudel.ts` + `safe-strudel.ts` + `src/mainview/audio-activation.ts` — AudioContext must be created synchronously in a user gesture; playback uses the safe expression interpreter and commit-pinned sample manifests, while desktop injects `requireRunningAudioContext` via `StrudelAudioOptions`
 - `packages/core/src/*` — pattern/recipes/transitions/compaction, self-contained; tests alongside
 
 ## Conventions

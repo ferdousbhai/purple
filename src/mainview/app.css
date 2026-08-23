@@ -5,6 +5,8 @@
   --color-surface-light: #12121c;
   --color-surface-lighter: #1a1a2a;
   --color-text: #e0e0e8;
+  /* Existing text-white/border-white utilities are semantic ink in this UI. */
+  --color-white: #ffffff;
   --color-neon-cyan: #00fff5;
   --color-neon-magenta: #ff2d95;
   --color-neon-lime: #39ff14;
@@ -13,6 +15,38 @@
   --font-mono: "IBM Plex Mono", "JetBrains Mono", monospace;
   --animate-glow-pulse: glow-pulse 2s ease-in-out infinite;
   --animate-bar-bounce: bar-bounce 0.6s ease-in-out infinite;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+:root[data-color-scheme="light"] {
+  color-scheme: light;
+  --color-surface: #f4f2f7;
+  --color-surface-light: #ffffff;
+  --color-surface-lighter: #e6e2ec;
+  --color-text: #211b29;
+  --color-white: #211b29;
+  --color-neon-cyan: #006b73;
+  --color-neon-magenta: #a0004c;
+  --color-neon-lime: #2e7400;
+  --color-neon-amber: #805500;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-color-scheme]) {
+    color-scheme: light;
+    --color-surface: #f4f2f7;
+    --color-surface-light: #ffffff;
+    --color-surface-lighter: #e6e2ec;
+    --color-text: #211b29;
+    --color-white: #211b29;
+    --color-neon-cyan: #006b73;
+    --color-neon-magenta: #a0004c;
+    --color-neon-lime: #2e7400;
+    --color-neon-amber: #805500;
+  }
 }
 
 @keyframes glow-pulse {

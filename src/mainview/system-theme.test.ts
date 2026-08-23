@@ -30,6 +30,7 @@ describe("systemThemeVariables", () => {
       "color-mix(in srgb, #1a1b26 88%, #a9b1d6)",
     );
     expect(variables["--color-text"]).toBe("#a9b1d6");
+    expect(variables["--color-white"]).toBe("#a9b1d6");
     expect(variables["--color-neon-cyan"]).toBe("#7aa2f7");
   });
 

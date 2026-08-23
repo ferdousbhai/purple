@@ -6,7 +6,7 @@
  * packs the prebake in @purple/ui/use-strudel loads. Only list sounds and
  * functions that verifiably exist there: a wrong name is NOT an evaluation
  * error — Strudel fails open and plays silence, so the repair loop never sees
- * it. This reference is the only defense.
+ * it. The runtime also enforces an expression allowlist and audits names.
  */
 export const STRUDEL_REFERENCE = `## Mini-notation (inside the quoted strings)
 space sequence within one cycle | "~" or "-" rest | "[a b]" subsequence (nestable) | "<a b>" one per cycle | "a*2" faster (floats ok) | "[a b]/2" slower across cycles | "a@3" elongate | "a!2" replicate | "a,b" parallel | "a:2" sample index | "a?" 50% drop chance ("a?0.2" = 20%) | "a|b" random choice per cycle | "bd(3,8)" euclidean, "bd(3,8,2)" with offset | "{a b c, x y}%4" polymeter at 4 steps/cycle | backticks for multiline
@@ -25,8 +25,8 @@ Without a bank, only these bare drum names exist: bd sd sn hh oh cp clap rim cr 
 ## Synths
 sine sawtooth square triangle (default when note() has no .sound()) pulse supersaw sbd (synth kick), noise: white pink brown crackle (.density(n)), chiptune zzfx: z_sawtooth z_sine z_square z_triangle z_tan z_noise. Add .noise(0.1..0.5) to any oscillator for breath. FM: .fm(n) depth, .fmh(n) harmonic ratio. Vibrato: .vib("4:.1") (speed:depth).
 
-## Melodic instruments
-piano, plus 128 General MIDI soundfonts: gm_acoustic_piano gm_bright_acoustic_piano gm_electric_grand_piano gm_honky_tonk_piano gm_epiano1 gm_epiano2 gm_harpsichord gm_clavinet gm_celesta gm_glockenspiel gm_music_box gm_vibraphone gm_marimba gm_xylophone gm_tubular_bells gm_dulcimer gm_drawbar_organ gm_percussive_organ gm_rock_organ gm_church_organ gm_reed_organ gm_accordion gm_harmonica gm_bandoneon gm_acoustic_guitar_nylon gm_acoustic_guitar_steel gm_electric_guitar_jazz gm_electric_guitar_clean gm_electric_guitar_muted gm_overdriven_guitar gm_distortion_guitar gm_guitar_harmonics gm_acoustic_bass gm_electric_bass_finger gm_electric_bass_pick gm_fretless_bass gm_slap_bass_1 gm_slap_bass_2 gm_synth_bass_1 gm_synth_bass_2 gm_violin gm_viola gm_cello gm_contrabass gm_tremolo_strings gm_pizzicato_strings gm_orchestral_harp gm_timpani gm_string_ensemble_1 gm_string_ensemble_2 gm_synth_strings_1 gm_synth_strings_2 gm_choir_aahs gm_voice_oohs gm_synth_choir gm_orchestra_hit gm_trumpet gm_trombone gm_tuba gm_muted_trumpet gm_french_horn gm_brass_section gm_synth_brass_1 gm_synth_brass_2 gm_soprano_sax gm_alto_sax gm_tenor_sax gm_baritone_sax gm_oboe gm_english_horn gm_bassoon gm_clarinet gm_piccolo gm_flute gm_recorder gm_pan_flute gm_blown_bottle gm_shakuhachi gm_whistle gm_ocarina gm_lead_1_square gm_lead_2_sawtooth gm_lead_3_calliope gm_lead_4_chiff gm_lead_5_charang gm_lead_6_voice gm_lead_7_fifths gm_lead_8_bass_lead gm_pad_new_age gm_pad_warm gm_pad_poly gm_pad_choir gm_pad_bowed gm_pad_metallic gm_pad_halo gm_pad_sweep gm_fx_rain gm_fx_soundtrack gm_fx_crystal gm_fx_atmosphere gm_fx_brightness gm_fx_goblins gm_fx_echoes gm_fx_sci_fi gm_sitar gm_banjo gm_shamisen gm_koto gm_kalimba gm_bagpipe gm_fiddle gm_shanai gm_tinkle_bell gm_agogo gm_steel_drums gm_woodblock gm_taiko_drum gm_melodic_tom gm_synth_drum gm_reverse_cymbal.
+## Sampled melodic sounds
+piano is a commit-pinned multisample. Dirt-Samples also provides gtr, sax, trump, sitar, pluck, bass0, bass1, bass2, bass3, moog, pad and padlong. General MIDI gm_* soundfonts are intentionally unavailable because their upstream loader executes remotely fetched JavaScript.
 
 ## Pitch & harmony
 note("c e g b") letters (eb/c# accidentals, octaves c2..b5) or MIDI numbers (48=c3, decimals ok). n("0 2 4").scale("C:minor") = scale degrees, always in key; scales: major minor dorian mixolydian lydian phrygian locrian melodic/harmonic minor, :pentatonic variants; root can carry octave (A2:minor); the scale is patternable: .scale("<C:minor F:major>/4"). n vs note: n picks indices (scale degree or sample number), note is absolute pitch. Chords: chord("<Cm7 F7 Bb^7>").voicing() plays smooth voicings; .rootNotes(2) for a bassline from the same symbols. Pitch math: "..".add("<0 12>") or .add("0,7") (stacked interval), .transpose(semitones), .scaleTranspose(steps). Arpeggio trick: "0".off(1/3, add(2)).off(1/2, add(4)).n().scale("C:minor").
@@ -45,6 +45,7 @@ Dynamic hats: s("hh*16").gain("[.25 1]*4"). Noise hats: s("white*8").decay(.04).
 
 ## Hard rules
 - Unknown sound names play SILENCE (no error) — only use names listed above.
+- Keep cumulative event expansion at or below 512. This includes every mini-notation *n/!n repetition and every chop/density/fast/ply/run/segment factor in the expression.
 - One expression only: no variable declarations, no semicolons, no setcpm(), no samples(), no $: labels (use stack()), no .play()/.hush().
 - Comments (//) are allowed. Lambdas like x=>x.rev() are fine.`;
 
@@ -60,14 +61,14 @@ export const PROMPT_EXAMPLES: readonly string[] = [
   note("<c2 c2 g1 bb1>").s("sawtooth").lpf(sine.range(300, 1200).slow(8)).gain(.8)
 ).cpm(126/4)`,
   `stack(
-  note("[~ [<[d3,a3,f4]!2 [d3,bb3,g4]!2> ~]]*2").s("gm_electric_guitar_muted").delay(.5),
+  note("[~ [<[d3,a3,f4]!2 [d3,bb3,g4]!2> ~]]*2").s("piano").delay(.5),
   s("bd rim").bank("RolandTR707").delay(.5),
-  n("<4 [3@3 4] [<2 0> ~@16] ~>").scale("D4:minor").s("gm_accordion:2").room(.5).gain(.4),
+  n("<4 [3@3 4] [<2 0> ~@16] ~>").scale("D4:minor").s("sawtooth").room(.5).gain(.4),
   n("[0 [~ 0] 4 [3 2] [0 ~] [0 ~] <0 2> ~]/2").scale("D2:minor").s("sawtooth,triangle").lpf(800)
 ).cpm(90/4)`,
   `stack(
-  n("0 [2 4] <3 5> [~ <4 1>]".add("<0 [0,2,4]>")).scale("C5:minor").s("gm_xylophone").room(.4).delay(.125),
-  note("c2 [eb3,g3]".add("<0 <1 -1>>")).adsr("[.1 0]:.2:[1 0]").s("gm_acoustic_bass").room(.5),
+  n("0 [2 4] <3 5> [~ <4 1>]".add("<0 [0,2,4]>")).scale("C5:minor").s("pluck").room(.4).delay(.125),
+  note("c2 [eb3,g3]".add("<0 <1 -1>>")).adsr("[.1 0]:.2:[1 0]").s("bass1").room(.5),
   n("0 1 [2 3] 2").s("jazz").jux(rev)
 ).cpm(96/4)`,
 ];
@@ -99,6 +100,17 @@ ${exampleBlocks}`;
 export const TITLE_PROMPT = `Create a memorable title for this music pattern.
 The title must contain 2 to 6 words and at most 60 characters.
 Do not use markdown, labels, or ending punctuation.`;
+
+export const EXPLANATORY_STYLE_INSTRUCTION = `Use explanatory code style in the Strudel block: add a short end-of-line // comment to every non-empty code line explaining what that line does. Keep commas, operators, and delimiters before the comment so removing the comments leaves one valid Strudel expression. Comment delimiter-only lines too.`;
+
+export function withExplanatoryStyle(
+  prompt: string,
+  enabled: boolean,
+): string {
+  return enabled
+    ? `${prompt}\n\n${EXPLANATORY_STYLE_INSTRUCTION}`
+    : prompt;
+}
 
 /** Structured-output schema for the title call, shared by both apps. */
 export const TITLE_SCHEMA = {

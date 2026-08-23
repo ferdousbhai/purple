@@ -1,7 +1,7 @@
 /**
  * Every example shipped in the system prompt must evaluate against the real
- * Strudel engine (transpiler + core + mini + tonal — the same packages
- * @strudel/web wraps), both standalone and spliced into an XFADE transition.
+ * Strudel engine through Purple's safe expression interpreter, both standalone
+ * and spliced into an XFADE transition.
  * A broken example would few-shot-teach Gemini invalid patterns, and a
  * non-expression example would break crossfades.
  */
@@ -9,12 +9,20 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { PROMPT_EXAMPLES } from "@purple/core/prompts";
 import { buildTransitionCode } from "@purple/core/transitions";
 import { auditHapSounds, type AuditableHap } from "@purple/core/validation";
-import { evalScope } from "@strudel/core";
-import { evaluate } from "@strudel/transpiler";
+import { evalScope, strudelScope } from "@strudel/core";
+import { PRESET_PATTERNS } from "../../../src/shared/cli";
+import {
+  createSafeStrudelScope,
+  evaluateSafeStrudelExpression,
+  type SafeStrudelScope,
+  type SafeStrudelValue,
+} from "./safe-strudel";
 
 interface EvaluatedPattern {
   queryArc: (begin: number, end: number) => AuditableHap[];
 }
+
+let safeScope: SafeStrudelScope;
 
 beforeAll(async () => {
   await evalScope(
@@ -25,15 +33,26 @@ beforeAll(async () => {
     // The stub keeps transition code evaluable; only syntax is under test.
     { xfade: (from: EvaluatedPattern) => from },
   );
+  safeScope = createSafeStrudelScope({
+    ...strudelScope,
+  });
 });
 
 async function evaluatePattern(code: string): Promise<EvaluatedPattern> {
-  const result = await evaluate(code);
-  // SAFETY: the Strudel transpiler resolves to { pattern }; if the evaluated
-  // value is not a pattern, the queryArc calls in the tests below throw and
-  // fail the test, which is exactly the signal this suite exists to produce.
-  const { pattern } = result as { pattern: EvaluatedPattern };
+  const pattern = evaluateSafeStrudelExpression(code, safeScope);
+  if (!isEvaluatedPattern(pattern)) {
+    throw new Error("safe expression did not produce a Strudel pattern");
+  }
   return pattern;
+}
+
+function isEvaluatedPattern(value: SafeStrudelValue): value is EvaluatedPattern {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "queryArc" in value &&
+    typeof value.queryArc === "function"
+  );
 }
 
 const numberedExamples = PROMPT_EXAMPLES.map(
@@ -55,6 +74,28 @@ describe("PROMPT_EXAMPLES", () => {
     const pattern = await evaluatePattern(buildTransitionCode(from, to, 8, 4));
     expect(pattern.queryArc(0, 4).length).toBeGreaterThan(0);
   });
+
+  it("preserves mini-notation source locations for playback highlighting", async () => {
+    const pattern = await evaluatePattern('s("bd hh")');
+    const locations = pattern
+      .queryArc(0, 1)
+      .flatMap((hap) => hap.context?.locations ?? []);
+    expect(locations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ start: expect.any(Number), end: expect.any(Number) }),
+      ]),
+    );
+  });
+});
+
+describe("desktop presets", () => {
+  it.each(Object.entries(PRESET_PATTERNS))(
+    "%s evaluates to a pattern with events",
+    async (_name, code) => {
+      const pattern = await evaluatePattern(code);
+      expect(pattern.queryArc(0, 4).length).toBeGreaterThan(0);
+    },
+  );
 });
 
 describe("auditHapSounds on real evaluated patterns", () => {

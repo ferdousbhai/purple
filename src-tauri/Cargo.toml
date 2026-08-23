@@ -32,6 +32,7 @@ tokio = { version = "1", features = ["sync", "macros"] }
 tokio-util = "0.7"
 keyring = "4"
 toml = "1.1.4"
+dirs = "6"
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-single-instance = "2"

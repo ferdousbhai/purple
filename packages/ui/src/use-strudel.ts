@@ -1,3 +1,4 @@
+/* eslint-disable-next-line typescript/triple-slash-reference -- @strudel/web does not publish types; this local ambient declaration is the runtime contract. */
 /// <reference path="./strudel-web.d.ts" />
 
 import { useRef, useCallback, useEffect } from "react";
@@ -12,6 +13,13 @@ import {
   closestSoundNames,
   type ValidationProblem,
 } from "@purple/core/validation";
+import { loadPinnedSamples } from "./pinned-samples";
+import {
+  createSafeStrudelScope,
+  evaluateSafeStrudelExpression,
+  type SafeStrudelScope,
+  type SafeStrudelValue,
+} from "./safe-strudel";
 
 type StrudelModule = typeof import("@strudel/web/web.mjs");
 
@@ -55,10 +63,10 @@ async function defaultEnsureRunningContext(context: AudioContext): Promise<void>
 export function useStrudel(options: StrudelAudioOptions = {}) {
   const strudelRef = useRef<StrudelModule | null>(null);
   const replRef = useRef<StrudelRepl | null>(null);
+  const expressionScopeRef = useRef<SafeStrudelScope | null>(null);
   const initPromiseRef = useRef<Promise<void> | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const activePatternRef = useRef<StrudelPattern | null>(null);
-  const lastEvaluationErrorRef = useRef<Error | null>(null);
   // A ref keeps activate() stable even when the caller passes a fresh options
   // object each render.
   const ensureRunningRef = useRef(defaultEnsureRunningContext);
@@ -73,6 +81,7 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
     if (audioCtxRef.current?.state === "closed") {
       strudelRef.current = null;
       replRef.current = null;
+      expressionScopeRef.current = null;
       initPromiseRef.current = null;
       activePatternRef.current = null;
     }
@@ -93,33 +102,14 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
         const repl = await strudel.initStrudel({
           audioContext: ctx,
           onEvalError: (error) => {
-            lastEvaluationErrorRef.current = error;
+            console.error("[Strudel] Internal evaluation failed:", error);
           },
-          // defaultPrebake() registers synths only, so every sample bank has
-          // to be loaded explicitly. These mirror the packs the official
-          // strudel.cc REPL prebakes (manifests are small; sample audio is
-          // fetched lazily on first trigger): Dirt-Samples for the classic
-          // names, tidal-drum-machines so `bank("RolandTR909")` etc. resolve,
-          // and piano for the docs' default melodic sound.
+          // Manifests and audio bases are commit-addressed. The loader parses
+          // data instead of executing it and ignores upstream `_base` fields.
           prebake: async () => {
-            const doughSamples =
-              "https://raw.githubusercontent.com/felixroos/dough-samples/main";
-            await Promise.all([
-              strudel.samples("github:tidalcycles/Dirt-Samples/master"),
-              strudel.samples(`${doughSamples}/tidal-drum-machines.json`),
-              strudel.samples(`${doughSamples}/piano.json`),
-              // gm_* General MIDI instruments. Dynamically imported because a
-              // static import breaks SSR builds (soundfont2 touches `window`).
-              import("@strudel/soundfonts").then(({ registerSoundfonts }) =>
-                registerSoundfonts(),
-              ),
-            ]);
+            await loadPinnedSamples(strudel);
             // z_* chiptune synths (no network involved).
             strudel.registerZZFXSounds();
-            // Friendly bank names ("tr909" -> "RolandTR909"), as on strudel.cc.
-            await strudel.aliasBank(
-              "https://raw.githubusercontent.com/todepond/samples/main/tidal-drum-machines-alias.json",
-            );
             // Dirt-Samples names these ho/cp/rm, but the model vocabulary
             // (and Strudel's own default prebake) says oh/clap/rim; the
             // drum-machine pack only registers prefixed names
@@ -131,10 +121,13 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
           },
         });
 
+        installSchedulerCpm(strudel, repl);
+
         await strudel.initAudio();
 
         strudelRef.current = strudel;
         replRef.current = repl;
+        expressionScopeRef.current = createSafeStrudelScope(strudel);
       })();
 
       initPromiseRef.current = promise;
@@ -165,7 +158,8 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
   ): Promise<EvalResult> => {
     const strudel = strudelRef.current;
     const repl = replRef.current;
-    if (!strudel || !repl) {
+    const expressionScope = expressionScopeRef.current;
+    if (!strudel || !repl || !expressionScope) {
       return {
         ok: false,
         error: "Audio engine not initialized — click Play to retry",
@@ -183,22 +177,20 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
         };
       }
 
-      lastEvaluationErrorRef.current = null;
-      // @strudel/web's exported evaluate() wrapper drops its third argument.
-      // Calling the initialized REPL directly is required to keep the scheduler
-      // running while a cycle-aligned crossfade replaces the active pattern.
-      const pattern = await repl.evaluate(
-        code,
-        true,
-        options.hushBefore ?? true,
-      );
+      // Expression-only patterns have no labelled REPL state to clear, so the
+      // historical hushBefore distinction is intentionally a no-op. setPattern
+      // replaces the scheduler atomically for both direct plays and x-fades.
+      void options.hushBefore;
+      const pattern = evaluateSafeStrudelExpression(code, expressionScope);
       if (!isStrudelPattern(pattern)) {
-        // Read through a helper: onEvalError writes this ref from Strudel's own
-        // callback, so the reset above does not describe its current value.
-        const message = evaluationErrorMessage(lastEvaluationErrorRef.current);
-        return { ok: false, error: message, kind: "evaluation" };
+        return {
+          ok: false,
+          error: "Pattern did not produce a playable Strudel expression.",
+          kind: "evaluation",
+        };
       }
 
+      await repl.setPattern(pattern, true);
       activePatternRef.current = pattern;
       return { ok: true };
     } catch (err: unknown) {
@@ -233,19 +225,17 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
       }
     }
     const strudel = strudelRef.current;
-    const repl = replRef.current;
-    if (!strudel || !repl) return null;
+    const expressionScope = expressionScopeRef.current;
+    if (!strudel || !replRef.current || !expressionScope) return null;
 
     try {
-      lastEvaluationErrorRef.current = null;
-      // autoplay=false, shouldHush=false: build the pattern without touching
-      // the scheduler or whatever is currently playing.
-      const pattern = await repl.evaluate(code, false, false);
+      // Interpretation builds a pattern without mutating the live scheduler.
+      const pattern = evaluateSafeStrudelExpression(code, expressionScope);
       if (!isStrudelPattern(pattern)) {
         return [
           {
             kind: "evaluation",
-            error: evaluationErrorMessage(lastEvaluationErrorRef.current),
+            error: "Pattern did not produce a playable Strudel expression.",
           },
         ];
       }
@@ -339,18 +329,37 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
   };
 }
 
-function evaluationErrorMessage(error: Error | null): string {
-  return error?.message ?? "Strudel could not evaluate this pattern.";
+function installSchedulerCpm(
+  strudel: StrudelModule,
+  repl: StrudelRepl,
+): void {
+  strudel.register("cpm", (cyclesPerMinute, pattern) => {
+    const cpm = Number(cyclesPerMinute);
+    const schedulerCps = Number(repl.scheduler.cps);
+    if (
+      !Number.isFinite(cpm) ||
+      !Number.isFinite(schedulerCps) ||
+      schedulerCps <= 0
+    ) {
+      throw new Error(".cpm() requires a finite tempo and a running scheduler.");
+    }
+    return pattern._fast(cpm / 60 / schedulerCps);
+  });
 }
 
 /**
- * Strudel is untyped JavaScript, so the value `evaluate` resolves with is
- * verified to carry a pattern's query interface before it is treated as one.
+ * Strudel is untyped JavaScript, so the interpreted value is verified to carry
+ * a pattern's query interface before it is treated as one.
  */
 function isStrudelPattern(
-  value: StrudelPattern | undefined,
+  value: SafeStrudelValue,
 ): value is StrudelPattern {
-  return value != null && value.queryArc instanceof Function;
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "queryArc" in value &&
+    typeof value.queryArc === "function"
+  );
 }
 
 function sourceRangesFromHaps(haps: readonly StrudelHap[]): SourceRange[] {

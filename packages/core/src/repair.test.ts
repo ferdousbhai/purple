@@ -21,6 +21,10 @@ function createDeps(overrides: Partial<RepairDeps> = {}): RepairDeps {
 }
 
 describe("attemptWithRepair", () => {
+  it("allows up to ten model revisions per generated pattern", () => {
+    expect(MAX_RETRIES).toBe(10);
+  });
+
   it("returns the first result when the pattern evaluates", async () => {
     const deps = createDeps();
 

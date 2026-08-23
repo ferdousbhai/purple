@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.soundspurple.Purple</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT AND AGPL-3.0-or-later</project_license>
+  <name>Purple</name>
+  <summary>Make music with AI-generated Strudel patterns</summary>
+
+  <description>
+    <p>
+      Purple turns plain-language music ideas into editable Strudel live-coding
+      patterns and plays them through the system webview.
+    </p>
+    <p>
+      Patterns stay under your control, and the desktop app stores your Gemini
+      API key in the system credential store when one is available.
+    </p>
+  </description>
+
+  <developer id="com.soundspurple">
+    <name>Ferdous Bhai</name>
+  </developer>
+  <url type="homepage">https://soundspurple.com</url>
+  <url type="bugtracker">https://github.com/ferdousbhai/purple/issues</url>
+  <url type="vcs-browser">https://github.com/ferdousbhai/purple</url>
+
+  <launchable type="desktop-id">com.soundspurple.Purple.desktop</launchable>
+  <provides>
+    <binary>purple-music</binary>
+  </provides>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Audio</category>
+    <category>Music</category>
+  </categories>
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/ferdousbhai/purple/master/assets/screenshots/purple-studio.png</image>
+      <caption>Choose a recipe, edit its Strudel pattern, and refine it in chat</caption>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1" />
+
+  <releases>
+    <release version="0.4.0" date="2026-08-21">
+      <description>
+        <p>Rebranded the application as Purple and added the hosted web studio.</p>
+      </description>
+    </release>
+    <release version="0.3.1" date="2026-08-19" />
+    <release version="0.2.0" date="2026-08-17" />
+  </releases>
+</component>

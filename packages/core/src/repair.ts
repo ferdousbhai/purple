@@ -12,7 +12,7 @@ import {
 } from "./validation";
 import type { EvalResult } from "./types";
 
-export const MAX_RETRIES = 2;
+export const MAX_RETRIES = 10;
 
 export interface RepairDeps {
   /** Run the play/transition operation with the given code. */

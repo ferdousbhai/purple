@@ -10,9 +10,9 @@ import { getSystemTheme, log as reportRendererLog } from "./backend";
 import { applySystemTheme } from "./system-theme";
 import "./app.css";
 
-// Best-effort: tint the palette from the active Omarchy theme. Machines
-// without one (or browser-only dev, where there is no shell) keep the
-// built-in dark palette.
+// Best-effort: an active Omarchy theme takes precedence over the generic
+// prefers-color-scheme palette. Browser-only development has no shell, so it
+// stays on the generic path.
 void getSystemTheme()
   .then(applySystemTheme)
   .catch(() => {});

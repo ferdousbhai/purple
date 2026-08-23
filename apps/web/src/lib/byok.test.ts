@@ -1,5 +1,14 @@
-import { describe, expect, it } from 'vitest'
-import { parseChatEnvelope, toChatEnvelope, type ByokChatState } from './byok'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import {
+  createByokBackend,
+  parseChatEnvelope,
+  toChatEnvelope,
+  type ByokChatState,
+} from './byok'
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 function chat(overrides: Partial<ByokChatState> = {}): ByokChatState {
   return {
@@ -106,5 +115,58 @@ describe('byok chat persistence envelope', () => {
   it('clamps an out-of-range live coveredCount when storing', () => {
     expect(toChatEnvelope(chat({ coveredCount: 99 })).coveredCount).toBe(2)
     expect(toChatEnvelope(chat({ coveredCount: -3 })).coveredCount).toBe(0)
+  })
+})
+
+describe('BYOK streaming backend', () => {
+  it('implements the shared stream outcome and reports truncation', async () => {
+    const body = [
+      'data: {"candidates":[{"content":{"parts":[{"text":"s(\\"bd*4\\")"}]}}],"usageMetadata":{"promptTokenCount":42}}',
+      'data: {"candidates":[{"finishReason":"MAX_TOKENS"}]}',
+      '',
+    ].join('\n')
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(body, {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const backend = createByokBackend('secret-key')
+    const deltas: string[] = []
+
+    await expect(
+      backend.stream(
+        [{ role: 'user', content: 'four on the floor' }],
+        (delta) => deltas.push(delta),
+      ),
+    ).resolves.toEqual({ promptTokens: 42, truncated: true })
+    expect(deltas).toEqual(['s("bd*4")'])
+
+    // SAFETY: the backend made exactly one fetch call above with a URL and init.
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).not.toContain('secret-key')
+    expect(new Headers(init.headers).get('x-goog-api-key')).toBe('secret-key')
+  })
+
+  it('aborts the active stream through the shared backend contract', async () => {
+    const fetchMock = vi.fn().mockImplementation(
+      (_url: string, init: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () => {
+            reject(new DOMException('Aborted', 'AbortError'))
+          })
+        }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const backend = createByokBackend('secret-key')
+    const pending = backend.stream(
+      [{ role: 'user', content: 'ambient dub' }],
+      () => {},
+    )
+
+    await backend.abortStream()
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
   })
 })

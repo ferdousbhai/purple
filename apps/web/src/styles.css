@@ -15,6 +15,7 @@
   background: var(--surface);
   font-family: var(--font-display);
   font-synthesis: none;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -65,10 +66,6 @@ a { color: var(--cyan); }
   color: var(--cyan); font-weight: 700; font-size: 14px; letter-spacing: 0.22em;
   text-shadow: 0 0 7px var(--cyan), 0 0 20px rgba(0, 255, 245, 0.5);
 }
-.brand-tag {
-  color: rgba(0, 255, 245, 0.4); font: 500 10px var(--font-mono);
-  letter-spacing: 0.3em; text-transform: uppercase;
-}
 .topbar-actions { display: flex; align-items: center; gap: 10px; }
 
 .eq-bars { display: flex; align-items: flex-end; gap: 2px; height: 14px; }
@@ -88,10 +85,21 @@ a { color: var(--cyan); }
   padding: 4px 9px; border-radius: 5px;
   border: 1px solid var(--border); background: rgba(26, 26, 42, 0.35);
   color: var(--text-dim); font: 500 10px var(--font-mono); letter-spacing: 0.14em;
+  text-decoration: none;
   transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
 }
 .chrome:hover:not(:disabled), .chrome.open {
   border-color: rgba(0, 255, 245, 0.45); background: rgba(0, 255, 245, 0.08); color: var(--cyan);
+}
+.chrome.apply-changes {
+  border-color: color-mix(in srgb, var(--lime) 38%, transparent);
+  background: color-mix(in srgb, var(--lime) 10%, transparent);
+  color: var(--lime); font-weight: 600;
+}
+.chrome.apply-changes:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--lime) 65%, transparent);
+  background: color-mix(in srgb, var(--lime) 18%, transparent);
+  color: var(--lime);
 }
 .primary {
   padding: 8px 14px; border-radius: 7px;
@@ -163,12 +171,24 @@ a { color: var(--cyan); }
 
 .composer { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 0 14px 14px; }
 .session-bar {
-  flex: none; height: 46px; margin: 0 -14px; padding: 0 10px 0 14px;
-  display: flex; align-items: center; justify-content: space-between;
+  flex: none; height: 46px; margin: 0 -14px; padding: 7px 14px;
+  display: flex; align-items: center;
   border-bottom: 1px solid var(--border);
 }
-.session-label { color: rgba(0, 255, 245, 0.6); font: 600 10px var(--font-mono); letter-spacing: 0.3em; }
-.chrome.reset { font-size: 13px; line-height: 1; padding: 3px 8px; }
+.new-session {
+  width: 100%; height: 32px;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  border: 1px solid color-mix(in srgb, var(--cyan) 28%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--cyan) 6%, transparent);
+  color: var(--cyan); font: 600 10px var(--font-mono); letter-spacing: 0.16em;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+.new-session:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--cyan) 55%, transparent);
+  background: color-mix(in srgb, var(--cyan) 12%, transparent);
+}
+.new-session-mark { font-size: 16px; font-weight: 400; line-height: 1; letter-spacing: 0; }
 
 /* Empty session: the only place presets appear */
 .empty-session {
@@ -206,6 +226,22 @@ a { color: var(--cyan); }
 .stream-dots span:nth-child(3) { animation-delay: 0.24s; }
 @keyframes dot-bounce { to { opacity: 0.2; transform: translateY(-2px); } }
 
+.session-nudge {
+  flex: none; display: flex; align-items: center; gap: 10px;
+  padding: 7px 0; border-top: 1px solid rgba(255, 184, 0, 0.16);
+  border-bottom: 1px solid rgba(255, 184, 0, 0.16);
+  color: var(--text-dim); font: 400 10px/1.45 var(--font-mono);
+}
+.session-nudge span { flex: 1; min-width: 0; }
+.session-nudge .chrome {
+  flex: none; border-color: rgba(255, 184, 0, 0.28); color: var(--amber);
+}
+.session-nudge .chrome:hover:not(:disabled) {
+  border-color: rgba(255, 184, 0, 0.5);
+  background: rgba(255, 184, 0, 0.08);
+  color: var(--amber);
+}
+
 /* Chips: quiet rows, separated by spacing — no boxes */
 .chip-row, .mix-row { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .chip-label { color: var(--text-faint); font: 600 9px var(--font-mono); letter-spacing: 0.22em; margin-right: 2px; }
@@ -232,6 +268,14 @@ a { color: var(--cyan); }
 
 /* Prompt input */
 .prompt-form { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
+.explanatory-toggle {
+  grid-column: 1 / -1; width: max-content;
+  display: inline-flex; align-items: center; gap: 7px;
+  color: var(--text-faint); font: 400 10px var(--font-mono); cursor: pointer;
+}
+.explanatory-toggle:has(input:disabled) { cursor: not-allowed; opacity: 0.5; }
+.explanatory-toggle input { margin: 0; accent-color: var(--cyan); }
+.explanatory-toggle strong { color: var(--text-dim); font-weight: 600; }
 .prompt-form textarea, .key-card input {
   width: 100%; resize: none; outline: none;
   color: var(--text); background: rgba(26, 26, 42, 0.5);
@@ -291,5 +335,45 @@ a { color: var(--cyan); }
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --surface: #f4f2f7;
+    --text: #211b29;
+    --text-dim: rgba(33, 27, 41, 0.62);
+    --text-faint: rgba(33, 27, 41, 0.42);
+    --border: rgba(33, 27, 41, 0.14);
+    --cyan: #006b73;
+    --lime: #2e7400;
+    --magenta: #a0004c;
+    --amber: #805500;
+    color-scheme: light;
+  }
+
+  .studio-shell {
+    background-image:
+      linear-gradient(rgba(0, 107, 115, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 107, 115, 0.05) 1px, transparent 1px);
+  }
+  .topbar { background: rgba(255, 255, 255, 0.86); }
+  .editor-pane { background: rgba(255, 255, 255, 0.62); }
+  .session-pane { background: rgba(230, 226, 236, 0.62); }
+  .chrome,
+  .preset-grid button,
+  .chip { background: rgba(33, 27, 41, 0.05); }
+  .preset-grid button:hover:not(:disabled) { background: rgba(33, 27, 41, 0.1); }
+  .prompt-form textarea,
+  .key-card input,
+  .transcript .user { background: rgba(33, 27, 41, 0.08); }
+  .empty-session h2,
+  .preset-title,
+  .transcript .user,
+  .library-row button:first-child { color: rgba(33, 27, 41, 0.9); }
+  .chip { color: rgba(33, 27, 41, 0.72); }
+  .library-popover {
+    background: rgba(255, 255, 255, 0.98);
+    box-shadow: 0 12px 34px rgba(33, 27, 41, 0.18);
   }
 }

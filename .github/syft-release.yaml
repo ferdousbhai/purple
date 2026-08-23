@@ -1,0 +1,4 @@
+check-for-app-update: false
+default-catalogers:
+  - cargo-auditable-binary-cataloger
+  - javascript-package-cataloger

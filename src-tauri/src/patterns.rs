@@ -49,9 +49,11 @@ impl SavePatternResult {
 }
 
 fn starting_directory() -> Option<PathBuf> {
-    let home = PathBuf::from(std::env::var_os("HOME")?);
-    let music = home.join("Music");
-    Some(if music.is_dir() { music } else { home })
+    existing_directory(dirs::audio_dir()).or_else(|| existing_directory(dirs::home_dir()))
+}
+
+fn existing_directory(path: Option<PathBuf>) -> Option<PathBuf> {
+    path.filter(|candidate| candidate.is_dir())
 }
 
 #[tauri::command]
@@ -103,5 +105,26 @@ pub async fn save_pattern(
             ))
         }
         Err(error) => Ok(SavePatternResult::failed(error.to_string())),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::existing_directory;
+
+    #[test]
+    fn accepts_only_an_existing_starting_directory() {
+        let root = std::env::temp_dir().join(format!(
+            "purple-pattern-directory-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+
+        assert_eq!(existing_directory(Some(root.clone())), Some(root.clone()));
+        assert_eq!(existing_directory(Some(root.join("missing"))), None);
+        assert_eq!(existing_directory(None), None);
+
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

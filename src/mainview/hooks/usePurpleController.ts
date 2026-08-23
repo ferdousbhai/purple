@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   ApiKeyStatus,
-  EvalResult,
-  PatternContext,
   TitleGenerationResult,
 } from "../../shared/types";
 import { getRandomStartupPattern, type StartupOptions } from "../../shared/cli";
 import {
+  backend,
   clearApiKey as clearBackendApiKey,
-  generateTitle,
   getApiKeyStatus,
   getStartupOptions,
   onMediaControl,
@@ -17,16 +15,13 @@ import {
   saveApiKey as saveBackendApiKey,
   setPlaybackState as reportPlaybackState,
 } from "../backend";
-import {
-  attemptWithRepair,
-  MAX_RETRIES,
-  repairUntilValid,
-} from "@purple/core/repair";
-import { useChat } from "./useChat";
 import { useKeyboardShortcuts } from "./useKeyboardShortcuts";
+import { EXPLANATORY_STYLE_INSTRUCTION } from "@purple/core/prompts";
+import { useGeneratedPattern } from "@purple/ui/use-generated-pattern";
 import { usePlayback } from "@purple/ui/use-playback";
+import { useStudioChat } from "@purple/ui/use-studio-chat";
+import { useTransitionSuggestions } from "@purple/ui/use-transition-suggestions";
 import { requireRunningAudioContext } from "../audio-activation";
-import { useTransitionSuggestions } from "./useTransitionSuggestions";
 
 type PromptMode = "stage" | "await-activation";
 
@@ -64,7 +59,6 @@ export function usePurpleController() {
   const [titleStatus, setTitleStatus] = useState<TitleStatus>("idle");
   const [titleError, setTitleError] = useState<string | null>(null);
   const titleRequestRef = useRef<TitleRequest | null>(null);
-  const patternContextRef = useRef<PatternContext | null>(null);
   const [requiresUserActivation, setRequiresUserActivation] = useState(false);
   const [apiKeyStatus, setApiKeyStatus] = useState<ApiKeyStatus>({
     hasKey: false,
@@ -74,14 +68,43 @@ export function usePurpleController() {
   const apiKeyStatusRef = useRef(apiKeyStatus);
   apiKeyStatusRef.current = apiKeyStatus;
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const chat = useChat();
+  const chat = useStudioChat(backend);
   // The WebKitGTK activation quirks (non-standard "interrupted" state, silent
   // output until primed) stay desktop-side, injected into the shared engine.
   const playback = usePlayback(DESKTOP_AUDIO_OPTIONS);
   // The repair loop below reads playback state between async steps.
   const playbackStateRef = useRef(playback.playbackState);
   playbackStateRef.current = playback.playbackState;
-  const nextMoves = useTransitionSuggestions();
+  const playbackRef = useRef(playback);
+  playbackRef.current = playback;
+  const explanatoryStyleRef = useRef(false);
+  const nextMoves = useTransitionSuggestions(backend);
+  const generatedPattern = useGeneratedPattern({
+    validatePattern: playback.validatePattern,
+    requestFix: (message) =>
+      chat.sendMessage(message, {
+        hiddenUserMessage: true,
+        requestInstruction: explanatoryStyleRef.current
+          ? EXPLANATORY_STYLE_INSTRUCTION
+          : undefined,
+      }),
+    onCodeChange: setCode,
+    playingRevision: {
+      getPlayingCode: () => {
+        const current = playbackRef.current;
+        return current.playbackState === "playing" ? current.activeCode : null;
+      },
+      replace: (fixed) => playbackRef.current.play(fixed),
+    },
+    isStopped: () => playback.playbackState === "stopped",
+    onPlaybackSuccess: (patternCode, sourcePrompt) =>
+      nextMoves.generate({ code: patternCode, sourcePrompt }),
+    onValidationProblems: (problems) =>
+      console.warn(
+        "[Validate] Pattern still has problems after repair:",
+        problems,
+      ),
+  });
 
   useKeyboardShortcuts({
     onStop: playback.stop,
@@ -116,67 +139,26 @@ export function usePurpleController() {
     [],
   );
 
-  /** Ask for next moves, attributing them to the prompt that produced `patternCode`. */
-  const suggestNextMoves = useCallback(
-    (patternCode: string) => {
-      const context = patternContextRef.current;
-      nextMoves.generate({
-        code: patternCode,
-        sourcePrompt:
-          context?.code === patternCode ? context.sourcePrompt : undefined,
-      });
-    },
-    [nextMoves.generate],
-  );
-
-  /** Audit a freshly generated pattern against the live engine and repair it
-   * before the user plays it: evaluation failures, empty patterns, and sound
-   * names that would play silence all go back to Gemini as hidden messages.
-   * Runs in the background right after generation — the send gesture already
-   * kicked off audio init, so the engine is usually ready by now; when it is
-   * not, validation is skipped and play-time repair stays the safety net. */
-  const validateGeneratedPattern = useCallback(
-    async (pattern: string): Promise<void> => {
-      let context = patternContextRef.current;
-      if (context?.code !== pattern) return;
-
-      const outcome = await repairUntilValid(pattern, {
-        validate: playback.validatePattern,
-        requestFix: (message) =>
-          chat.sendMessage(message, { hiddenUserMessage: true }),
-        applyFix: (fixed) => {
-          context = {
-            code: fixed,
-            sourcePrompt: context?.sourcePrompt,
-            repairsUsed: (context?.repairsUsed ?? 0) + 1,
-          };
-          patternContextRef.current = context;
-          setCode(fixed);
-        },
-        // A newer prompt owns the editor now; leave its pattern alone.
-        isStale: () => patternContextRef.current !== context,
-      });
-      if (outcome.problems.length > 0) {
-        console.warn(
-          "[Validate] Pattern still has problems after repair:",
-          outcome.problems,
-        );
-      }
-    },
-    [chat.sendMessage, playback.validatePattern],
-  );
-
   const runPrompt = useCallback(
-    async (text: string, mode: PromptMode): Promise<void> => {
+    async (
+      text: string,
+      mode: PromptMode,
+      explanatoryStyle = false,
+    ): Promise<void> => {
       nextMoves.clear();
+      explanatoryStyleRef.current = explanatoryStyle;
       const titleRequest: TitleRequest = { patternReady: false, result: null };
       titleRequestRef.current = titleRequest;
 
       // sendMessage dispatches the stream synchronously before yielding. Start
       // the independent title request immediately afterward so Gemini can run
       // both requests in parallel without delaying the primary dispatch.
-      const patternPromise = chat.sendMessage(text);
-      void generateTitle(text).then((result) =>
+      const patternPromise = chat.sendMessage(text, {
+        requestInstruction: explanatoryStyle
+          ? EXPLANATORY_STYLE_INSTRUCTION
+          : undefined,
+      });
+      void backend.generateTitle(text).then((result) =>
         applyTitleResult(titleRequest, result),
       );
 
@@ -191,8 +173,7 @@ export function usePurpleController() {
       }
 
       titleRequest.patternReady = true;
-      setCode(pattern);
-      patternContextRef.current = { code: pattern, sourcePrompt: text };
+      generatedPattern.adopt(pattern, text);
       setPatternTitle("");
       setTitleStatus("generating");
       setTitleError(null);
@@ -201,52 +182,21 @@ export function usePurpleController() {
       }
       setRequiresUserActivation(mode === "await-activation");
       runInBackground(
-        validateGeneratedPattern(pattern),
+        generatedPattern.validate(pattern).then(() => undefined),
         "[Validate] Pattern validation failed",
       );
     },
-    [applyTitleResult, chat.sendMessage, nextMoves.clear, validateGeneratedPattern],
-  );
-
-  /** Play or transition, repairing a generated pattern that fails to evaluate:
-   * the error goes back to Gemini as a hidden message and each fix replays, up
-   * to MAX_RETRIES times. This runs inside the user's PLAY/XFADE gesture, so
-   * the audio context is already unlocked when a fix replays. */
-  const runWithRepair = useCallback(
-    async (
-      code: string,
-      attempt: (candidate: string) => Promise<EvalResult>,
-    ): Promise<EvalResult> => {
-      let context = patternContextRef.current;
-      const outcome = await attemptWithRepair(code, {
-        attempt,
-        // Hand-edited code is not repaired; its error surfaces in the UI.
-        isGeneratedPattern: (candidate) => context?.code === candidate,
-        requestFix: (message) =>
-          chat.sendMessage(message, { hiddenUserMessage: true }),
-        applyFix: (fixed) => {
-          context = {
-            code: fixed,
-            sourcePrompt: context?.sourcePrompt,
-            repairsUsed: (context?.repairsUsed ?? 0) + 1,
-          };
-          patternContextRef.current = context;
-          setCode(fixed);
-        },
-        // Validation may have spent part of this pattern's repair budget.
-        maxRetries: Math.max(0, MAX_RETRIES - (context?.repairsUsed ?? 0)),
-        // A newer prompt owns the editor now; leave its pattern alone.
-        isStale: () => patternContextRef.current !== context,
-        isStopped: () => playbackStateRef.current === "stopped",
-      });
-      if (outcome.result.ok) suggestNextMoves(outcome.code);
-      return outcome.result;
-    },
-    [chat.sendMessage, suggestNextMoves],
+    [
+      applyTitleResult,
+      chat.sendMessage,
+      generatedPattern.adopt,
+      generatedPattern.validate,
+      nextMoves.clear,
+    ],
   );
 
   const sendMessage = useCallback(
-    (text: string): boolean => {
+    (text: string, explanatoryStyle = false): boolean => {
       if (!apiKeyStatus.hasKey) {
         setIsSettingsOpen(true);
         return false;
@@ -260,7 +210,7 @@ export function usePurpleController() {
 
       // Dispatch the model request first, then use the same input event to unlock audio.
       // Consistent with stageNext/presets: always stage as pending, require explicit XFADE/PLAY click.
-      const prompt = runPrompt(text, "stage");
+      const prompt = runPrompt(text, "stage", explanatoryStyle);
       void playback.prepareAudio();
       runInBackground(prompt, "[Chat] Prompt failed");
       return true;
@@ -274,7 +224,7 @@ export function usePurpleController() {
   );
 
   const stageNext = useCallback(
-    (text: string): boolean => {
+    (text: string, explanatoryStyle = false): boolean => {
       if (!apiKeyStatus.hasKey) {
         setIsSettingsOpen(true);
         return false;
@@ -282,7 +232,7 @@ export function usePurpleController() {
       if (playback.playbackState !== "playing") return false;
 
       runInBackground(
-        runPrompt(text, "stage"),
+        runPrompt(text, "stage", explanatoryStyle),
         "[Chat] Could not stage next pattern",
       );
       return true;
@@ -293,9 +243,9 @@ export function usePurpleController() {
     async (editorCode: string) => {
       setRequiresUserActivation(false);
       nextMoves.clear();
-      return runWithRepair(editorCode, playback.play);
+      return (await generatedPattern.attempt(editorCode, playback.play)).result;
     },
-    [nextMoves.clear, playback.play, runWithRepair],
+    [generatedPattern.attempt, nextMoves.clear, playback.play],
   );
 
   const transition = useCallback(
@@ -305,11 +255,13 @@ export function usePurpleController() {
       // transition() falls back to play() when nothing is playing yet, and a
       // failed transition lands back in "playing", so a repaired pattern can
       // re-attempt the same crossfade.
-      return runWithRepair(nextCode, (candidate) =>
-        playback.transition(candidate, durationCycles),
-      );
+      return (
+        await generatedPattern.attempt(nextCode, (candidate) =>
+          playback.transition(candidate, durationCycles),
+        )
+      ).result;
     },
-    [nextMoves.clear, playback.transition, runWithRepair],
+    [generatedPattern.attempt, nextMoves.clear, playback.transition],
   );
 
   const stop = useCallback(() => {
@@ -336,8 +288,7 @@ export function usePurpleController() {
         return;
       }
       if (options.initialCode) {
-        setCode(options.initialCode);
-        patternContextRef.current = { code: options.initialCode };
+        generatedPattern.adopt(options.initialCode);
         setPatternTitle("Startup Pattern");
         setTitleStatus("ready");
         // Do not call playback.play() here. WebKitGTK does not opt this view
@@ -357,7 +308,7 @@ export function usePurpleController() {
         "[Startup] Initial prompt failed",
       );
     },
-    [runPrompt],
+    [generatedPattern.adopt, runPrompt],
   );
 
   useEffect(() => {
@@ -427,7 +378,7 @@ export function usePurpleController() {
     };
   }, [play, playback.isAudioReady, stop]);
 
-  // A second `purple …` invocation focuses this window and forwards its arguments.
+  // A second `purple-music …` invocation focuses this window and forwards its arguments.
   useEffect(() => {
     let active = true;
     const unlisten = onStartupArgs((options) => {
@@ -446,6 +397,7 @@ export function usePurpleController() {
     streamingText: chat.streamingText,
     isStreaming: chat.isStreaming,
     chatError: chat.error,
+    suggestNewSession: chat.suggestNewSession,
     clearChat: chat.clearChat,
     abortStream: chat.abortStream,
     playbackState: playback.playbackState,

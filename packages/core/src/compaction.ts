@@ -29,6 +29,11 @@ import type { ChatMessage } from "./types";
  */
 export const COMPACTION_TRIGGER_TOKENS = 100_000;
 
+/** Offer a fresh session before automatic compaction becomes necessary. */
+export const COMPACTION_WARNING_TOKENS = Math.floor(
+  COMPACTION_TRIGGER_TOKENS * 0.8,
+);
+
 export const COMPACTION_PROMPT = `You are the session memory inside Purple, a Strudel live-coding music app.
 Merge the previous rolling summary, if one is given, with the older chat messages below.
 Return two fields:
@@ -118,6 +123,24 @@ export function planCompaction(
     return { fold: true, foldEnd: totalCount };
   }
   return { fold: false, foldEnd: covered };
+}
+
+/**
+ * Whether the UI should encourage a fresh session. The suggestion remains
+ * visible while a due fold is in flight or failing, then disappears when a
+ * successful fold advances `coveredCount` over the long history.
+ */
+export function shouldSuggestNewSession(
+  totalCount: number,
+  coveredCount: number,
+  promptTokens: number | null,
+): boolean {
+  const covered = Math.min(Math.max(coveredCount, 0), totalCount);
+  return (
+    totalCount - covered > 1 &&
+    promptTokens !== null &&
+    promptTokens >= COMPACTION_WARNING_TOKENS
+  );
 }
 
 /**

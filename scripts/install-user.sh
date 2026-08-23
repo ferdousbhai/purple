@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build Purple and install it for the current user (no root, no package manager).
-# On Arch/Omarchy prefer the package: makepkg -si from packaging/PKGBUILD.
+# After the first matching release/AUR publication, prefer the purple-music package.
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." >/dev/null && pwd)"
@@ -10,6 +10,8 @@ data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
 bin_dir="$HOME/.local/bin"
 apps_dir="${data_home}/applications"
 icons_dir="${data_home}/icons/hicolor"
+metainfo_dir="${data_home}/metainfo"
+licenses_dir="${data_home}/licenses/purple-music"
 
 if [ "$(uname -s)" != "Linux" ]; then
   echo "This installer is for Linux." >&2
@@ -18,7 +20,7 @@ fi
 
 if command -v pacman >/dev/null 2>&1; then
   missing=()
-  for package in webkit2gtk-4.1 gtk3 gst-plugins-base gst-plugins-good libsecret; do
+  for package in webkit2gtk-4.1 gtk3 gst-plugins-base gst-plugins-good; do
     pacman -Q "$package" >/dev/null 2>&1 || missing+=("$package")
   done
   if [ "${#missing[@]}" -gt 0 ]; then
@@ -33,19 +35,32 @@ pnpm run build:webview
 cargo build --release --locked --manifest-path src-tauri/Cargo.toml
 
 echo "[purple] installing to ${bin_dir}..."
-install -Dm755 src-tauri/target/release/purple "${bin_dir}/purple"
-install -Dm644 packaging/purple.desktop "${apps_dir}/purple.desktop"
-install -Dm644 assets/purple.svg "${icons_dir}/scalable/apps/purple.svg"
-install -Dm644 src-tauri/icons/32x32.png "${icons_dir}/32x32/apps/purple.png"
-install -Dm644 src-tauri/icons/64x64.png "${icons_dir}/64x64/apps/purple.png"
-install -Dm644 src-tauri/icons/128x128.png "${icons_dir}/128x128/apps/purple.png"
-install -Dm644 "src-tauri/icons/128x128@2x.png" "${icons_dir}/256x256/apps/purple.png"
+install -Dm755 src-tauri/target/release/purple "${bin_dir}/purple-music"
+install -Dm644 packaging/com.soundspurple.Purple.desktop \
+  "${apps_dir}/com.soundspurple.Purple.desktop"
+install -Dm644 packaging/com.soundspurple.Purple.metainfo.xml \
+  "${metainfo_dir}/com.soundspurple.Purple.metainfo.xml"
+install -Dm644 assets/purple.svg \
+  "${icons_dir}/scalable/apps/com.soundspurple.Purple.svg"
+install -Dm644 src-tauri/icons/32x32.png \
+  "${icons_dir}/32x32/apps/com.soundspurple.Purple.png"
+install -Dm644 src-tauri/icons/64x64.png \
+  "${icons_dir}/64x64/apps/com.soundspurple.Purple.png"
+install -Dm644 src-tauri/icons/128x128.png \
+  "${icons_dir}/128x128/apps/com.soundspurple.Purple.png"
+install -Dm644 "src-tauri/icons/128x128@2x.png" \
+  "${icons_dir}/256x256/apps/com.soundspurple.Purple.png"
+install -Dm644 LICENSE "${licenses_dir}/LICENSE"
+install -Dm644 LICENSE-AGPL-3.0-or-later \
+  "${licenses_dir}/LICENSE-AGPL-3.0-or-later"
+install -Dm644 THIRD_PARTY_NOTICES.md \
+  "${licenses_dir}/THIRD_PARTY_NOTICES.md"
 
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$apps_dir" >/dev/null 2>&1 || true
 command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -q "$icons_dir" >/dev/null 2>&1 || true
 command -v omarchy-refresh-walker >/dev/null 2>&1 && omarchy-refresh-walker >/dev/null 2>&1 || true
 
-echo "[purple] installed. Run 'purple', or search for Purple in the launcher."
+echo "[purple] installed. Run 'purple-music', or search for Purple in the launcher."
 case ":$PATH:" in
   *":${bin_dir}:"*) ;;
   *) echo "[purple] note: ${bin_dir} is not on your PATH." ;;

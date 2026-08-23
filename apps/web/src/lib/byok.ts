@@ -16,6 +16,7 @@ import {
 } from '@purple/core'
 import type {
   ChatMessage,
+  PatternStreamer,
   TitleGenerator,
   TransitionSuggester,
 } from '@purple/core/types'
@@ -87,7 +88,16 @@ const geminiErrorSchema = z
 const geminiContentSchema = z
   .object({
     candidates: z
-      .array(z.object({ content: z.object({ parts: z.array(z.object({ text: z.string().optional() })).optional() }).optional() }))
+      .array(
+        z.object({
+          content: z
+            .object({
+              parts: z.array(z.object({ text: z.string().optional() })).optional(),
+            })
+            .optional(),
+          finishReason: z.string().optional(),
+        }),
+      )
       .optional(),
     usageMetadata: z.object({ promptTokenCount: z.number().optional() }).optional(),
   })
@@ -224,19 +234,16 @@ export function clearByokChat(): void {
 export interface ByokBackend
   extends TitleGenerator,
     TransitionSuggester,
-    CompactionSummarizer {
+    CompactionSummarizer,
+    PatternStreamer {
   /** Send a prepared repair message; resolves with the raw model text. */
   repairPattern(message: string): Promise<string>
-  /** Stream a pattern generation; deltas arrive on `onDelta` and the promise
-   * resolves with the full raw model text plus the reported prompt size. */
-  streamPattern(
-    messages: readonly ChatMessage[],
-    onDelta: (text: string) => void,
-  ): Promise<StreamedGeneration>
 }
 
 /** Bind the visitor's key into a backend the studio UI talks to. */
 export function createByokBackend(key: string): ByokBackend {
+  let activeStream: AbortController | null = null
+
   return {
     // Titles, transition suggestions, and compaction summaries share the
     // structured-generation wrappers in @purple/core; only the transport —
@@ -248,8 +255,28 @@ export function createByokBackend(key: string): ByokBackend {
       }),
     ),
 
-    streamPattern: (messages, onDelta) =>
-      streamGemini(key, SYSTEM_PROMPT, messages, onDelta),
+    async stream(messages, onDelta) {
+      activeStream?.abort()
+      const controller = new AbortController()
+      activeStream = controller
+      try {
+        const { promptTokens, truncated } = await streamGemini(
+          key,
+          SYSTEM_PROMPT,
+          messages,
+          onDelta,
+          controller.signal,
+        )
+        return { promptTokens, truncated }
+      } finally {
+        if (activeStream === controller) activeStream = null
+      }
+    },
+
+    async abortStream() {
+      activeStream?.abort()
+      activeStream = null
+    },
 
     repairPattern: (message) =>
       callGemini(key, SYSTEM_PROMPT, [{ role: 'user', content: message }]),
@@ -323,10 +350,10 @@ async function callGemini(
 }
 
 export interface StreamedGeneration {
-  text: string
   /** Gemini's reported prompt token count, or null when absent. Feeds the
    * compaction trigger with exact sizes instead of estimates. */
   promptTokens: number | null
+  truncated: boolean
 }
 
 /**
@@ -339,6 +366,7 @@ async function streamGemini(
   system: string,
   messages: readonly ChatMessage[],
   onDelta: (text: string) => void,
+  signal: AbortSignal,
 ): Promise<StreamedGeneration> {
   const response = await fetch(`${STREAM_ENDPOINT}?alt=sse`, {
     method: 'POST',
@@ -347,6 +375,7 @@ async function streamGemini(
       'x-goog-api-key': key,
     },
     body: JSON.stringify(buildRequestBody(system, messages)),
+    signal,
   })
   if (!response.ok) await throwRequestError(response)
   if (!response.body) throw new Error('Gemini returned an empty response.')
@@ -356,6 +385,7 @@ async function streamGemini(
   let buffered = ''
   let total = ''
   let promptTokens: number | null = null
+  let truncated = false
   const consumeLine = (line: string) => {
     if (!line.startsWith('data:')) return
     let event: GeminiContent
@@ -366,6 +396,8 @@ async function streamGemini(
       return
     }
     promptTokens = event.usageMetadata?.promptTokenCount ?? promptTokens
+    truncated =
+      event.candidates?.[0]?.finishReason === 'MAX_TOKENS' || truncated
     const text = chunkText(event)
     if (!text) return
     total += text
@@ -382,5 +414,5 @@ async function streamGemini(
   }
   consumeLine(buffered)
   if (!total) throw new Error('Gemini returned an empty response.')
-  return { text: total, promptTokens }
+  return { promptTokens, truncated }
 }

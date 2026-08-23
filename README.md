@@ -17,20 +17,27 @@ The app has two main areas:
 
 ## Install On Arch Or Omarchy
 
-Purple builds into a single native binary and installs like any other Arch package.
+Until the first `purple-music` release and AUR package are published, install the
+current checkout for your user:
 
 ```bash
 git clone https://github.com/ferdousbhai/purple.git
-cd purple/packaging
-makepkg -si
+cd purple
+./scripts/install-user.sh
 ```
 
-That installs `/usr/bin/purple`, a desktop entry, and the app icons. Open the
-Omarchy launcher with `Super + Space` and search for `Purple`, or run `purple` in a
-terminal. Updates come with `omarchy-update` once the package is in the AUR.
+That installs `~/.local/bin/purple-music`, a desktop entry, and the app icons.
+Open the Omarchy launcher with `Super + Space` and search for `Purple`, or run
+`purple-music` in a terminal.
 
-Purple needs these runtime packages, which `makepkg` installs for you:
-`webkit2gtk-4.1`, `gtk3`, `gst-plugins-base`, `gst-plugins-good`, `libsecret`.
+The repository includes an Arch `PKGBUILD` release template and a signed-tag
+workflow. The next release will bind that template to the matching tag and
+verified source checksum. After `purple-music` is published to the AUR, install
+and update it with your normal AUR tooling instead of cloning this repository.
+
+Purple needs these runtime packages, which the package or installer checks for:
+`webkit2gtk-4.1`, `gtk3`, `gst-plugins-base`, and `gst-plugins-good`. A Secret
+Service provider such as GNOME Keyring, KWallet, or KeePassXC is recommended.
 
 ## Install Without A Package Manager
 
@@ -40,7 +47,7 @@ From a checkout, this builds Purple and installs it for the current user only:
 ./scripts/install-user.sh
 ```
 
-It puts the binary in `~/.local/bin/purple`, adds the desktop entry and icons
+It puts the binary in `~/.local/bin/purple-music`, adds the desktop entry and icons
 under `~/.local/share`, and refreshes the Omarchy launcher when it is present.
 
 ## Build From Source For Development
@@ -67,7 +74,11 @@ Purple needs a Google Gemini API key so it can ask Gemini to generate music patt
 
 Create an API key in Google AI Studio. In Purple, click `KEY`, paste the API key,
 and save it. Purple stores it in your system keyring (GNOME Keyring, KWallet, or
-whatever provides the Secret Service on your machine), not in a plain file.
+whatever provides the Secret Service on your machine). If no credential store is
+available, Purple falls back to an unencrypted owner-only file at
+`$XDG_CONFIG_HOME/purple/config.json` (normally
+`~/.config/purple/config.json`; `0600`, inside a `0700` directory) and logs that
+fallback.
 
 If you already export `GEMINI_API_KEY` in your shell, Purple uses that.
 
@@ -116,27 +127,27 @@ click or keypress.
 
 ```bash
 # Direct Strudel live-coding pattern (click START after launch)
-purple 's("bd hh sd hh")'
-purple 'note("c3 e3 g3 b3").s("sawtooth").lpf(800).room(0.5)'
+purple-music 's("bd hh sd hh")'
+purple-music 'note("c3 e3 g3 b3").s("sawtooth").lpf(800).room(0.5)'
 
 # Built-in presets
-purple lofi
-purple techno
-purple ambient
-purple dnb
-purple chiptune
-purple basic
+purple-music lofi
+purple-music techno
+purple-music ambient
+purple-music dnb
+purple-music chiptune
+purple-music basic
 
 # Natural language prompt (generates the pattern, then asks you to start audio)
-purple "make a dark cyberpunk acid techno groove"
+purple-music "make a dark cyberpunk acid techno groove"
 
 # Explicit flags
-purple --preset basic
-purple --code 's("bd*4")'
-purple --prompt "make a sparse ambient pattern"
+purple-music --preset basic
+purple-music --code 's("bd*4")'
+purple-music --prompt "make a sparse ambient pattern"
 ```
 
-Purple runs as a single instance. Running `purple lofi` while Purple is already open
+Purple runs as a single instance. Running `purple-music lofi` while Purple is already open
 focuses the existing window and loads that pattern instead of starting a second
 copy.
 
@@ -163,16 +174,16 @@ it again.
 
 ### Linux: the window is blank or transparent
 
-WebKitGTK's DMABUF renderer draws nothing on several Mesa drivers, so Purple turns
-it off by default. If your machine handles it well and you want the accelerated
-path, start Purple with:
+Purple uses WebKitGTK's accelerated renderer by default. Some Mesa driver and
+WebKitGTK combinations instead produce a blank or transparent window. If that
+happens, disable the DMABUF renderer for Purple:
 
 ```bash
-PURPLE_GPU=1 purple
+PURPLE_DISABLE_DMABUF=1 purple-music
 ```
 
-If a blank window persists, add `WEBKIT_DISABLE_COMPOSITING_MODE=1` to disable
-more of the accelerated path.
+If a blank window persists, also set `WEBKIT_DISABLE_COMPOSITING_MODE=1` to
+disable more of the accelerated path.
 
 ### The app says it was rate limited
 
@@ -194,7 +205,15 @@ pnpm run typecheck  # TypeScript check
 pnpm run check      # Everything above plus a production web build
 ```
 
-The logs from a running app are in `~/.local/share/dev.ferdous.purple/logs/`.
+The logs from a running app are in
+`~/.local/share/com.soundspurple.Purple/logs/` by default.
+
+## Licensing
+
+Purple-authored source is MIT licensed. Distributed application bundles also
+incorporate AGPL-3.0-or-later Strudel and Kabelsalat components. See
+`THIRD_PARTY_NOTICES.md` and `LICENSE-AGPL-3.0-or-later` for the component list,
+source locations, and license terms.
 
 ## Technology Used
 

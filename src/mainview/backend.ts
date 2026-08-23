@@ -25,7 +25,7 @@ import type {
   SystemTheme,
 } from "../shared/types";
 
-/** Emitted by the Rust shell when a second `purple …` invocation is forwarded here. */
+/** Emitted when a second `purple-music …` invocation is forwarded here. */
 const STARTUP_ARGS_EVENT = "purple://startup-args";
 
 /** Emitted by the Rust shell when a desktop media control (MPRIS) asks for something. */
@@ -112,12 +112,12 @@ export async function getStartupOptions(): Promise<StartupOptions> {
   return parseCliArgs(await invoke<string[]>("startup_args"));
 }
 
-/** Run `handler` when another `purple …` invocation hands its arguments to this window. */
+/** Run `handler` when another `purple-music …` invocation hands its arguments here. */
 export function onStartupArgs(
   handler: (options: StartupOptions) => void,
 ): Promise<UnlistenFn> {
   return listen<string[]>(STARTUP_ARGS_EVENT, (event) => {
-    // A bare `purple` — the launcher icon, or a second click on it — forwards no
+    // A bare `purple-music` — the launcher icon, or a second click — forwards no
     // arguments and means "focus the window". Parsing that would hand back a
     // random preset and overwrite the pattern the user is working on.
     if (event.payload.length === 0) return;

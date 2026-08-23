@@ -34,6 +34,7 @@ export function App() {
     streamingText,
     isStreaming,
     chatError,
+    suggestNewSession,
     clearChat,
     playbackState,
     error,
@@ -128,6 +129,7 @@ export function App() {
               playbackState === "transitioning"
             }
             isTransitioning={playbackState === "transitioning"}
+            suggestNewSession={suggestNewSession}
             canStageNext={playbackState === "playing" || (transitionSuggestions.length > 0 && playbackState !== "loading" && playbackState !== "transitioning")}
             transitionSuggestions={transitionSuggestions}
             transitionSuggestionsStatus={transitionSuggestionsStatus}

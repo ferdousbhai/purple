@@ -3,8 +3,8 @@
  *
  * The shell reads three colors from the active Omarchy theme; this maps them
  * onto the palette tokens `app.css` declares in `@theme`, overriding the
- * built-in dark palette at the CSS-variable level. Machines without Omarchy
- * (or with an unreadable theme) keep the hardcoded look.
+ * generic system light/dark palette at the CSS-variable level. Machines
+ * without Omarchy (or with an unreadable theme) follow prefers-color-scheme.
  */
 
 import type { SystemTheme } from "../shared/types";
@@ -21,6 +21,7 @@ export type SystemThemeVariables = {
   "--color-surface-light"?: string;
   "--color-surface-lighter"?: string;
   "--color-text"?: string;
+  "--color-white"?: string;
   "--color-neon-cyan"?: string;
 };
 
@@ -39,6 +40,7 @@ export function systemThemeVariables(theme: SystemTheme): SystemThemeVariables {
   }
   if (theme.foreground) {
     variables["--color-text"] = theme.foreground;
+    variables["--color-white"] = theme.foreground;
   }
   if (theme.accent) {
     // The dominant accent across the UI; the other neons stay as-is.
@@ -50,7 +52,10 @@ export function systemThemeVariables(theme: SystemTheme): SystemThemeVariables {
 /** Apply (or, given null, leave alone) the system theme's palette overrides. */
 export function applySystemTheme(theme: SystemTheme | null): void {
   if (!theme) return;
-  const style = document.documentElement.style;
+  const root = document.documentElement;
+  root.dataset.colorScheme = theme.mode;
+  root.style.colorScheme = theme.mode;
+  const style = root.style;
   for (const [name, value] of Object.entries(systemThemeVariables(theme))) {
     if (value !== undefined) style.setProperty(name, value);
   }

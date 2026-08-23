@@ -1,20 +1,11 @@
 import {
   memo,
   useCallback,
-  useEffect,
   useRef,
-  useMemo,
   useState,
 } from "react";
-import CodeMirror from "@uiw/react-codemirror";
-import { javascript } from "@codemirror/lang-javascript";
-import { oneDark } from "@codemirror/theme-one-dark";
-import { EditorView, keymap } from "@codemirror/view";
+import { PatternEditor } from "@purple/ui/pattern-editor";
 import { PlaybackControls } from "./PlaybackControls";
-import {
-  playbackHighlightExtension,
-  updatePlaybackHighlights,
-} from "@purple/ui/playback-highlight";
 import type {
   PlaybackState,
   EvalResult,
@@ -46,13 +37,6 @@ interface EditorPanelProps {
   onStop: () => void;
 }
 
-const CODEMIRROR_BASIC_SETUP = {
-  lineNumbers: true,
-  foldGutter: false,
-  highlightActiveLine: true,
-  autocompletion: false,
-} as const;
-
 export const EditorPanel = memo(function EditorPanel({
   code,
   onCodeChange,
@@ -72,7 +56,6 @@ export const EditorPanel = memo(function EditorPanel({
 }: EditorPanelProps) {
   const codeRef = useRef(code);
   const playbackStateRef = useRef(playbackState);
-  const editorViewRef = useRef<EditorView | null>(null);
   const [saveState, setSaveState] = useState<SaveState>({ status: "idle" });
   codeRef.current = code;
   playbackStateRef.current = playbackState;
@@ -109,30 +92,6 @@ export const EditorPanel = memo(function EditorPanel({
       });
     }
   }, [onSavePattern, patternTitle, saveState.status]);
-
-  const extensions = useMemo(
-    () => [
-      javascript(),
-      playbackHighlightExtension,
-      keymap.of([
-        {
-          key: "Ctrl-Enter",
-          run: () => {
-            handlePlay();
-            return true;
-          },
-        },
-      ]),
-    ],
-    [handlePlay],
-  );
-
-  useEffect(() => {
-    const view = editorViewRef.current;
-    if (!view) return;
-
-    updatePlaybackHighlights(view, activeRanges);
-  }, [activeRanges]);
 
   return (
     <div className="flex flex-col h-full bg-surface-light/50 relative">
@@ -197,19 +156,14 @@ export const EditorPanel = memo(function EditorPanel({
       </div>
 
       <div className="flex-1 overflow-hidden">
-        <CodeMirror
-          value={code}
-          onChange={(nextCode) => {
+        <PatternEditor
+          code={code}
+          onCodeChange={(nextCode) => {
             setSaveState({ status: "idle" });
             onCodeChange(nextCode);
           }}
-          theme={oneDark}
-          extensions={extensions}
-          basicSetup={CODEMIRROR_BASIC_SETUP}
-          onCreateEditor={(view) => {
-            editorViewRef.current = view;
-            updatePlaybackHighlights(view, activeRanges);
-          }}
+          activeRanges={activeRanges}
+          onEvaluate={handlePlay}
           className="h-full"
         />
       </div>

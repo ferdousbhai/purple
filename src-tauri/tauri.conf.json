@@ -3,7 +3,7 @@
   "productName": "Purple",
   "mainBinaryName": "purple",
   "version": "0.4.0",
-  "identifier": "dev.ferdous.purple",
+  "identifier": "com.soundspurple.Purple",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -17,8 +17,6 @@
         "title": "Purple",
         "width": 1200,
         "height": 800,
-        "x": 200,
-        "y": 100,
         "minWidth": 720,
         "minHeight": 480,
         "backgroundColor": "#0a0a0a",
@@ -26,7 +24,8 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' asset: http://asset.localhost data: blob:; media-src 'self' https://raw.githubusercontent.com blob:; connect-src 'self' ipc: http://ipc.localhost https://raw.githubusercontent.com; worker-src 'self' blob:",
+      "devCsp": "default-src 'self' http://localhost:5173; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'; script-src 'self' http://localhost:5173; style-src 'self' 'unsafe-inline' http://localhost:5173; font-src 'self' http://localhost:5173; img-src 'self' http://localhost:5173 asset: http://asset.localhost data: blob:; media-src 'self' https://raw.githubusercontent.com blob:; connect-src 'self' http://localhost:5173 ws://localhost:5173 ipc: http://ipc.localhost https://raw.githubusercontent.com; worker-src 'self' blob:"
     },
     "withGlobalTauri": false
   },

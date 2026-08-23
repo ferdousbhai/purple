@@ -47,9 +47,9 @@ export type TransitionSuggestionsResult =
 /**
  * Backend capabilities a Purple UI composes. They are split so each app
  * `satisfies` exactly what it implements — the desktop streams over Tauri
- * `invoke` + `Channel` (`src/mainview/backend.ts`), while the web's
- * bring-your-own-key path is one-shot and never streams — and the compiler
- * catches contract drift on both sides.
+ * `invoke` + `Channel` (`src/mainview/backend.ts`), while the web streams
+ * directly with the visitor's key — and the compiler catches contract drift
+ * on both sides.
  */
 export interface PatternStreamer {
   /**

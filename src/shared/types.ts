@@ -41,12 +41,3 @@ export type SavePatternResult =
   | { ok: true; path: string }
   | { ok: false; cancelled: true }
   | { ok: false; cancelled: false; error: string };
-
-/** A pattern plus the prompt that produced it, when known. */
-export interface PatternContext {
-  code: string;
-  sourcePrompt?: string;
-  /** Model fixes already spent on this pattern. Generation-time validation
-   * and play-time repair share one MAX_RETRIES budget per pattern. */
-  repairsUsed?: number;
-}

@@ -24,12 +24,13 @@ interface ChatPanelProps {
   isStreaming: boolean;
   isInputDisabled: boolean;
   isTransitioning: boolean;
+  suggestNewSession: boolean;
   canStageNext: boolean;
   transitionSuggestions: TransitionSuggestion[];
   transitionSuggestionsStatus: TransitionSuggestionsStatus;
   transitionSuggestionsError: string | null;
-  onSendMessage: (text: string) => boolean;
-  onStageNext: (text: string) => boolean;
+  onSendMessage: (text: string, explanatoryStyle: boolean) => boolean;
+  onStageNext: (text: string, explanatoryStyle: boolean) => boolean;
   onClearChat: () => void;
 }
 export function ChatPanel({
@@ -39,6 +40,7 @@ export function ChatPanel({
   isStreaming,
   isInputDisabled,
   isTransitioning,
+  suggestNewSession,
   canStageNext,
   transitionSuggestions,
   transitionSuggestionsStatus,
@@ -48,6 +50,7 @@ export function ChatPanel({
   onClearChat,
 }: ChatPanelProps) {
   const [inputValue, setInputValue] = useState("");
+  const [explanatoryStyle, setExplanatoryStyle] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const shouldFollowRef = useRef(true);
@@ -61,14 +64,14 @@ export function ChatPanel({
 
   function submitPrompt(text: string): void {
     if (isInputDisabled) return;
-    onSendMessage(text);
+    onSendMessage(text, explanatoryStyle);
   }
 
   function handleSubmit(): void {
     const text = inputValue.trim();
     if (!text || isInputDisabled) return;
 
-    const didSend = onSendMessage(text);
+    const didSend = onSendMessage(text, explanatoryStyle);
     if (didSend) setInputValue("");
   }
 
@@ -76,13 +79,13 @@ export function ChatPanel({
     const text = inputValue.trim();
     if (!text || isInputDisabled || !canStageNext) return;
 
-    const didSend = onStageNext(text);
+    const didSend = onStageNext(text, explanatoryStyle);
     if (didSend) setInputValue("");
   }
 
   function handleSuggestedNext(prompt: string): void {
     if (isInputDisabled || !canStageNext) return;
-    onStageNext(prompt);
+    onStageNext(prompt, explanatoryStyle);
   }
 
   function handleSelectPreset(preset: PromptPreset): void {
@@ -91,7 +94,7 @@ export function ChatPanel({
 
   function handleSelectModifier(mod: PromptModifier): void {
     if (canStageNext) {
-      onStageNext(mod.prompt);
+      onStageNext(mod.prompt, explanatoryStyle);
     } else {
       submitPrompt(mod.prompt);
     }
@@ -240,6 +243,24 @@ export function ChatPanel({
         <div ref={bottomRef} />
       </div>
 
+      {suggestNewSession && !isEmpty && (
+        <div
+          role="status"
+          className="flex items-center gap-3 border-t border-neon-amber/15 bg-neon-amber/5 px-3 py-2"
+        >
+          <span className="min-w-0 flex-1 text-[10px] font-mono leading-relaxed text-white/50">
+            This session is getting long. Start fresh for the clearest results.
+          </span>
+          <button
+            type="button"
+            onClick={handleClear}
+            className="shrink-0 rounded border border-neon-amber/25 px-2.5 py-1 text-[10px] font-mono font-medium text-neon-amber transition-colors hover:border-neon-amber/50 hover:bg-neon-amber/10 focus:outline-none focus:border-neon-amber/60"
+          >
+            START OVER
+          </button>
+        </div>
+      )}
+
       {/* Modifier chips for continuous music evolution */}
       {!isEmpty && (
         <div className="px-3 py-1.5 border-t border-neon-cyan/10 bg-surface-light/40 flex flex-wrap items-center gap-1.5">
@@ -297,6 +318,17 @@ export function ChatPanel({
         )}
 
       <div className="border-t border-neon-magenta/10 p-3 bg-surface/60">
+        <label className="mb-2 inline-flex items-center gap-2 text-[10px] font-mono text-white/45">
+          <input
+            type="checkbox"
+            checked={explanatoryStyle}
+            disabled={isInputDisabled}
+            onChange={(event) => setExplanatoryStyle(event.target.checked)}
+            className="size-3.5 accent-neon-cyan"
+          />
+          <span className="font-medium text-white/65">Explanatory</span>
+          <span>comment every line</span>
+        </label>
         <div className="flex gap-2">
           <textarea
             aria-label="Describe the music to generate"

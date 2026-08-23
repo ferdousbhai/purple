@@ -5,7 +5,7 @@ import {
   closestSoundNames,
   type ValidationProblem,
 } from "./validation";
-import { repairUntilValid } from "./repair";
+import { MAX_RETRIES, repairUntilValid } from "./repair";
 import type { AuditableHapValue } from "./validation";
 
 const hap = (value: AuditableHapValue) => ({ value });
@@ -84,6 +84,18 @@ describe("buildValidationRetryMessage", () => {
     expect(message).toContain('s("pianoz")');
     expect(message).toContain("single Strudel expression");
   });
+
+  it("sends safe-interpreter resource limits back to the model", () => {
+    const error =
+      "Pattern uses unsupported JavaScript near character 556: Mini-notation repetition exceeds the cumulative event multiplier limit of 512.";
+    const message = buildValidationRetryMessage('s("bd*1024")', [
+      { kind: "evaluation", error },
+    ]);
+
+    expect(message).toContain(error);
+    expect(message).toContain('s("bd*1024")');
+    expect(message).toContain("Please fix the code");
+  });
 });
 
 describe("repairUntilValid", () => {
@@ -145,8 +157,8 @@ describe("repairUntilValid", () => {
       applyFix: () => {},
       isStale: () => false,
     });
-    expect(fixes).toBe(2);
-    expect(outcome.retriesUsed).toBe(2);
+    expect(fixes).toBe(MAX_RETRIES);
+    expect(outcome.retriesUsed).toBe(MAX_RETRIES);
     expect(outcome.problems).toEqual([unknownSound]);
   });
 

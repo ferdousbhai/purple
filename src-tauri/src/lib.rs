@@ -7,21 +7,34 @@ mod theme;
 
 use tauri::{Emitter, Manager};
 
-/// A second `purple …` invocation hands its arguments to the running window.
+/// A second `purple-music …` invocation hands its arguments to the running window.
 pub const STARTUP_ARGS_EVENT: &str = "purple://startup-args";
 
-/// WebKitGTK's DMABUF renderer paints nothing on several Mesa drivers — the
-/// window opens fully transparent — so Purple opts out by default. `PURPLE_GPU=1`
-/// asks for the accelerated path back.
+/// WebKitGTK's DMABUF renderer paints nothing on some Mesa drivers. Keep the
+/// accelerated default for unaffected systems, but offer a Purple-scoped
+/// workaround instead of asking users to change their session globally.
 #[cfg(target_os = "linux")]
-fn disable_dmabuf_renderer() {
-    let opted_in =
-        std::env::var("PURPLE_GPU").is_ok_and(|value| matches!(value.trim(), "1" | "true" | "yes"));
-    if opted_in || std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_some() {
+fn configure_dmabuf_renderer() {
+    if !environment_flag("PURPLE_DISABLE_DMABUF")
+        || std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_some()
+    {
         return;
     }
     // Safe here: this runs before any window, plugin or thread exists.
     std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+}
+
+#[cfg(target_os = "linux")]
+fn environment_flag(name: &str) -> bool {
+    std::env::var(name).is_ok_and(|value| environment_flag_value(&value))
+}
+
+#[cfg(target_os = "linux")]
+fn environment_flag_value(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    )
 }
 
 /// WebKitGTK's audio runs in a child WebProcess that shows up in
@@ -32,7 +45,11 @@ fn disable_dmabuf_renderer() {
 fn name_audio_streams() {
     for (key, value) in [
         ("PULSE_PROP_application.name", "Purple"),
-        ("PULSE_PROP_application.icon_name", "purple"),
+        ("PULSE_PROP_application.id", "com.soundspurple.Purple"),
+        (
+            "PULSE_PROP_application.icon_name",
+            "com.soundspurple.Purple",
+        ),
         ("PULSE_PROP_media.name", "Purple"),
     ] {
         if std::env::var_os(key).is_none() {
@@ -45,7 +62,7 @@ fn name_audio_streams() {
 pub fn run() {
     #[cfg(target_os = "linux")]
     {
-        disable_dmabuf_renderer();
+        configure_dmabuf_renderer();
         name_audio_streams();
     }
 
@@ -108,4 +125,19 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running Purple");
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::environment_flag_value;
+
+    #[test]
+    fn recognizes_explicit_environment_flags() {
+        for enabled in ["1", "true", "TRUE", " yes ", "on"] {
+            assert!(environment_flag_value(enabled));
+        }
+        for disabled in ["", "0", "false", "no", "enabled"] {
+            assert!(!environment_flag_value(disabled));
+        }
+    }
 }
