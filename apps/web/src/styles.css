@@ -432,6 +432,14 @@ a { color: var(--accent); }
   .editor-bar .export { display: none; }
   /* Line numbers spend ~7% of the viewport on navigation nobody does here. */
   .cm-editor .cm-gutters { display: none !important; }
+  /* One swipeable line per chip row instead of a three-row wrap. */
+  .chip-row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .chip-row::-webkit-scrollbar { display: none; }
+  .chip-row .chip { flex: 0 0 auto; white-space: nowrap; }
 }
 
 @media (prefers-reduced-motion: reduce) {
