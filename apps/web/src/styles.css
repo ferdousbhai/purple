@@ -416,7 +416,9 @@ a { color: var(--accent); }
 
 /* ── Small screens: stack, editor stays the hero ── */
 @media (max-width: 880px) {
-  .studio-grid { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
+  /* minmax(0, ...) everywhere: a bare 1fr track minimum is min-content, and
+     CodeMirror's unwrapped lines would push the whole page wider. */
+  .studio-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
   .editor-pane { border-right: 0; border-bottom: 1px solid var(--border); }
   .transport { min-width: 0; }
   /* The squeezed chat history is unreadable here, so the editor takes its

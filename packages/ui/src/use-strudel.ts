@@ -51,7 +51,10 @@ export interface StrudelAudioOptions {
   ensureRunningContext?: (context: AudioContext) => Promise<void>;
 }
 
-async function defaultEnsureRunningContext(context: AudioContext): Promise<void> {
+/** The default activation guard: resume and verify. Exported so hosts can
+ * compose it with their own gesture-time work (e.g. the web app's iOS
+ * media-channel unlock). */
+export async function defaultEnsureRunningContext(context: AudioContext): Promise<void> {
   const state = String(context.state);
   if (state === "closed") {
     throw new Error("Audio output is closed. Reload Purple and try again.");

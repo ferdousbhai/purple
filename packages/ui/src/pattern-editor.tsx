@@ -1,6 +1,6 @@
 import { javascript } from "@codemirror/lang-javascript";
 import { Prec } from "@codemirror/state";
-import { keymap, type EditorView } from "@codemirror/view";
+import { EditorView, keymap } from "@codemirror/view";
 import CodeMirror from "@uiw/react-codemirror";
 import type { SourceRange } from "@purple/core/types";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -23,6 +23,9 @@ export interface PatternEditorProps {
   activeRanges: readonly SourceRange[];
   onEvaluate: () => void;
   className?: string;
+  /** Wrap long lines instead of scrolling sideways - the readable choice on
+   * touch-width screens. */
+  wrapLines?: boolean;
 }
 
 export function PatternEditor({
@@ -31,6 +34,7 @@ export function PatternEditor({
   activeRanges,
   onEvaluate,
   className,
+  wrapLines = false,
 }: PatternEditorProps) {
   const viewRef = useRef<EditorView | null>(null);
   const [darkTheme, setDarkTheme] = useState(prefersDarkEditor);
@@ -41,6 +45,7 @@ export function PatternEditor({
     () => [
       javascript(),
       playbackHighlightExtension,
+      ...(wrapLines ? [EditorView.lineWrapping] : []),
       Prec.high(
         keymap.of([
           {
@@ -53,7 +58,7 @@ export function PatternEditor({
         ]),
       ),
     ],
-    [],
+    [wrapLines],
   );
 
   // CodeMirror owns decoration state outside React, so scheduler ranges need

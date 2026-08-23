@@ -49,11 +49,22 @@ import {
 } from '@purple/ui/playback-flow'
 import { SpectrumBars } from '@purple/ui/spectrum-bars'
 import { usePlayback } from '@purple/ui/use-playback'
+import { defaultEnsureRunningContext } from '@purple/ui/use-strudel'
+import { unlockMediaChannel } from '#/lib/media-channel'
 import { useTransitionSuggestions } from '@purple/ui/use-transition-suggestions'
 import { useStudioChat } from '@purple/ui/use-studio-chat'
 import { useGeneratedPattern } from '@purple/ui/use-generated-pattern'
 import type { PatternEditorProps } from '@purple/ui/pattern-editor'
 import type { SourceRange } from '@purple/core/types'
+
+/** Runs inside the unlock gesture, before the first await: the iOS media-
+ * channel unlock must start its element synchronously or it is refused. */
+const WEB_AUDIO_OPTIONS = {
+  async ensureRunningContext(context: AudioContext) {
+    unlockMediaChannel()
+    await defaultEnsureRunningContext(context)
+  },
+}
 
 const STARTER_PATTERNS = [
   's("bd*4").gain(0.8)',
@@ -102,7 +113,8 @@ export function PurpleStudio() {
   const [code, setCode] = useState(() => restored?.code ?? randomStarter())
   const [customTitle, setCustomTitle] = useState(restored?.customTitle ?? null)
   const [sourcePrompt, setSourcePrompt] = useState(restored?.sourcePrompt)
-  const playback = usePlayback()
+  const playback = usePlayback(WEB_AUDIO_OPTIONS)
+  const isPhoneWidth = usePhoneWidth()
   const savedPatterns = usePatterns()
   const libraryRef = useRef<HTMLElement | null>(null)
   const libraryButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -369,6 +381,7 @@ export function PurpleStudio() {
               code={code}
               activeRanges={code === playback.activeCode ? playback.activeRanges : EMPTY_RANGES}
               onCodeChange={setCode}
+              wrapLines={isPhoneWidth}
               // Strudel convention: Mod+Enter always (re-)evaluates, so a live
               // edit mid-playback picks up the new pattern instead of stopping.
               onEvaluate={() => void playback.play(code)}
@@ -963,6 +976,20 @@ function MixRow(props: { flow: PatternFlow; playback: Playback }) {
 }
 
 /** A default title from the generating prompt, so saved patterns don't collide. */
+/** Mirrors the stylesheet's phone tier, where the editor wraps long lines. */
+function usePhoneWidth(): boolean {
+  const [isPhone, setIsPhone] = useState(
+    () => window.matchMedia('(max-width: 560px)').matches,
+  )
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 560px)')
+    const update = () => setIsPhone(media.matches)
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
+  return isPhone
+}
+
 function titleFromPrompt(prompt: string | undefined): string | null {
   const text = prompt?.trim().replace(/\s+/g, ' ')
   if (!text) return null
