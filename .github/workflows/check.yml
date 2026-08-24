@@ -40,7 +40,9 @@ jobs:
         run: pnpm run check
 
       - name: Verify AudioWorklet under the production CSP
-        run: node scripts/verify-worklet-csp.mjs
+        run: |
+          browser_path="$(command -v chromium || command -v google-chrome || command -v google-chrome-stable)"
+          CHROMIUM_BIN="$browser_path" node scripts/verify-worklet-csp.mjs
 
   browser:
     name: Browser flow
