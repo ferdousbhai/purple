@@ -41,7 +41,7 @@
     "@strudel/mini": "1.2.6",
     "@strudel/tonal": "1.2.6",
     "@types/react": "^19.2.14",
-    "react": "^19.2.5",
+    "react": "^19.2.8",
     "typescript": "^6.0.3"
   }
 }
