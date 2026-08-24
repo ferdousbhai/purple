@@ -11,14 +11,11 @@ on:
       - ".github/workflows/rust-security.yml"
       - "src-tauri/Cargo.lock"
       - "src-tauri/Cargo.toml"
-  schedule:
-    - cron: "23 6 * * 1"
   workflow_dispatch:
 
 permissions:
   checks: write
   contents: read
-  issues: write
 
 concurrency:
   group: rust-security-${{ github.ref }}
@@ -32,7 +29,7 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Tauri's current GTK3 family requires glib 0.18. RUSTSEC-2024-0429 is
       # limited to VariantStrIter and is tracked in repository issue #22 until

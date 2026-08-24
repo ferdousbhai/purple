@@ -1,6 +1,6 @@
-# Version bumps arrive monthly as one grouped PR per ecosystem, to keep the
-# solo-maintainer noise down. Security updates ignore this schedule and open
-# PRs as soon as an advisory lands, which is the part that must stay prompt.
+# Routine version updates are disabled. Dependabot only opens a grouped PR when
+# an enabled GitHub security alert has an available fix. The schedule remains
+# required by the configuration format but does not govern security updates.
 version: 2
 
 updates:
@@ -8,25 +8,28 @@ updates:
     directory: /
     schedule:
       interval: monthly
-    open-pull-requests-limit: 1
+    open-pull-requests-limit: 0
     groups:
-      javascript:
+      javascript-security:
+        applies-to: security-updates
         patterns: ["*"]
 
   - package-ecosystem: cargo
     directory: /src-tauri
     schedule:
       interval: monthly
-    open-pull-requests-limit: 1
+    open-pull-requests-limit: 0
     groups:
-      rust:
+      rust-security:
+        applies-to: security-updates
         patterns: ["*"]
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
-    open-pull-requests-limit: 1
+    open-pull-requests-limit: 0
     groups:
-      actions:
+      actions-security:
+        applies-to: security-updates
         patterns: ["*"]
