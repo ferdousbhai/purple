@@ -15,11 +15,11 @@ const EMBEDDED_WORKLET =
  * rewrite only that static module reference. Generated `dough()` worklets stay
  * blocked and are not exposed by Purple's safe expression language.
  */
-/** superdough's package directory, resolved the way its consumers reach it:
- * repo root -> @purple/ui -> @strudel/web -> @strudel/webaudio -> superdough. */
+/** Superdough's package directory, resolved through @purple/ui's dependency
+ * chain: @strudel/web -> @strudel/webaudio -> superdough. */
 function superdoughPackageRoot(): string {
   const fromUi = createRequire(
-    fileURLToPath(new URL("../packages/ui/package.json", import.meta.url)),
+    fileURLToPath(new URL("../../../packages/ui/package.json", import.meta.url)),
   );
   const web = fromUi.resolve("@strudel/web");
   const webaudio = createRequire(web).resolve("@strudel/webaudio");

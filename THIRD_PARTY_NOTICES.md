@@ -28,6 +28,6 @@ responsible for satisfying the licenses of the combined artifact.
 
 ## Other dependencies
 
-Other JavaScript dependencies and the Rust crates linked by the Tauri shell
-retain the licenses declared in their package metadata. Their exact versions
-and resolved sources are fixed by `pnpm-lock.yaml` and `src-tauri/Cargo.lock`.
+Other JavaScript dependencies retain the licenses declared in their package
+metadata. Their exact versions and resolved sources are fixed by
+`pnpm-lock.yaml`.

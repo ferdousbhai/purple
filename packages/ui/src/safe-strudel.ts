@@ -47,7 +47,7 @@ const EVENT_MULTIPLIER_CALLS = new Set([
 /**
  * Purple intentionally supports a focused Strudel expression language, not
  * arbitrary JavaScript. Every identifier below is supplied by @strudel/web;
- * browser and Tauri globals never enter the interpreter's scope.
+ * browser globals never enter the interpreter's scope.
  */
 const SAFE_GLOBALS = new Set([
   "add",
@@ -297,7 +297,7 @@ interface MiniOperation {
   type_?: string;
 }
 
-export class UnsafePatternError extends Error {
+class UnsafePatternError extends Error {
   constructor(message: string, node?: Node) {
     super(
       node

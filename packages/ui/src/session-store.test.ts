@@ -251,6 +251,18 @@ describe("session pattern storage", () => {
     expect(store.load()?.customTitle).toBe("t".repeat(60));
   });
 
+  it("clamps an over-long source prompt and drops unknown fields", () => {
+    vi.useFakeTimers();
+    const values = stubStorage();
+    const store = createPatternStore();
+
+    store.save({ ...pattern, sourcePrompt: "p".repeat(4_100) });
+    flushPatternSave();
+    const stored = JSON.parse(values.get("purple.session-pattern.v1") ?? "null");
+    expect(stored.sourcePrompt).toBe("p".repeat(4_000));
+    expect(store.load()?.sourcePrompt).toBe("p".repeat(4_000));
+  });
+
   it("stays inert when storage is blocked", () => {
     vi.useFakeTimers();
     stubBlockedStorage();

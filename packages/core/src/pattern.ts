@@ -26,9 +26,8 @@ export type PatternAcceptance =
   | { ok: false; error: string };
 
 /**
- * Extract and size-guard the pattern from a raw model response - the shared
- * acceptance gate both apps run before a generated pattern reaches the
- * editor.
+ * Extract and size-guard the pattern from a raw model response before it
+ * reaches the editor.
  */
 export function acceptRawPattern(raw: string): PatternAcceptance {
   const pattern = extractPattern(raw);

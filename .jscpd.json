@@ -4,14 +4,12 @@
   "maxLines": 2000,
   "maxSize": "500kb",
   "mode": "weak",
-  "format": ["typescript", "tsx", "javascript", "jsx", "rust", "css", "bash", "json"],
+  "format": ["typescript", "tsx", "javascript", "jsx", "css", "json"],
   "ignore": [
     "**/node_modules/**",
     "**/dist/**",
     "**/target/**",
-    "**/Cargo.lock",
-    "**/pnpm-lock.yaml",
-    "**/src-tauri/icons/**"
+    "**/pnpm-lock.yaml"
   ],
   "reporters": ["console"],
   "gitignore": true,

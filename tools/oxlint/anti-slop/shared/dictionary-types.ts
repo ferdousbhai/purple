@@ -28,7 +28,7 @@ export type UnsafeDictionary = {
 	readonly unsafeValue: "any" | "empty-object" | "object" | "union" | "unknown";
 };
 
-export type WideningTargetKind =
+type WideningTargetKind =
 	| "anonymous object"
 	| "generic container"
 	| "object"
@@ -540,11 +540,6 @@ function classifyBroadTarget(
 			);
 		},
 	);
-}
-
-export function isPopulatedObjectExpression(expression: ESTree.Expression): boolean {
-	const current = unwrapKnownEvidenceExpression(expression, false);
-	return current.type === "ObjectExpression" && current.properties.length > 0;
 }
 
 export function isKnownEvidenceExpression(expression: ESTree.Expression): boolean {

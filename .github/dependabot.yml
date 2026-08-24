@@ -14,16 +14,6 @@ updates:
         applies-to: security-updates
         patterns: ["*"]
 
-  - package-ecosystem: cargo
-    directory: /src-tauri
-    schedule:
-      interval: monthly
-    open-pull-requests-limit: 0
-    groups:
-      rust-security:
-        applies-to: security-updates
-        patterns: ["*"]
-
   - package-ecosystem: github-actions
     directory: /
     schedule:

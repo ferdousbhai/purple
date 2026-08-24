@@ -4,25 +4,26 @@
  * event. No server ever sees them.
  */
 import { useSyncExternalStore } from 'react'
-import { z } from 'zod'
+import { MAX_PATTERN_LENGTH } from '@purple/core/pattern'
+import {
+  isJsonNumber,
+  isJsonString,
+  jsonMembers,
+  type JsonValue,
+} from '@purple/core/json'
 import { createPatternStore } from '@purple/ui/session-store'
 
-const patternSchema = z.object({
-  id: z.string(),
-  title: z.string().min(1).max(60),
-  code: z.string().min(1).max(30_000),
-  prompt: z.string().max(4_000).optional(),
-  createdAt: z.number(),
-  updatedAt: z.number(),
-})
-
-export type SavedPattern = z.infer<typeof patternSchema>
+interface SavedPattern {
+  id: string
+  title: string
+  code: string
+  prompt?: string
+  createdAt: number
+  updatedAt: number
+}
 
 const STORAGE_KEY = 'purple.patterns.v1'
 const LEGACY_KEY = 'riff.patterns.v1'
-
-/** The per-entry envelope the retired TanStack DB collection wrapped items in. */
-const tanstackEntrySchema = z.object({ versionKey: z.string(), data: z.unknown() })
 
 /**
  * Parse a stored value into patterns, dropping entries that fail the schema.
@@ -30,22 +31,91 @@ const tanstackEntrySchema = z.object({ versionKey: z.string(), data: z.unknown()
  * retired TanStack DB collection wrote (`{ [key]: { versionKey, data } }`).
  */
 export function parseStored(raw: string): SavedPattern[] {
-  let parsed: unknown
+  let parsed: JsonValue
   try {
     parsed = JSON.parse(raw)
   } catch {
     return []
   }
+  const members = jsonMembers(parsed)
   const candidates = Array.isArray(parsed)
     ? parsed
-    : Object.values(z.record(z.string(), z.unknown()).catch({}).parse(parsed)).map((value) => {
-        const wrapped = tanstackEntrySchema.safeParse(value)
-        return wrapped.success ? wrapped.data.data : value
-      })
+    : members
+      ? [...members.values()].map(unwrapLegacyEntry)
+      : []
   return candidates.flatMap((candidate) => {
-    const result = patternSchema.safeParse(candidate)
-    return result.success ? [result.data] : []
+    const result = parsePattern(candidate)
+    return result ? [result] : []
   })
+}
+
+function unwrapLegacyEntry(value: JsonValue): JsonValue {
+  const fields = jsonMembers(value)
+  const data = fields?.get('data')
+  return isJsonString(fields?.get('versionKey')) && data !== undefined
+    ? data
+    : value
+}
+
+function parsePattern(value: JsonValue): SavedPattern | null {
+  const fields = jsonMembers(value)
+  const id = fields?.get('id')
+  const title = fields?.get('title')
+  const code = fields?.get('code')
+  const prompt = fields?.get('prompt')
+  const createdAt = fields?.get('createdAt')
+  const updatedAt = fields?.get('updatedAt')
+  if (
+    !isJsonString(id) ||
+    !isJsonString(title) ||
+    title.length === 0 ||
+    title.length > 60 ||
+    !isJsonString(code) ||
+    code.length === 0 ||
+    code.length > MAX_PATTERN_LENGTH ||
+    (prompt !== undefined &&
+      (!isJsonString(prompt) || prompt.length > 4_000)) ||
+    !isFiniteNumber(createdAt) ||
+    !isFiniteNumber(updatedAt)
+  ) {
+    return null
+  }
+  const pattern: SavedPattern = {
+    id,
+    title,
+    code,
+    createdAt,
+    updatedAt,
+  }
+  if (isJsonString(prompt)) pattern.prompt = prompt
+  return pattern
+}
+
+function isFiniteNumber(value: JsonValue | undefined): value is number {
+  return isJsonNumber(value)
+}
+
+function normalizePattern(pattern: SavedPattern): SavedPattern | null {
+  if (
+    pattern.title.length === 0 ||
+    pattern.title.length > 60 ||
+    pattern.code.length === 0 ||
+    pattern.code.length > MAX_PATTERN_LENGTH ||
+    (pattern.prompt !== undefined && pattern.prompt.length > 4_000) ||
+    !Number.isFinite(pattern.createdAt) ||
+    !Number.isFinite(pattern.updatedAt)
+  ) {
+    return null
+  }
+  const normalized: SavedPattern = {
+    id: pattern.id,
+    title: pattern.title,
+    code: pattern.code,
+    createdAt: pattern.createdAt,
+    updatedAt: pattern.updatedAt,
+  }
+  if (pattern.prompt !== undefined) normalized.prompt = pattern.prompt
+  return normalized
 }
 
 let cache: SavedPattern[] = []
@@ -109,7 +179,8 @@ function subscribe(listener: () => void): () => void {
 
 /** Insert or replace a pattern by id. Throws if it violates the schema bounds. */
 export function upsertPattern(pattern: SavedPattern): boolean {
-  const valid = patternSchema.parse(pattern)
+  const valid = normalizePattern(pattern)
+  if (!valid) throw new TypeError('Pattern is outside the saved-library bounds.')
   return commit([...snapshot().filter(({ id }) => id !== valid.id), valid])
 }
 

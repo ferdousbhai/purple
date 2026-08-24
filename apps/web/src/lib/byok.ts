@@ -19,33 +19,17 @@ import type {
   TitleGenerator,
   TransitionSuggester,
 } from '@purple/core/types'
+import {
+  isJsonNumber,
+  isJsonString,
+  jsonMembers,
+  type JsonValue,
+} from '@purple/core/json'
 import { createChatStore } from '@purple/ui/session-store'
 import type { StudioChatState } from '@purple/ui/use-studio-chat'
-import { z } from 'zod'
+import { CHAT_STORAGE_KEY, getByokKey } from './byok-storage'
 
-const STORAGE_KEY = 'purple.byok.gemini-key'
-const CHAT_STORAGE_KEY = 'purple.byok.chat'
-
-// One-time adoption of the pre-rebrand keys (the app shipped as Riff through
-// 0.3.x), so a returning visitor keeps their key and chat.
-try {
-  if ('window' in globalThis) {
-    for (const [legacy, current] of [
-      ['riff.byok.gemini-key', STORAGE_KEY],
-      ['riff.byok.chat', CHAT_STORAGE_KEY],
-    ] as const) {
-      const value = window.localStorage.getItem(legacy)
-      if (value !== null) {
-        if (window.localStorage.getItem(current) === null) {
-          window.localStorage.setItem(current, value)
-        }
-        window.localStorage.removeItem(legacy)
-      }
-    }
-  }
-} catch {
-  // Storage unavailable (private mode); nothing to migrate.
-}
+export { clearByokChat, getByokKey, setByokKey } from './byok-storage'
 const ONE_SHOT_TIMEOUT_MS = 45_000
 const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${DEFAULT_GEMINI_MODEL}:generateContent`
 const STREAM_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${DEFAULT_GEMINI_MODEL}:streamGenerateContent`
@@ -71,44 +55,12 @@ interface GeminiRequestBody {
  * that does not match - an HTML error page, a truncated body - decodes to the
  * empty object, which the callers below already handle as "no usable text".
  */
-const geminiErrorSchema = z
-  .object({ error: z.object({ message: z.string().optional() }).optional() })
-  .catch({})
-
-const geminiContentSchema = z
-  .object({
-    candidates: z
-      .array(
-        z.object({
-          content: z
-            .object({
-              parts: z.array(z.object({ text: z.string().optional() })).optional(),
-            })
-            .optional(),
-          finishReason: z.string().optional(),
-        }),
-      )
-      .optional(),
-    usageMetadata: z.object({ promptTokenCount: z.number().optional() }).optional(),
-  })
-  .catch({})
-
-export function getByokKey(): string | null {
-  try {
-    const key = window.localStorage.getItem(STORAGE_KEY)
-    return key && key.trim() ? key.trim() : null
-  } catch {
-    return null
-  }
-}
-
-export function setByokKey(key: string | null): void {
-  try {
-    if (key && key.trim()) window.localStorage.setItem(STORAGE_KEY, key.trim())
-    else window.localStorage.removeItem(STORAGE_KEY)
-  } catch {
-    // Storage unavailable (private mode); the key simply won't persist.
-  }
+interface GeminiContent {
+  candidates?: Array<{
+    content?: { parts?: Array<{ text?: string }> }
+    finishReason?: string
+  }>
+  usageMetadata?: { promptTokenCount?: number }
 }
 
 /** Envelope handling, trimming and validation live in the shared store. */
@@ -126,13 +78,12 @@ export function loadByokChat(): ByokChatState | null {
 }
 
 export const saveByokChat = chatStore.save
-export const clearByokChat = chatStore.clear
 
 /**
  * The web app's backend: the shared capability interfaces it implements,
  * plus the repair round-trip the shared repair loop plugs into.
  */
-export interface ByokBackend
+interface ByokBackend
   extends TitleGenerator,
     TransitionSuggester,
     CompactionSummarizer,
@@ -197,8 +148,8 @@ function buildRequestBody(
     })),
     generationConfig,
   }
-  // Low thinking mirrors the desktop's GEMINI_THINKING_LEVEL default and cuts
-  // seconds of server-side latency. Thinking levels are a Gemini 3 feature.
+  // Low thinking keeps generation latency down. Thinking levels are a Gemini 3
+  // feature.
   if (DEFAULT_GEMINI_MODEL.startsWith('gemini-3')) {
     body.generationConfig = {
       thinkingConfig: { thinkingLevel: 'low' },
@@ -211,8 +162,8 @@ function buildRequestBody(
 async function throwRequestError(response: Response): Promise<never> {
   let detail = `Gemini request failed (${response.status}).`
   try {
-    const payload = geminiErrorSchema.parse(await response.json())
-    if (payload.error?.message) detail = payload.error.message
+    const message = geminiErrorMessage(await response.json())
+    if (message) detail = message
   } catch {
     // Keep the status-based message.
   }
@@ -221,8 +172,6 @@ async function throwRequestError(response: Response): Promise<never> {
   }
   throw new Error(detail)
 }
-
-type GeminiContent = z.infer<typeof geminiContentSchema>
 
 function chunkText(data: GeminiContent): string {
   return (data.candidates?.[0]?.content?.parts ?? [])
@@ -254,7 +203,7 @@ async function callGemini(
       signal: controller.signal,
     })
     if (!response.ok) await throwRequestError(response)
-    const text = chunkText(geminiContentSchema.parse(await response.json()))
+    const text = chunkText(parseGeminiContent(await response.json()))
     if (!text) throw new Error('Gemini returned an empty response.')
     return text
   } catch (error) {
@@ -267,7 +216,7 @@ async function callGemini(
   }
 }
 
-export interface StreamedGeneration {
+interface StreamedGeneration {
   /** Gemini's reported prompt token count, or null when absent. Feeds the
    * compaction trigger with exact sizes instead of estimates. */
   promptTokens: number | null
@@ -309,7 +258,7 @@ async function streamGemini(
     if (eventData.length === 0) return
     let event: GeminiContent
     try {
-      event = geminiContentSchema.parse(JSON.parse(eventData.join('\n')))
+      event = parseGeminiContent(JSON.parse(eventData.join('\n')))
     } catch {
       eventData = []
       return
@@ -347,4 +296,84 @@ async function streamGemini(
   consumeEvent()
   if (!total) throw new Error('Gemini returned an empty response.')
   return { promptTokens, truncated }
+}
+
+function geminiErrorMessage(value: JsonValue): string | null {
+  const errorValue = jsonMembers(value)?.get('error')
+  const message = errorValue === undefined
+    ? undefined
+    : jsonMembers(errorValue)?.get('message')
+  return isJsonString(message) ? message : null
+}
+
+function parseGeminiContent(value: JsonValue): GeminiContent {
+  const fields = jsonMembers(value)
+  if (!fields) return {}
+  const candidates = parseCandidates(fields.get('candidates'))
+  if (candidates === null) return {}
+  const usageMetadata = parseUsageMetadata(fields.get('usageMetadata'))
+  if (usageMetadata === null) return {}
+  const parsed: GeminiContent = {}
+  if (candidates !== undefined) parsed.candidates = candidates
+  if (usageMetadata !== undefined) parsed.usageMetadata = usageMetadata
+  return parsed
+}
+
+function parseCandidates(
+  value: JsonValue | undefined,
+): GeminiContent['candidates'] | null {
+  if (value === undefined) return undefined
+  if (!Array.isArray(value)) return null
+  const candidates: NonNullable<GeminiContent['candidates']> = []
+  for (const candidate of value) {
+    const fields = jsonMembers(candidate)
+    if (!fields) return null
+    const finishReason = fields.get('finishReason')
+    if (finishReason !== undefined && !isJsonString(finishReason)) {
+      return null
+    }
+    const content = parseContent(fields.get('content'))
+    if (content === null) return null
+    const parsed: NonNullable<GeminiContent['candidates']>[number] = {}
+    if (content !== undefined) parsed.content = content
+    if (isJsonString(finishReason)) parsed.finishReason = finishReason
+    candidates.push(parsed)
+  }
+  return candidates
+}
+
+function parseContent(
+  value: JsonValue | undefined,
+): NonNullable<NonNullable<GeminiContent['candidates']>[number]['content']> | null | undefined {
+  if (value === undefined) return undefined
+  const fields = jsonMembers(value)
+  if (!fields) return null
+  const partValues = fields.get('parts')
+  if (partValues === undefined) return {}
+  if (!Array.isArray(partValues)) return null
+  const parts: Array<{ text?: string }> = []
+  for (const part of partValues) {
+    const text = jsonMembers(part)?.get('text')
+    if (text !== undefined && !isJsonString(text)) return null
+    parts.push(isJsonString(text) ? { text } : {})
+  }
+  return { parts }
+}
+
+function parseUsageMetadata(
+  value: JsonValue | undefined,
+): GeminiContent['usageMetadata'] | null {
+  if (value === undefined) return undefined
+  const fields = jsonMembers(value)
+  if (!fields) return null
+  const promptTokenCount = fields.get('promptTokenCount')
+  if (
+    promptTokenCount !== undefined &&
+    !isJsonNumber(promptTokenCount)
+  ) {
+    return null
+  }
+  return isJsonNumber(promptTokenCount)
+    ? { promptTokenCount }
+    : {}
 }

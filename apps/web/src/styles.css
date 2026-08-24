@@ -343,12 +343,21 @@ a { color: var(--accent); }
   padding: 4px 12px; margin-left: auto;
   border-color: color-mix(in srgb, var(--hot) 35%, transparent);
   background: color-mix(in srgb, var(--hot) 10%, transparent);
-  color: var(--hot);
+  color: var(--hot); font-variant-numeric: tabular-nums;
 }
 .mix-row .primary:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--hot) 65%, transparent);
   background: color-mix(in srgb, var(--hot) 18%, transparent);
   box-shadow: var(--glow-hot);
+}
+.mix-row .mix-cancel {
+  border-color: color-mix(in srgb, var(--text) 14%, transparent);
+  color: var(--text-dim);
+}
+.mix-row .mix-cancel:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--text) 28%, transparent);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--text);
 }
 
 /* Prompt input */

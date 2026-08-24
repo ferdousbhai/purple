@@ -20,7 +20,8 @@ const BASIC_SETUP = {
 export interface PatternEditorProps {
   code: string;
   onCodeChange: (code: string) => void;
-  activeRanges: readonly SourceRange[];
+  playbackHighlightActive: boolean;
+  getActiveSourceRanges: () => readonly SourceRange[];
   onEvaluate: () => void;
   className?: string;
   /** Wrap long lines instead of scrolling sideways - the readable choice on
@@ -31,7 +32,8 @@ export interface PatternEditorProps {
 export function PatternEditor({
   code,
   onCodeChange,
-  activeRanges,
+  playbackHighlightActive,
+  getActiveSourceRanges,
   onEvaluate,
   className,
   wrapLines = false,
@@ -61,12 +63,29 @@ export function PatternEditor({
     [wrapLines],
   );
 
-  // CodeMirror owns decoration state outside React, so scheduler ranges need
-  // to be dispatched into the existing view instead of rendered as props.
+  // CodeMirror owns decoration state outside React. Poll the scheduler beside
+  // the editor and dispatch decorations directly, so playback does not trigger
+  // an application-wide React render every 50 ms.
   useEffect(() => {
     const view = viewRef.current;
-    if (view) updatePlaybackHighlights(view, activeRanges);
-  }, [activeRanges]);
+    if (!view) return;
+    if (!playbackHighlightActive) {
+      updatePlaybackHighlights(view, []);
+      return;
+    }
+
+    let lastKey = "";
+    const update = () => {
+      const ranges = getActiveSourceRanges();
+      const key = getRangesKey(ranges);
+      if (key === lastKey) return;
+      lastKey = key;
+      updatePlaybackHighlights(view, ranges);
+    };
+    update();
+    const intervalId = window.setInterval(update, 50);
+    return () => window.clearInterval(intervalId);
+  }, [getActiveSourceRanges, playbackHighlightActive]);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -93,11 +112,18 @@ export function PatternEditor({
       onChange={onCodeChange}
       onCreateEditor={(view) => {
         viewRef.current = view;
-        updatePlaybackHighlights(view, activeRanges);
+        updatePlaybackHighlights(
+          view,
+          playbackHighlightActive ? getActiveSourceRanges() : [],
+        );
       }}
       className={className}
     />
   );
+}
+
+function getRangesKey(ranges: readonly SourceRange[]): string {
+  return ranges.map((range) => range.join(":")).join("|");
 }
 
 function prefersDarkEditor(): boolean {

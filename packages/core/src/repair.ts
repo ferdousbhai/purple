@@ -1,8 +1,8 @@
 /**
- * The evaluation-repair loop shared by the desktop webview and the web app:
- * when a model-generated pattern fails to evaluate, the error goes back to
- * Gemini and each fix replays, up to MAX_RETRIES fixes. The caller supplies
- * the playback attempt, the model round-trip, and the staleness guards.
+ * The evaluation-repair loop used by the browser studio: when a model-generated
+ * pattern fails to evaluate, the error goes back to Gemini and each fix
+ * replays, up to MAX_RETRIES fixes. The caller supplies the playback attempt,
+ * the model round-trip, and the staleness guards.
  */
 
 import { buildRetryMessage } from "./prompts";

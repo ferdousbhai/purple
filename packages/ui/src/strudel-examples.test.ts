@@ -12,7 +12,6 @@ import { auditHapSounds, type AuditableHap } from "@purple/core/validation";
 // @strudel/core does not publish declarations for this runtime test surface.
 // @ts-expect-error The integration assertions below verify the actual exports.
 import { evalScope, strudelScope } from "@strudel/core";
-import { PRESET_PATTERNS } from "../../../src/shared/cli";
 import {
   createSafeStrudelScope,
   evaluateSafeStrudelExpression,
@@ -174,15 +173,6 @@ describe("expanded vocabulary", () => {
       "cumulative event multiplier",
     );
   });
-});
-
-describe("desktop presets", () => {
-  it.each(Object.entries(PRESET_PATTERNS))(
-    "%s evaluates to a pattern with events",
-    async (_name, code) => {
-      await expectPatternEvents(code);
-    },
-  );
 });
 
 describe("auditHapSounds on real evaluated patterns", () => {

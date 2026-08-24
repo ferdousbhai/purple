@@ -1,10 +1,8 @@
 /**
- * The structured-generation wrappers shared by both apps: titles, transition
- * suggestions, and compaction summaries all follow the same shape - send a
- * system prompt plus one user payload under a JSON schema, parse the reply,
- * and fold failures into a result value. Each app supplies only its
- * transport: the desktop's Tauri `generate_json` invoke, the web's BYOK
- * fetch. Everything else lives here once.
+ * Structured-generation wrappers for titles, transition suggestions, and
+ * compaction summaries. Each operation sends a system prompt plus one user
+ * payload under a JSON schema, parses the reply, and folds failures into a
+ * result value. The browser supplies its BYOK transport.
  */
 
 import {

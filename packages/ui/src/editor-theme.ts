@@ -51,11 +51,9 @@ function purpleEditorTheme(palette: SyntaxPalette, dark: boolean): Extension {
   ];
 }
 
-/** The accent tracks the host app's palette token - `--color-accent` on the
- * desktop (where Omarchy retints it at runtime), `--accent` on the web - with
- * the brand violet as the standalone fallback. */
+/** The accent follows the browser app's palette token with a brand fallback. */
 function accentVar(fallback: string): string {
-  return `var(--color-accent, var(--accent, ${fallback}))`;
+  return `var(--accent, ${fallback})`;
 }
 
 export const purpleEditorDark = purpleEditorTheme(

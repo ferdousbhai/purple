@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite'
 import viteReact from '@vitejs/plugin-react'
-import { sameOriginSuperdoughWorklet } from '../../vite/superdough-worklet'
+import { sameOriginSuperdoughWorklet } from './vite/superdough-worklet'
 import { initialBundleBudget } from './vite/initial-bundle-budget'
 
 // The hosted CI build enforces the synchronous startup graph, excluding lazy

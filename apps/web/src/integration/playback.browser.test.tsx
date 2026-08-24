@@ -25,7 +25,6 @@ vi.mock('@purple/ui/use-strudel', () => ({
     hush: () => {
       engine.hushCalls++
     },
-    isAudioReady: () => true,
     getSchedulerPosition: () => ({ cycle: engine.cycle, cps: engine.cps }),
     getActiveSourceRanges: () => [],
   }),

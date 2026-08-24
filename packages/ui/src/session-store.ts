@@ -1,12 +1,16 @@
 /**
  * One persistence story for a studio session: the chat transcript and the
- * working pattern survive restarts together, in the webview's localStorage.
- * Both apps share this module - the web app layers its BYOK rules (key-scoped
- * chat, legacy key migration) on top in `apps/web/src/lib/byok.ts`, while the
- * desktop uses the defaults; its Rust shell never sees this data.
+ * working pattern survive reloads together in localStorage. The web app layers
+ * its BYOK rules, including key-scoped chat and legacy key migration, on top in
+ * `apps/web/src/lib/byok.ts`.
  */
-import { z } from "zod";
-import { MAX_PATTERN_LENGTH } from "@purple/core";
+import { MAX_PATTERN_LENGTH } from "@purple/core/pattern";
+import {
+  isJsonNumber,
+  isJsonString,
+  jsonMembers,
+  type JsonValue,
+} from "@purple/core/json";
 import type { StudioChatState } from "./use-studio-chat";
 
 /**
@@ -16,36 +20,30 @@ import type { StudioChatState } from "./use-studio-chat";
  */
 const MAX_STORED_MESSAGES = 200;
 
-const storedMessageSchema = z.object({
-  role: z.enum(["user", "assistant"]),
-  content: z.string(),
-});
+interface StoredArtifact {
+  summary: string;
+  latestPattern: string;
+}
 
-const storedArtifactSchema = z.object({
-  summary: z.string(),
-  latestPattern: z.string(),
-});
+interface StoredMessage {
+  role: "user" | "assistant";
+  content: string;
+}
 
 /** Versioned envelope: anything that does not match is discarded silently. */
-const chatEnvelopeSchema = z.object({
-  v: z.literal(2),
-  messages: z.array(storedMessageSchema),
-  artifact: storedArtifactSchema.nullable(),
-  coveredCount: z.number().int().min(0),
-});
+interface ChatEnvelope {
+  v: 2;
+  messages: StoredMessage[];
+  artifact: StoredArtifact | null;
+  coveredCount: number;
+}
 
 /** The v1 envelope stored messages as `{role, text}` before the app unified
  * on core's `ChatMessage`; parsing migrates it in place of discarding. */
-const legacyChatEnvelopeSchema = z.object({
-  v: z.literal(1),
-  messages: z.array(
-    z.object({ role: z.enum(["user", "assistant"]), text: z.string() }),
-  ),
-  artifact: storedArtifactSchema.nullable(),
-  coveredCount: z.number().int().min(0),
-});
-
-type ChatEnvelope = z.infer<typeof chatEnvelopeSchema>;
+interface LegacyStoredMessage {
+  role: "user" | "assistant";
+  text: string;
+}
 
 /**
  * The envelope written to localStorage. It aims for MAX_STORED_MESSAGES, but
@@ -69,28 +67,114 @@ export function toChatEnvelope(state: StudioChatState): ChatEnvelope {
 
 /** Decode a stored envelope; null for anything malformed or from another version. */
 export function parseChatEnvelope(raw: string): StudioChatState | null {
-  let value: unknown;
+  let value: JsonValue;
   try {
     value = JSON.parse(raw);
   } catch {
     return null;
   }
-  const parsed = chatEnvelopeSchema.safeParse(value);
-  if (parsed.success) {
-    const { messages, artifact, coveredCount } = parsed.data;
+  const current = parseCurrentChatEnvelope(value);
+  if (current) {
+    const { messages, artifact, coveredCount } = current;
     return { messages, artifact, coveredCount: Math.min(coveredCount, messages.length) };
   }
-  const legacy = legacyChatEnvelopeSchema.safeParse(value);
-  if (!legacy.success) return null;
-  const messages = legacy.data.messages.map(({ role, text }) => ({
+  const legacy = parseLegacyChatEnvelope(value);
+  if (!legacy) return null;
+  const messages = legacy.messages.map(({ role, text }) => ({
     role,
     content: text,
   }));
   return {
     messages,
-    artifact: legacy.data.artifact,
-    coveredCount: Math.min(legacy.data.coveredCount, messages.length),
+    artifact: legacy.artifact,
+    coveredCount: Math.min(legacy.coveredCount, messages.length),
   };
+}
+
+function parseCurrentChatEnvelope(value: JsonValue): ChatEnvelope | null {
+  const parsed = parseChatEnvelopeFields(value, 2, parseStoredMessages);
+  return parsed ? { v: 2, ...parsed } : null;
+}
+
+interface ParsedChatEnvelope<Message> {
+  messages: Message[];
+  artifact: StoredArtifact | null;
+  coveredCount: number;
+}
+
+function parseChatEnvelopeFields<Message>(
+  value: JsonValue,
+  version: 1 | 2,
+  parseMessages: (value: JsonValue | undefined) => Message[] | null,
+): ParsedChatEnvelope<Message> | null {
+  const fields = jsonMembers(value);
+  if (!fields || fields.get("v") !== version) return null;
+  const messages = parseMessages(fields.get("messages"));
+  const artifact = parseStoredArtifact(fields.get("artifact"));
+  const coveredCount = parseCount(fields.get("coveredCount"));
+  if (!messages || artifact === undefined || coveredCount === null) return null;
+  return { messages, artifact, coveredCount };
+}
+
+function parseLegacyChatEnvelope(value: JsonValue): {
+  messages: LegacyStoredMessage[];
+  artifact: StoredArtifact | null;
+  coveredCount: number;
+} | null {
+  return parseChatEnvelopeFields(value, 1, parseLegacyStoredMessages);
+}
+
+function parseStoredMessages(value: JsonValue | undefined): StoredMessage[] | null {
+  if (!Array.isArray(value)) return null;
+  const messages: StoredMessage[] = [];
+  for (const candidate of value) {
+    const fields = jsonMembers(candidate);
+    const role = fields?.get("role");
+    const content = fields?.get("content");
+    if (
+      (role !== "user" && role !== "assistant") ||
+      !isJsonString(content)
+    ) return null;
+    messages.push({ role, content });
+  }
+  return messages;
+}
+
+function parseLegacyStoredMessages(
+  value: JsonValue | undefined,
+): LegacyStoredMessage[] | null {
+  if (!Array.isArray(value)) return null;
+  const messages: LegacyStoredMessage[] = [];
+  for (const candidate of value) {
+    const fields = jsonMembers(candidate);
+    const role = fields?.get("role");
+    const text = fields?.get("text");
+    if ((role !== "user" && role !== "assistant") || !isJsonString(text)) {
+      return null;
+    }
+    messages.push({ role, text });
+  }
+  return messages;
+}
+
+function parseStoredArtifact(
+  value: JsonValue | undefined,
+): StoredArtifact | null | undefined {
+  if (value === null) return null;
+  if (value === undefined) return undefined;
+  const fields = jsonMembers(value);
+  const summary = fields?.get("summary");
+  const latestPattern = fields?.get("latestPattern");
+  if (!isJsonString(summary) || !isJsonString(latestPattern)) {
+    return undefined;
+  }
+  return { summary, latestPattern };
+}
+
+function parseCount(value: JsonValue | undefined): number | null {
+  return isJsonNumber(value) && Number.isInteger(value) && value >= 0
+    ? value
+    : null;
 }
 
 /**
@@ -99,19 +183,52 @@ export function parseChatEnvelope(raw: string): StudioChatState | null {
  * instead of rejecting so an over-long title never blocks persisting the
  * pattern itself.
  */
-const sessionPatternSchema = z.object({
-  code: z.string().min(1).max(MAX_PATTERN_LENGTH),
-  customTitle: z
-    .string()
-    .transform((title) => title.slice(0, 60))
-    .nullable(),
-  sourcePrompt: z
-    .string()
-    .transform((prompt) => prompt.slice(0, 4_000))
-    .optional(),
-});
+export interface SessionPattern {
+  code: string;
+  customTitle: string | null;
+  sourcePrompt?: string;
+}
 
-export type SessionPattern = z.infer<typeof sessionPatternSchema>;
+function parseSessionPattern(value: JsonValue): SessionPattern | null {
+  const fields = jsonMembers(value);
+  const code = fields?.get("code");
+  const customTitle = fields?.get("customTitle");
+  const sourcePrompt = fields?.get("sourcePrompt");
+  if (
+    !isJsonString(code) ||
+    code.length === 0 ||
+    code.length > MAX_PATTERN_LENGTH ||
+    (customTitle !== null && !isJsonString(customTitle)) ||
+    (sourcePrompt !== undefined && !isJsonString(sourcePrompt))
+  ) {
+    return null;
+  }
+  const pattern: SessionPattern = {
+    code,
+    customTitle:
+      isJsonString(customTitle)
+        ? customTitle.slice(0, 60)
+        : null,
+  };
+  if (isJsonString(sourcePrompt)) {
+    pattern.sourcePrompt = sourcePrompt.slice(0, 4_000);
+  }
+  return pattern;
+}
+
+function normalizeSessionPattern(pattern: SessionPattern): SessionPattern | null {
+  if (pattern.code.length === 0 || pattern.code.length > MAX_PATTERN_LENGTH) {
+    return null;
+  }
+  const normalized: SessionPattern = {
+    code: pattern.code,
+    customTitle: pattern.customTitle?.slice(0, 60) ?? null,
+  };
+  if (pattern.sourcePrompt !== undefined) {
+    normalized.sourcePrompt = pattern.sourcePrompt.slice(0, 4_000);
+  }
+  return normalized;
+}
 
 /** Both apps mirror the editor into save() on every change; the trailing
  * debounce keeps typing from issuing a synchronous storage write per keystroke. */
@@ -165,8 +282,7 @@ export function createPatternStore(key = "purple.session-pattern.v1"): PatternSt
       try {
         const raw = window.localStorage.getItem(key);
         if (raw === null) return null;
-        const parsed = sessionPatternSchema.safeParse(JSON.parse(raw));
-        return parsed.success ? parsed.data : null;
+        return parseSessionPattern(JSON.parse(raw));
       } catch {
         return null;
       }
@@ -182,9 +298,9 @@ export function createPatternStore(key = "purple.session-pattern.v1"): PatternSt
             window.localStorage.removeItem(key);
             return;
           }
-          const valid = sessionPatternSchema.safeParse(pattern);
-          if (valid.success) {
-            window.localStorage.setItem(key, JSON.stringify(valid.data));
+          const valid = normalizeSessionPattern(pattern);
+          if (valid) {
+            window.localStorage.setItem(key, JSON.stringify(valid));
           }
         } catch {
           // Storage unavailable (private mode); the session lives only in this tab.

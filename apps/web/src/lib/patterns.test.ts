@@ -25,6 +25,24 @@ describe('parseStored', () => {
     expect(parseStored(JSON.stringify([pattern, invalid]))).toEqual([pattern])
   })
 
+  it('drops unknown fields from valid entries', () => {
+    expect(parseStored(JSON.stringify([{ ...pattern, internal: 'discard me' }]))).toEqual([
+      pattern,
+    ])
+  })
+
+  it('rejects entries outside the persisted bounds', () => {
+    expect(
+      parseStored(
+        JSON.stringify([
+          { ...pattern, code: 'x'.repeat(30_001) },
+          { ...pattern, prompt: 'x'.repeat(4_001) },
+          { ...pattern, updatedAt: 'yesterday' },
+        ]),
+      ),
+    ).toEqual([])
+  })
+
   it('returns nothing for corrupt JSON or unexpected shapes', () => {
     expect(parseStored('not json')).toEqual([])
     expect(parseStored('42')).toEqual([])

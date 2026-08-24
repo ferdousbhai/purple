@@ -1,19 +1,22 @@
 # Purple Web
 
-The web app is a TanStack Start application on Cloudflare Workers. The Worker
-only serves the app shell - everything stateful is local-first:
+The Purple application is a Vite-built React SPA served as static assets by a
+Cloudflare Worker.
 
 ```text
-browser ── HTTPS ── generativelanguage.googleapis.com (visitor's own Gemini key)
-   │
-   ├─ TanStack DB / localStorage   # saved patterns, chat history, API key
-   └─ Strudel Web Audio            # playback in the page
+browser -> generativelanguage.googleapis.com  visitor's Gemini key
+   |
+   +-> localStorage                           key, chat, saved patterns
+   +-> Strudel Web Audio                      playback
 ```
 
-There are no accounts, no billing, and no server-side inference or storage.
-The Gemini key is entered by the visitor, kept in localStorage, and sent only
-to Google (in a header, never a URL). Chat history is compacted in the browser
-with the shared `@purple/core` compaction policy (`src/lib/byok.ts`).
+The Worker has no bindings, storage, accounts, or inference code. The visitor's
+Gemini key is stored in localStorage and sent only to Google in a request header.
 
-From the repo root: `pnpm run web:dev`, `pnpm run web:check`,
-`pnpm run web:deploy`.
+From the repository root:
+
+```bash
+pnpm run dev
+pnpm run check
+pnpm run deploy
+```

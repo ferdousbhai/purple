@@ -40,6 +40,20 @@ function waitForAbort(_url: string, init: RequestInit): Promise<Response> {
   })
 }
 
+async function streamBody(body: string): Promise<{
+  deltas: string[]
+  promptTokens: number | null
+  truncated: boolean
+}> {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(streamingResponse(body)))
+  const deltas: string[] = []
+  const result = await createByokBackend('secret-key').stream(
+    [{ role: 'user', content: 'drums' }],
+    (delta) => deltas.push(delta),
+  )
+  return { deltas, ...result }
+}
+
 describe('byok chat adapter', () => {
   it('stores the transcript under the BYOK key while a key is present', () => {
     const { values, window } = localStorageStub([['purple.byok.gemini-key', 'k']])
@@ -98,17 +112,36 @@ describe('BYOK streaming backend', () => {
       '',
       'data: {"candidates":[{"content":{"parts":[{"text":"✨"}]}}]}',
     ].join('\r\n')
-    const fetchMock = vi.fn().mockResolvedValue(streamingResponse(body))
-    vi.stubGlobal('fetch', fetchMock)
-    const deltas: string[] = []
+    await expect(streamBody(body)).resolves.toEqual({
+      deltas: ['drum', '✨'],
+      promptTokens: 7,
+      truncated: false,
+    })
+  })
+
+  it('ignores malformed SSE payloads and continues with the next event', async () => {
+    const body = [
+      'data: {"candidates":[{"content":{"parts":[{"text":7}]}}]}',
+      '',
+      'data: {"candidates":[{"content":{"parts":[{"text":"s(\\"bd\\")"}]}}]}',
+      '',
+    ].join('\n')
+    await expect(streamBody(body)).resolves.toEqual({
+      deltas: ['s("bd")'],
+      promptTokens: null,
+      truncated: false,
+    })
+  })
+
+  it('rejects a schema-invalid one-shot response as empty', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(Response.json({ candidates: 'not-an-array' })),
+    )
 
     await expect(
-      createByokBackend('secret-key').stream(
-        [{ role: 'user', content: 'drums' }],
-        (delta) => deltas.push(delta),
-      ),
-    ).resolves.toEqual({ promptTokens: 7, truncated: false })
-    expect(deltas).toEqual(['drum', '✨'])
+      createByokBackend('secret-key').repairPattern('fix it'),
+    ).rejects.toThrow('Gemini returned an empty response.')
   })
 
   it('aborts the active stream through the shared backend contract', async () => {

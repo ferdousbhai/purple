@@ -26,9 +26,6 @@ export interface StudioChatState {
 
 export interface UseStudioChatOptions {
   initialState?: StudioChatState | null;
-  /** Web sessions retain failed prompts in model context; desktop sessions
-   * keep them visible but roll them out of the next request. */
-  failedPromptPolicy?: "retain" | "rollback";
   onStateChange?: (state: StudioChatState) => void;
   onClear?: () => void;
   streamTimeoutMs?: number;
@@ -436,12 +433,9 @@ export function useStudioChat(
 
       if (streamRef.current !== activeStream) return null;
 
-      const rollback = (error: string | null): null => {
+      const finishFailedStream = (error: string | null): null => {
         conversationRef.current =
-          !sendOptions.transient &&
-          optionsRef.current.failedPromptPolicy === "retain"
-            ? conversation
-            : previousConversation;
+          sendOptions.transient ? previousConversation : conversation;
         refreshNewSessionSuggestion();
         setView({
           messages: visibleMessages,
@@ -455,10 +449,12 @@ export function useStudioChat(
         return null;
       };
 
-      if (activeStream.terminalReason === "cancelled") return rollback(null);
+      if (activeStream.terminalReason === "cancelled") {
+        return finishFailedStream(null);
+      }
 
       if (activeStream.terminalReason === "error") {
-        return rollback(
+        return finishFailedStream(
           activeStream.error ?? "The request failed. Please try again.",
         );
       }
@@ -466,7 +462,7 @@ export function useStudioChat(
       const fullText = activeStream.text;
       const acceptance = acceptRawPattern(fullText);
       if (!acceptance.ok) {
-        return rollback(
+        return finishFailedStream(
           activeStream.truncated
             ? "Gemini reached its output limit before completing the Strudel pattern. Please try again."
             : acceptance.error,

@@ -5,10 +5,9 @@
  * compaction artifact in the background: a summarizer call merges the
  * previous artifact with all uncovered messages into a prose summary plus
  * the latest pattern code carried verbatim, and every generation then sends
- * `artifact + everything since the fold`. The helpers here are pure so the
- * desktop hook and the hosted app can share the exact same policy; the
- * caller owns the state (the artifact, how many messages it covers) and the
- * model transport.
+ * `artifact + everything since the fold`. The helpers are pure; the caller
+ * owns the state (the artifact and how many messages it covers) and the model
+ * transport.
  */
 
 import { errorMessage } from "./error";
@@ -18,9 +17,8 @@ import type { ChatMessage } from "./types";
 
 /**
  * Compact once a generation request exceeds this many prompt tokens - exact
- * counts reported by Gemini itself (`usage.total_input_tokens` on the
- * desktop's Interactions API, `usageMetadata.promptTokenCount` on the web's
- * generateContent), not an estimate. This is the only bound on the context
+ * counts reported by Gemini itself through
+ * `usageMetadata.promptTokenCount`, not an estimate. This is the only bound on the context
  * window: every request sends the artifact plus the full uncovered history,
  * and nothing is ever silently dropped. Gemini's implicit prefix caching
  * keeps the append-only conversation cheap to resend, so folding earlier
@@ -222,13 +220,12 @@ export interface FoldScheduler<Message> {
 }
 
 /**
- * The background-fold protocol shared by the desktop chat hook and the web
- * composer: at most one summarizer call in flight, a consecutive-failure
+ * The background-fold protocol used by the chat composer: at most one
+ * summarizer call in flight, a consecutive-failure
  * circuit breaker, and acceptance only while the folded slice is still a
  * prefix of the live conversation. The caller owns persistence - `commit`
- * receives an acceptance function to apply against its live state (a ref
- * mutation on desktop, a functional setState on the web), which returns
- * null when the result arrived stale and must be discarded.
+ * receives an acceptance function to apply against its live state, which
+ * returns null when the result arrived stale and must be discarded.
  */
 export function createFoldScheduler<Message>(options: {
   summarize: (
@@ -238,8 +235,7 @@ export function createFoldScheduler<Message>(options: {
   commit: (
     accept: (live: FoldSnapshot<Message>) => AcceptedFold | null,
   ) => void;
-  /** Message identity for the prefix check: `id` equality on desktop, object
-   * identity on the web (message objects are stable across appends). */
+  /** Message identity used to verify that the folded slice remains a prefix. */
   isSameMessage: (a: Message, b: Message) => boolean;
   onFoldFailed?: (error: string) => void;
 }): FoldScheduler<Message> {

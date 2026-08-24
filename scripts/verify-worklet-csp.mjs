@@ -7,7 +7,7 @@ import { setTimeout as wait } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 const projectRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const assetsDirectory = join(projectRoot, "dist", "assets");
+const assetsDirectory = join(projectRoot, "apps", "web", "dist", "assets");
 const workletName = (await readdir(assetsDirectory)).find(
   (name) => name.startsWith("superdough-worklets-") && name.endsWith(".js"),
 );

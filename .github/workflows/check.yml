@@ -1,0 +1,67 @@
+name: Check
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  project:
+    name: Project checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Enable the repository-pinned pnpm
+        run: |
+          corepack enable
+          pnpm --version
+
+      - name: Install locked dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: pnpm install --frozen-lockfile
+
+      - name: Audit production dependencies
+        run: pnpm audit --prod --audit-level=high
+
+      - name: Run project checks
+        run: pnpm run check
+
+      - name: Verify AudioWorklet under the production CSP
+        run: node scripts/verify-worklet-csp.mjs
+
+  browser:
+    name: Browser flow
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Enable the repository-pinned pnpm
+        run: |
+          corepack enable
+          pnpm --version
+
+      - name: Install locked dependencies without browser downloads
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: pnpm install --frozen-lockfile
+
+      - name: Run browser flow smoke tests
+        run: |
+          browser_path="$(command -v chromium || command -v google-chrome)"
+          CHROMIUM_PATH="$browser_path" timeout --signal=TERM 90s pnpm run test:browser

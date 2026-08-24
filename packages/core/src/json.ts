@@ -11,7 +11,7 @@ export type JsonValue =
   | JsonValue[]
   | JsonObject;
 
-export type JsonObject = { readonly [key: string]: JsonValue };
+type JsonObject = { readonly [key: string]: JsonValue };
 
 /**
  * The members of a JSON object, or null for every other JSON value. `JSON.parse`
@@ -30,8 +30,12 @@ export function jsonText(value: JsonValue | undefined): string | null {
   return isJsonString(value) ? value : null;
 }
 
-function isJsonString(value: JsonValue | undefined): value is string {
+export function isJsonString(value: JsonValue | undefined): value is string {
   return typeof value === "string";
+}
+
+export function isJsonNumber(value: JsonValue | undefined): value is number {
+  return typeof value === "number" && Number.isFinite(value);
 }
 
 /** Decode a raw model response into the members of its top-level JSON object. */

@@ -7,18 +7,18 @@ import userEvent from '@testing-library/user-event'
 import { PurpleStudio } from './purple-studio'
 import { useGeneratedPattern } from '@purple/ui/use-generated-pattern'
 import type { TransitionResult } from '@purple/ui/use-playback'
-import type { EvalResult, PlaybackState, SourceRange } from '@purple/core/types'
+import type { EvalResult, PlaybackState } from '@purple/core/types'
 
 const FIRST_PATTERN = 's("bd sd")'
 const SECOND_PATTERN = 's("hh*8")'
 const FIXED_PATTERN = 's("hh*4").gain(0.5)'
+const AUTO_XFADE_NAME = 'XFADE NOW; AUTOMATIC XFADE IN 5 SECONDS'
 
 // The real playback unions, so the mock cannot drift from the contract.
 interface TestPlaybackSnapshot {
   playbackState: PlaybackState
   error: string | null
   activeCode: string
-  activeRanges: readonly SourceRange[]
 }
 
 type TestPlaybackResult = EvalResult | TransitionResult
@@ -84,6 +84,15 @@ vi.mock('#/lib/byok', () => ({
   }),
 }))
 
+vi.mock('#/lib/byok-storage', () => ({
+  clearByokChat: () => {
+    studio.clearChatCalls++
+    return true
+  },
+  getByokKey: () => 'browser-test-key',
+  setByokKey: () => undefined,
+}))
+
 vi.mock('#/lib/patterns', () => ({
   loadSessionPattern: () => null,
   removePattern: () => true,
@@ -125,12 +134,12 @@ vi.mock('@purple/ui/use-playback', async () => {
     options: TestPlaybackOptions,
   ): TestPlaybackSnapshot | null {
     if (result.ok) {
-      return { playbackState: 'playing', error: null, activeCode: code, activeRanges: [] }
+      return { playbackState: 'playing', error: null, activeCode: code }
     }
     if (result.kind === 'cancelled') return null
     return options.reportEvaluationError === false && result.kind === 'evaluation'
-      ? { playbackState: 'stopped', error: null, activeCode: '', activeRanges: [] }
-      : { playbackState: 'error', error: result.error, activeCode: '', activeRanges: [] }
+      ? { playbackState: 'stopped', error: null, activeCode: '' }
+      : { playbackState: 'error', error: result.error, activeCode: '' }
   }
 
   return {
@@ -139,7 +148,6 @@ vi.mock('@purple/ui/use-playback', async () => {
         playbackState: 'stopped',
         error: null as string | null,
         activeCode: '',
-        activeRanges: [] as readonly (readonly [number, number])[],
       })
       const snapshotRef = React.useRef(snapshot)
       const operationRef = React.useRef(0)
@@ -158,7 +166,7 @@ vi.mock('@purple/ui/use-playback', async () => {
       ) => {
         studio.playCalls.push(code)
         const operation = ++operationRef.current
-        setSnapshot({ playbackState: 'loading', error: null, activeCode: '', activeRanges: [] })
+        setSnapshot({ playbackState: 'loading', error: null, activeCode: '' })
         const queued = studio.playResults.shift()
         const result = await Promise.resolve(queued ?? { ok: true as const }) as TestPlaybackResult
         if (operation !== operationRef.current) return { ok: false as const, kind: 'cancelled' as const }
@@ -184,7 +192,6 @@ vi.mock('@purple/ui/use-playback', async () => {
             playbackState: 'playing',
             error: options.reportEvaluationError === false ? null : result.error,
             activeCode: previous,
-            activeRanges: [],
           })
         } else {
           const settled = settledSnapshot(result, code, options)
@@ -197,7 +204,7 @@ vi.mock('@purple/ui/use-playback', async () => {
         studio.stopCalls++
         stopTokenRef.current++
         operationRef.current++
-        setSnapshot({ playbackState: 'stopped', error: null, activeCode: '', activeRanges: [] })
+        setSnapshot({ playbackState: 'stopped', error: null, activeCode: '' })
       }, [])
 
       const validatePattern = React.useCallback(async (code: string) => {
@@ -208,12 +215,13 @@ vi.mock('@purple/ui/use-playback', async () => {
       return {
         ...snapshot,
         prepareAudio,
-        isAudioReady: () => true,
         play,
         transition,
         stop,
         getStopToken: () => stopTokenRef.current,
         validatePattern,
+        getActiveSourceRanges: () => [],
+        getOutputAnalyser: () => null,
       }
     },
   }
@@ -239,12 +247,13 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  vi.useRealTimers()
 })
 
-async function sendPrompt(prompt: string) {
-  const user = userEvent.setup()
-  await user.clear(screen.getByLabelText('Describe the music'))
-  await user.type(screen.getByLabelText('Describe the music'), prompt)
+async function sendPrompt(prompt: string, user = userEvent.setup()) {
+  const input = await screen.findByLabelText('Describe the music')
+  await user.clear(input)
+  await user.type(input, prompt)
   await user.click(screen.getByRole('button', { name: 'SEND' }))
 }
 
@@ -256,7 +265,13 @@ async function startAndStageRevision() {
   await waitFor(() => expect(studio.activeCode).toBe(FIRST_PATTERN))
 
   await sendPrompt('Make the hats faster')
-  await screen.findByRole('button', { name: 'XFADE' })
+  await screen.findByRole('button', { name: AUTO_XFADE_NAME })
+}
+
+function expectManualXfadeOnly() {
+  expect(screen.queryByRole('button', { name: AUTO_XFADE_NAME })).toBeNull()
+  expect(screen.getByRole('button', { name: 'XFADE' })).toBeVisible()
+  expect(studio.transitionCalls).toEqual([])
 }
 
 describe('Purple studio browser flow', () => {
@@ -285,7 +300,7 @@ describe('Purple studio browser flow', () => {
     expect(studio.saveChatCalls).toBeGreaterThan(savesBeforeUndo)
   })
 
-  it('plays the first generation and exposes a one-shot XFADE for a revision', async () => {
+  it('plays the first generation and exposes an automatic XFADE for a revision', async () => {
     await startAndStageRevision()
 
     expect(studio.prepareAudioCalls).toBe(2)
@@ -294,12 +309,57 @@ describe('Purple studio browser flow', () => {
     expect(studio.validationCalls).toContain(SECOND_PATTERN)
     expect(studio.transitionCalls).toEqual([])
 
-    await userEvent.click(screen.getByRole('button', { name: 'XFADE' }))
+    await userEvent.click(screen.getByRole('button', { name: AUTO_XFADE_NAME }))
 
     await waitFor(() => expect(studio.activeCode).toBe(SECOND_PATTERN))
     expect(studio.transitionCalls).toEqual([SECOND_PATTERN])
-    await waitFor(() => expect(screen.queryByRole('button', { name: 'XFADE' })).toBeNull())
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: AUTO_XFADE_NAME })).toBeNull(),
+    )
   })
+
+  it('automatically crossfades the staged revision after five seconds', async () => {
+    await startAndStageRevision()
+    expect(studio.transitionCalls).toEqual([])
+
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 5_100))
+    })
+    await waitFor(() => expect(studio.activeCode).toBe(SECOND_PATTERN))
+    expect(studio.transitionCalls).toEqual([SECOND_PATTERN])
+  }, 10_000)
+
+  it('cancels the automatic action without discarding the manual XFADE', async () => {
+    await startAndStageRevision()
+
+    await userEvent.click(screen.getByRole('button', { name: 'CANCEL / ESC' }))
+
+    expectManualXfadeOnly()
+
+    await userEvent.click(screen.getByRole('button', { name: 'XFADE' }))
+    await waitFor(() => expect(studio.activeCode).toBe(SECOND_PATTERN))
+  })
+
+  it('cancels the automatic action with Escape', async () => {
+    await startAndStageRevision()
+
+    await userEvent.keyboard('{Escape}')
+
+    expectManualXfadeOnly()
+  })
+
+  it('does not restart playback when music stops during the countdown', async () => {
+    await startAndStageRevision()
+
+    await userEvent.click(screen.getByRole('button', { name: /STOP/ }))
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 5_100))
+    })
+
+    expect(studio.transitionCalls).toEqual([])
+    expect(studio.playCalls).toEqual([FIRST_PATTERN])
+    expect(screen.getByRole('button', { name: 'XFADE' })).toBeVisible()
+  }, 10_000)
 
   it('repairs a candidate failure without exposing the evaluator error', async () => {
     studio.transitionResults.push(
@@ -314,7 +374,7 @@ describe('Purple studio browser flow', () => {
     studio.repairs.push(FIXED_PATTERN)
     await startAndStageRevision()
 
-    await userEvent.click(screen.getByRole('button', { name: 'XFADE' }))
+    await userEvent.click(screen.getByRole('button', { name: AUTO_XFADE_NAME }))
 
     await waitFor(() => expect(studio.activeCode).toBe(FIXED_PATTERN))
     expect(studio.transitionCalls).toEqual([SECOND_PATTERN, FIXED_PATTERN])
@@ -332,7 +392,7 @@ describe('Purple studio browser flow', () => {
     })
     await startAndStageRevision()
 
-    await userEvent.click(screen.getByRole('button', { name: 'XFADE' }))
+    await userEvent.click(screen.getByRole('button', { name: AUTO_XFADE_NAME }))
 
     await screen.findByText(
       'The crossfade could not complete. Use PLAY to resume if playback stopped.',

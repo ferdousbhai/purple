@@ -44,9 +44,8 @@ export interface StrudelAudioOptions {
    * activation is preserved - and again after Strudel initializes. Throw to
    * fail activation with a user-facing message.
    *
-   * The default resumes the context and verifies it reports `running`. Hosts
-   * with engine quirks inject their own: the desktop passes its WebKitGTK
-   * implementation, which also primes the output with a silent buffer.
+   * The default resumes the context and verifies it reports `running`. The web
+   * app injects additional gesture-time work for browsers that need it.
    */
   ensureRunningContext?: (context: AudioContext) => Promise<void>;
 }
@@ -309,15 +308,6 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
     }
   }, []);
 
-  // Whether a user gesture has already unlocked audio output. Events that
-  // arrive outside a gesture (MPRIS media keys) may only start playback when
-  // this is true; activate() would otherwise leave the context suspended.
-  const isAudioReady = useCallback(
-    () =>
-      audioCtxRef.current?.state === "running" && replRef.current !== null,
-    [],
-  );
-
   const getSchedulerPosition = useCallback((): SchedulerPosition => {
     const strudel = strudelRef.current;
     if (!strudel) throw new Error("Audio engine is not initialized.");
@@ -372,7 +362,6 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
     evaluate,
     validate,
     hush,
-    isAudioReady,
     getSchedulerPosition,
     getActiveSourceRanges,
     /** The master-mix tap, or null until the engine initializes. */

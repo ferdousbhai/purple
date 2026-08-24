@@ -3,12 +3,6 @@ dist/
 out/
 build/
 artifacts/
-# updpkgsums and makepkg leave the release tarball and build dirs here
-packaging/*.tar.gz
-packaging/src/
-packaging/pkg/
-src-tauri/target/
-src-tauri/gen/
 .env
 .env.*
 !.env.example
@@ -16,9 +10,14 @@ src-tauri/gen/
 .dev.vars.*
 !.dev.vars.example
 *.tsbuildinfo
-# Cloudflare (apps/web): local state and generated Worker types
+# Cloudflare local state and generated Worker types
 .wrangler/
 apps/web/worker-configuration.d.ts
+
+# Vitest browser failure artifacts
+**/.vitest-attachments/
+**/__screenshots__/
+
 package-lock.json
 bun.lockb
 bun.lock

@@ -1,6 +1,6 @@
 import { useEffect, useReducer, useCallback, useRef } from "react";
 import { useStrudel, type StrudelAudioOptions } from "./use-strudel";
-import type { PlaybackState, EvalResult, SourceRange } from "@purple/core/types";
+import type { PlaybackState, EvalResult } from "@purple/core/types";
 import {
   buildTransitionCode,
   DEFAULT_TRANSITION_CYCLES,
@@ -85,7 +85,6 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
     evaluate,
     validate,
     hush,
-    isAudioReady,
     getSchedulerPosition,
     getActiveSourceRanges,
     getOutputAnalyser,
@@ -416,28 +415,9 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
 
   useEffect(() => cancelTransitionWait, [cancelTransitionWait]);
 
-  useEffect(() => {
-    if (state.playbackState !== "playing") return;
-
-    let lastKey = "";
-    const update = () => {
-      const ranges = getActiveSourceRanges();
-      const key = getRangesKey(ranges);
-      if (key !== lastKey) {
-        lastKey = key;
-        dispatch({ type: "ranges", ranges });
-      }
-    };
-
-    update();
-    const intervalId = window.setInterval(update, 50);
-    return () => window.clearInterval(intervalId);
-  }, [getActiveSourceRanges, state.playbackState]);
-
   return {
     ...state,
     prepareAudio,
-    isAudioReady,
     play,
     transition,
     stop,
@@ -445,6 +425,8 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
     getStopToken,
     /** Audit generated code against the live engine without touching playback. */
     validatePattern: validate,
+    /** Read scheduler highlights without routing its 50 ms poll through React. */
+    getActiveSourceRanges,
     /** The master-mix tap, or null until the engine initializes. */
     getOutputAnalyser,
   };
@@ -454,7 +436,6 @@ interface PlaybackSnapshot {
   playbackState: PlaybackState;
   error: string | null;
   activeCode: string;
-  activeRanges: readonly SourceRange[];
 }
 
 type PlaybackAction =
@@ -464,14 +445,12 @@ type PlaybackAction =
   | { type: "transitionRestored"; code: string }
   | { type: "transitionFailed"; code: string; error: string }
   | { type: "error"; error: string }
-  | { type: "stopped" }
-  | { type: "ranges"; ranges: readonly SourceRange[] };
+  | { type: "stopped" };
 
 const INITIAL_PLAYBACK_STATE: PlaybackSnapshot = {
   playbackState: "stopped",
   error: null,
   activeCode: "",
-  activeRanges: [],
 };
 
 function playingSnapshot(code: string, error: string | null = null): PlaybackSnapshot {
@@ -479,7 +458,6 @@ function playingSnapshot(code: string, error: string | null = null): PlaybackSna
     playbackState: "playing",
     error,
     activeCode: code,
-    activeRanges: [],
   };
 }
 
@@ -497,7 +475,6 @@ function playbackReducer(
         ...state,
         playbackState: "transitioning",
         error: null,
-        activeRanges: [],
       };
     case "transitionFailed":
       return playingSnapshot(action.code, action.error);
@@ -511,13 +488,5 @@ function playbackReducer(
       };
     case "stopped":
       return INITIAL_PLAYBACK_STATE;
-    case "ranges":
-      return state.playbackState === "playing"
-        ? { ...state, activeRanges: action.ranges }
-        : state;
   }
-}
-
-function getRangesKey(ranges: readonly SourceRange[]) {
-  return ranges.map((range) => range.join(":")).join("|");
 }
