@@ -45,12 +45,15 @@ try {
   const debugPort = 9223;
   const browserArguments = [
     "--headless=new",
+    "--disable-dev-shm-usage",
     "--disable-gpu",
     `--remote-debugging-port=${debugPort}`,
     `--user-data-dir=${profileDirectory}`,
     `http://127.0.0.1:${address.port}/`,
   ];
-  if (process.getuid?.() === 0) browserArguments.unshift("--no-sandbox");
+  if (process.getuid?.() === 0 || process.env.CI === "true") {
+    browserArguments.unshift("--no-sandbox");
+  }
   browser = spawn(process.env.CHROMIUM_BIN ?? "chromium", browserArguments, {
     stdio: "ignore",
   });
