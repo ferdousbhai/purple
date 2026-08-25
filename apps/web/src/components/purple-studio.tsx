@@ -535,7 +535,7 @@ export function PurpleStudio({ sharedPattern }: { sharedPattern?: SharedPattern 
                 getCodeRevision={getCodeRevision}
                 getTitleRevision={getTitleRevision}
                 registerGeneratedPatternController={registerGeneratedPatternController}
-                setCustomTitle={commitCustomTitle}
+                setCustomTitle={setCustomTitle}
                 setSourcePrompt={setSourcePrompt}
               />
             </Suspense>
