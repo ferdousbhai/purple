@@ -6,20 +6,34 @@
     <meta name="color-scheme" content="dark" />
     <meta name="theme-color" content="#0c0914" />
     <meta name="application-name" content="Purple" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
     <meta
       name="description"
-      content="Make editable music with AI-generated Strudel patterns, directly in your browser."
+      content="Create, edit, and play AI-generated Strudel music in your browser. Purple is local-first and keeps your Gemini key and projects on your device."
     />
     <meta property="og:type" content="website" />
+    <meta property="og:locale" content="en_US" />
     <meta property="og:site_name" content="Purple" />
-    <meta property="og:title" content="Purple - AI music production" />
+    <meta property="og:title" content="Purple: AI Music Production with Strudel" />
     <meta
       property="og:description"
-      content="Make editable music with AI-generated Strudel patterns, directly in your browser."
+      content="Create, edit, and play AI-generated Strudel music in your browser. Purple is local-first and keeps your Gemini key and projects on your device."
     />
     <meta property="og:url" content="https://soundspurple.com/" />
+    <meta property="og:image" content="https://soundspurple.com/icon-512.png" />
+    <meta property="og:image:width" content="512" />
+    <meta property="og:image:height" content="512" />
+    <meta property="og:image:alt" content="Purple music studio logo" />
     <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Purple: AI Music Production with Strudel" />
+    <meta
+      name="twitter:description"
+      content="Create, edit, and play AI-generated Strudel music in your browser."
+    />
+    <meta name="twitter:image" content="https://soundspurple.com/icon-512.png" />
+    <meta name="twitter:image:alt" content="Purple music studio logo" />
     <link rel="canonical" href="https://soundspurple.com/" />
+    <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
     <!-- iOS browsers (all WebKit) cannot render SVG favicons; without raster
          fallbacks they show an error glyph. Keep the SVG first for browsers
          that do support it. -->
@@ -28,10 +42,40 @@
     <link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <title>Purple - AI music production</title>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "@id": "https://soundspurple.com/#website",
+            "url": "https://soundspurple.com/",
+            "name": "Purple",
+            "description": "Local-first AI music production with Strudel.",
+            "inLanguage": "en"
+          },
+          {
+            "@type": "WebApplication",
+            "@id": "https://soundspurple.com/#app",
+            "url": "https://soundspurple.com/",
+            "name": "Purple",
+            "applicationCategory": "MultimediaApplication",
+            "operatingSystem": "Any",
+            "isAccessibleForFree": true,
+            "description": "Create, edit, and play AI-generated Strudel music in your browser."
+          }
+        ]
+      }
+    </script>
+    <title>Purple: AI Music Production with Strudel</title>
   </head>
   <body>
-    <div id="root"><main class="boot-shell">PURPLE</main></div>
+    <div id="root">
+      <main class="boot-shell">
+        <h1>Purple</h1>
+        <p>Create, edit, and play AI-generated Strudel music in your browser.</p>
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

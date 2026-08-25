@@ -1,7 +1,7 @@
 {
-  "name": "Purple - AI music production",
+  "name": "Purple: AI music production with Strudel",
   "short_name": "Purple",
-  "description": "Make editable music with AI-generated Strudel patterns.",
+  "description": "Create, edit, and play AI-generated Strudel music in your browser.",
   "id": "/",
   "start_url": "/",
   "scope": "/",

@@ -165,8 +165,8 @@ export function PurpleApp() {
 
   const routeLabel = browserRouteLabel(route)
   useEffect(() => {
-    document.title = `${routeLabel} | Purple`
-  }, [routeLabel])
+    document.title = browserRouteTitle(route)
+  }, [route])
 
   return (
     <>
@@ -184,4 +184,14 @@ function browserRouteLabel(route: BrowserRoute): string {
   }
   if (route.pathname === '/patterns') return 'Public patterns'
   return 'Page not found'
+}
+
+function browserRouteTitle(route: BrowserRoute): string {
+  if (route.pathname === '/') {
+    return new URLSearchParams(route.search).has('s')
+      ? 'Shared Strudel Pattern | Purple'
+      : 'Purple: AI Music Production with Strudel'
+  }
+  if (route.pathname === '/patterns') return 'Public Strudel Patterns | Purple'
+  return 'Page Not Found | Purple'
 }

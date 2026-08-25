@@ -121,21 +121,25 @@ afterEach(() => {
 it('keeps one playback owner through links, shared patterns, and popstate', async () => {
   render(<PurpleApp />)
   await screen.findByTestId('studio-route')
+  expect(document.title).toBe('Purple: AI Music Production with Strudel')
 
   await userEvent.click(screen.getByRole('button', { name: 'START AUDIO' }))
   await userEvent.click(screen.getByRole('button', { name: 'BROWSE PATTERNS' }))
 
   await screen.findByTestId('patterns-route')
+  expect(document.title).toBe('Public Strudel Patterns | Purple')
   expect(screen.getByText('ACTIVE persistent-pattern')).toBeVisible()
   await userEvent.click(screen.getByRole('button', { name: 'OPEN SHARED' }))
 
   await screen.findByText('Shared route pattern')
+  expect(document.title).toBe('Shared Strudel Pattern | Purple')
   act(() => {
     window.history.pushState(null, '', '/patterns')
     window.dispatchEvent(new PopStateEvent('popstate'))
   })
 
   await screen.findByTestId('patterns-route')
+  expect(document.title).toBe('Public Strudel Patterns | Purple')
   await waitFor(() => expect(screen.getByText('ACTIVE persistent-pattern')).toBeVisible())
   expect(shell.created).toBe(1)
   expect(shell.instances[0]?.stopCalls).toBe(0)

@@ -36,9 +36,10 @@ describe('canonical origin redirect', () => {
 describe('route shell delivery', () => {
   it('defines distinct canonical metadata for the public gallery', () => {
     expect(routeMetadata('/patterns')).toEqual({
-      title: 'Public Patterns - Purple',
+      title: 'Public Strudel Patterns | Purple',
+      heading: 'Public Strudel patterns to play, save, and remix',
       description:
-        'Browse, play, save, and remix public Strudel patterns made with Purple.',
+        'Browse, play, save, and remix public Strudel patterns made with Purple. No Gemini key is needed to listen.',
       url: 'https://soundspurple.com/patterns',
     })
     expect(routeMetadata('/')).toBeNull()

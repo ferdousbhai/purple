@@ -543,6 +543,19 @@ async function renderPlayingStudio() {
   return rendered
 }
 
+function publicPattern(viewerVote: -1 | 0 | 1 = 0) {
+  return {
+    id: 'Abc_123-xYz9',
+    title: 'Shared pattern',
+    code: FIRST_PATTERN,
+    createdAt: 1_700_000_000_000,
+    likes: 4,
+    dislikes: 1,
+    score: 3,
+    viewerVote,
+  }
+}
+
 describe('Purple studio browser flow', () => {
   it('saves a pasted Gemini key and closes the key card immediately', async () => {
     studio.storedKey = null
@@ -586,16 +599,7 @@ describe('Purple studio browser flow', () => {
   })
 
   it('uses Save for the local library even when a public pattern was liked', async () => {
-    render(<PurpleStudio sharedPattern={{
-      id: 'Abc_123-xYz9',
-      title: 'Shared pattern',
-      code: FIRST_PATTERN,
-      createdAt: 1_700_000_000_000,
-      likes: 4,
-      dislikes: 1,
-      score: 3,
-      viewerVote: 1,
-    }} />)
+    render(<PurpleStudio sharedPattern={publicPattern(1)} />)
 
     expect(screen.queryByRole('button', { name: /LIKE/ })).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: 'SAVE' }))
@@ -607,14 +611,25 @@ describe('Purple studio browser flow', () => {
     ])
   })
 
+  it('shows effect modifiers for a shared pattern before chat begins', async () => {
+    render(<PurpleStudio sharedPattern={publicPattern()} />)
+
+    expect(await screen.findByText('What do you want to hear?')).toBeVisible()
+    expect(screen.getByText('EFFECT')).toBeVisible()
+    expect(screen.getByRole('button', { name: '🎛️ Filter Sweep' })).toBeVisible()
+  })
+
   it('disables Save and Share when the editor has no pattern', async () => {
     render(<PurpleStudio />)
     const editor = await screen.findByLabelText('Pattern code')
+
+    expect(screen.getByText('EFFECT')).toBeVisible()
 
     await userEvent.clear(editor)
 
     expect(screen.getByRole('button', { name: 'SAVE' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'SHARE' })).toBeDisabled()
+    expect(screen.queryByText('EFFECT')).toBeNull()
   })
 
   it('adds the public identity to a locally saved pattern after sharing', async () => {
@@ -661,16 +676,7 @@ describe('Purple studio browser flow', () => {
       coveredCount: 0,
     }
     studio.generations.push(SECOND_PATTERN)
-    render(<PurpleStudio sharedPattern={{
-      id: 'Abc_123-xYz9',
-      title: 'Shared pattern',
-      code: FIRST_PATTERN,
-      createdAt: 1_700_000_000_000,
-      likes: 4,
-      dislikes: 1,
-      score: 3,
-      viewerVote: 0,
-    }} />)
+    render(<PurpleStudio sharedPattern={publicPattern()} />)
 
     expect(await screen.findByLabelText('Pattern code')).toHaveValue(FIRST_PATTERN)
     expect(screen.queryByText('Old unrelated request')).toBeNull()
@@ -1001,6 +1007,20 @@ describe('Purple studio browser flow', () => {
     expect(screen.queryByText('What do you want to hear?')).toBeNull()
     expect(screen.queryByRole('button', { name: 'UNDO' })).toBeNull()
     expect(studio.saveChatCalls).toBeGreaterThan(savesBeforeUndo)
+  })
+
+  it('keeps idle run controls below the progression copy', async () => {
+    await renderGeneratedPattern()
+
+    const action = screen.getByText(NEXT_ACTION)
+    const controls = screen.getByRole('button', { name: 'START RUN' }).parentElement
+    const row = action.closest('.progression-row')
+
+    expect(controls).not.toBeNull()
+    expect(row).not.toBeNull()
+    expect(controls?.getBoundingClientRect().top)
+      .toBeGreaterThanOrEqual(action.getBoundingClientRect().bottom)
+    expect(row?.scrollWidth).toBeLessThanOrEqual(row?.clientWidth ?? 0)
   })
 
   it('schedules a revision crossfade and lets the listener take it now', async () => {

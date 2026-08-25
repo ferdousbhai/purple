@@ -22,7 +22,7 @@ const STUDIO_PRELOAD_SELECTOR = 'link[data-purple-studio-preload]'
 const PATTERNS_PRELOAD_ATTRIBUTE = 'data-purple-patterns-preload'
 const PATTERNS_PRELOAD_SELECTOR = `template[${PATTERNS_PRELOAD_ATTRIBUTE}]`
 const PATTERNS_DESCRIPTION =
-  'Browse, play, save, and remix public Strudel patterns made with Purple.'
+  'Browse, play, save, and remix public Strudel patterns made with Purple. No Gemini key is needed to listen.'
 
 const CATEGORY_LABELS = {
   bug: 'Something is broken',
@@ -139,11 +139,21 @@ function rewriteRoutePreloads(response: Response, pathname: string): Response {
           element.setAttribute('href', metadata.url)
         },
       })
+      .on('.boot-shell', {
+        element(element) {
+          element.setInnerContent(
+            `<h1>${metadata.heading}</h1><p>${metadata.description}</p>`,
+            { html: true },
+          )
+        },
+      })
     for (const [selector, value] of [
       ['meta[name="description"]', metadata.description],
       ['meta[property="og:description"]', metadata.description],
       ['meta[property="og:title"]', metadata.title],
       ['meta[property="og:url"]', metadata.url],
+      ['meta[name="twitter:description"]', metadata.description],
+      ['meta[name="twitter:title"]', metadata.title],
     ] as const) {
       rewriter.on(selector, {
         element(element) {
@@ -157,12 +167,14 @@ function rewriteRoutePreloads(response: Response, pathname: string): Response {
 
 export function routeMetadata(pathname: string): {
   title: string
+  heading: string
   description: string
   url: string
 } | null {
   if (pathname !== PATTERNS_PATH) return null
   return {
-    title: 'Public Patterns - Purple',
+    title: 'Public Strudel Patterns | Purple',
+    heading: 'Public Strudel patterns to play, save, and remix',
     description: PATTERNS_DESCRIPTION,
     url: `https://${CANONICAL_HOST}${PATTERNS_PATH}`,
   }

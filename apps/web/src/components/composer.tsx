@@ -920,6 +920,7 @@ export function Composer(props: PatternStateBindings & {
   }
 
   const isEmpty = chat.messages.length === 0
+  const hasPattern = props.code.trim().length > 0
   // Settled messages only need transforming when the transcript changes.
   const transcript = useMemo(
     () =>
@@ -1021,7 +1022,7 @@ export function Composer(props: PatternStateBindings & {
         </div>
       ) : null}
 
-      {!progressionRunning && !isEmpty ? (
+      {!progressionRunning && hasPattern ? (
         <div className="chip-row">
           <span className="chip-label">EFFECT</span>
           {PROMPT_MODIFIERS.map((modifier) => (
