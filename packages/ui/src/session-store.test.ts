@@ -210,6 +210,27 @@ describe("session pattern storage", () => {
     expect(store.load()).toEqual(pattern);
   });
 
+  it("round-trips a valid public share reference", () => {
+    vi.useFakeTimers();
+    stubStorage();
+    const store = createPatternStore();
+    const shared = { ...pattern, shareId: "Abc_123-xYz9" };
+
+    store.save(shared);
+    flushPatternSave();
+    expect(store.load()).toEqual(shared);
+  });
+
+  it("does not save a malformed public share reference", () => {
+    vi.useFakeTimers();
+    const values = stubStorage();
+    const store = createPatternStore();
+
+    store.save({ ...pattern, shareId: "short" });
+    flushPatternSave();
+    expect(values.size).toBe(0);
+  });
+
   it("coalesces rapid saves into the last write", () => {
     vi.useFakeTimers();
     const values = stubStorage();

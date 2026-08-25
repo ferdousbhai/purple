@@ -5,6 +5,7 @@
  * `apps/web/src/lib/byok.ts`.
  */
 import { MAX_PATTERN_LENGTH } from "@purple/core/pattern";
+import { isShareId } from "@purple/core/shared-pattern";
 import {
   isJsonNumber,
   isJsonString,
@@ -187,6 +188,7 @@ export interface SessionPattern {
   code: string;
   customTitle: string | null;
   sourcePrompt?: string;
+  shareId?: string;
 }
 
 function parseSessionPattern(value: JsonValue): SessionPattern | null {
@@ -194,12 +196,14 @@ function parseSessionPattern(value: JsonValue): SessionPattern | null {
   const code = fields?.get("code");
   const customTitle = fields?.get("customTitle");
   const sourcePrompt = fields?.get("sourcePrompt");
+  const shareId = fields?.get("shareId");
   if (
     !isJsonString(code) ||
     code.length === 0 ||
     code.length > MAX_PATTERN_LENGTH ||
     (customTitle !== null && !isJsonString(customTitle)) ||
-    (sourcePrompt !== undefined && !isJsonString(sourcePrompt))
+    (sourcePrompt !== undefined && !isJsonString(sourcePrompt)) ||
+    (shareId !== undefined && (!isJsonString(shareId) || !isShareId(shareId)))
   ) {
     return null;
   }
@@ -213,11 +217,16 @@ function parseSessionPattern(value: JsonValue): SessionPattern | null {
   if (isJsonString(sourcePrompt)) {
     pattern.sourcePrompt = sourcePrompt.slice(0, 4_000);
   }
+  if (isJsonString(shareId)) pattern.shareId = shareId;
   return pattern;
 }
 
 function normalizeSessionPattern(pattern: SessionPattern): SessionPattern | null {
-  if (pattern.code.length === 0 || pattern.code.length > MAX_PATTERN_LENGTH) {
+  if (
+    pattern.code.length === 0 ||
+    pattern.code.length > MAX_PATTERN_LENGTH ||
+    (pattern.shareId !== undefined && !isShareId(pattern.shareId))
+  ) {
     return null;
   }
   const normalized: SessionPattern = {
@@ -227,10 +236,11 @@ function normalizeSessionPattern(pattern: SessionPattern): SessionPattern | null
   if (pattern.sourcePrompt !== undefined) {
     normalized.sourcePrompt = pattern.sourcePrompt.slice(0, 4_000);
   }
+  if (pattern.shareId !== undefined) normalized.shareId = pattern.shareId;
   return normalized;
 }
 
-/** Both apps mirror the editor into save() on every change; the trailing
+/** The editor calls save() on every change; the trailing
  * debounce keeps typing from issuing a synchronous storage write per keystroke. */
 const PATTERN_SAVE_DEBOUNCE_MS = 300;
 

@@ -1,5 +1,6 @@
 import { MAX_PATTERN_LENGTH, patternFilename } from '@purple/core/pattern'
 import { SHOWCASE_PATTERNS, type ShowcasePattern } from '@purple/core/recipes'
+import type { SharedPattern } from '@purple/core/shared-pattern'
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import type { GeneratedPatternController } from './composer'
 import {
@@ -11,6 +12,7 @@ import {
   loadSessionPattern,
   removePattern,
   saveSessionPattern,
+  sharedLibraryId,
   uniquePatternTitle,
   upsertPattern,
   usePatterns,
@@ -19,18 +21,9 @@ import { hasUnappliedEditorChanges } from '@purple/ui/playback-flow'
 import { PurpleMark } from '@purple/ui/purple-mark'
 import { SpectrumBars } from '@purple/ui/spectrum-bars'
 import { usePlayback } from '@purple/ui/use-playback'
-import { defaultEnsureRunningContext } from '@purple/ui/use-strudel'
-import { unlockMediaChannel } from '#/lib/media-channel'
 import type { PatternEditorProps } from '@purple/ui/pattern-editor'
-
-/** Runs inside the unlock gesture, before the first await: the iOS media-
- * channel unlock must start its element synchronously or it is refused. */
-const WEB_AUDIO_OPTIONS = {
-  async ensureRunningContext(context: AudioContext) {
-    unlockMediaChannel()
-    await defaultEnsureRunningContext(context)
-  },
-}
+import { WEB_AUDIO_OPTIONS } from '#/lib/playback'
+import { voteForPattern } from '#/lib/public-patterns'
 
 const PatternEditor = lazy(async () => {
   const editor = await import('@purple/ui/pattern-editor')
@@ -43,6 +36,10 @@ const Composer = lazy(async () => {
 const FeedbackDialog = lazy(async () => {
   const feedback = await import('./feedback-dialog')
   return { default: feedback.FeedbackDialog }
+})
+const ShareDialog = lazy(async () => {
+  const share = await import('./share-dialog')
+  return { default: share.ShareDialog }
 })
 
 function DeferredPatternEditor(props: PatternEditorProps) {
@@ -69,22 +66,28 @@ function DeferredPatternEditor(props: PatternEditorProps) {
 
 type Playback = ReturnType<typeof usePlayback>
 
-export function PurpleStudio() {
+export function PurpleStudio({ sharedPattern }: { sharedPattern?: SharedPattern }) {
   const [byokKey, setByokKeyState] = useState<string | null>(() => getByokKey())
   const [keyPanelOpen, setKeyPanelOpen] = useState(false)
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
   const [libraryWasCleared, setLibraryWasCleared] = useState(false)
   const [patternStorageError, setPatternStorageError] = useState<string | null>(null)
   // The chat transcript survives reloads (loadByokChat), so the pattern it
   // produced must too - restoring one without the other desyncs the session.
-  const [initialPattern] = useState(loadInitialPattern)
+  const [initialPattern] = useState(() => loadInitialPattern(sharedPattern))
   const [code, setCode] = useState(initialPattern.code)
   const [patternPreview, setPatternPreview] = useState<string | null>(null)
   const [patternPending, setPatternPending] = useState(false)
   const [patternProvisional, setPatternProvisional] = useState(false)
   const [customTitle, setCustomTitle] = useState(initialPattern.customTitle)
   const [sourcePrompt, setSourcePrompt] = useState(initialPattern.sourcePrompt)
+  const [shareId, setShareId] = useState<string | null>(initialPattern.shareId)
+  const [viewerVote, setViewerVote] = useState(initialPattern.viewerVote)
+  const [likePending, setLikePending] = useState(false)
+  const shareIdRef = useRef(shareId)
+  shareIdRef.current = shareId
   const playback = usePlayback(WEB_AUDIO_OPTIONS)
   const isPhoneWidth = usePhoneWidth()
   const savedPatterns = usePatterns()
@@ -110,6 +113,8 @@ export function PurpleStudio() {
   const commitGeneratedCode = useCallback((nextCode: string) => {
     setPatternPreview(null)
     setCode(nextCode)
+    setShareId(null)
+    setViewerVote(0)
   }, [])
   const commitCode = useCallback((nextCode: string) => {
     codeRevisionRef.current++
@@ -119,12 +124,14 @@ export function PurpleStudio() {
   const commitCustomTitle = useCallback((nextTitle: string | null) => {
     titleRevisionRef.current++
     setCustomTitle(nextTitle)
+    setShareId(null)
+    setViewerVote(0)
   }, [])
 
   useEffect(() => {
     if (patternProvisional) return
-    saveSessionPattern({ code, customTitle, sourcePrompt })
-  }, [code, customTitle, patternProvisional, sourcePrompt])
+    saveSessionPattern({ code, customTitle, sourcePrompt, shareId: shareId ?? undefined })
+  }, [code, customTitle, patternProvisional, shareId, sourcePrompt])
 
   /** False when the browser blocks localStorage, so the key cannot outlive this render. */
   const updateByokKey = (key: string | null): boolean => {
@@ -138,41 +145,67 @@ export function PurpleStudio() {
 
   const title = customTitle ?? titleFromPrompt(sourcePrompt) ?? 'Untitled Pattern'
   const patternName = title.trim() || 'Untitled Pattern'
-  const currentPatternSaved = savedPatterns.some(
-    (pattern) => pattern.title === patternName && pattern.code === code,
+  const libraryPattern = savedPatterns.find(
+    (pattern) =>
+      (shareId !== null && pattern.shareId === shareId) ||
+      (pattern.title === patternName && pattern.code === code),
   )
+  const currentPatternLiked = libraryPattern !== undefined || viewerVote === 1
 
-  const save = () => {
+  const toggleLike = async () => {
     // Mirror the pattern schema's bounds; an out-of-range upsert throws.
     if (!code.trim() || code.length > MAX_PATTERN_LENGTH) return
-    const now = Date.now()
-    const existing = savedPatterns.find(
-      (pattern) => pattern.title === patternName && pattern.code === code,
-    )
-    const savedTitle = existing
-      ? patternName
-      : uniquePatternTitle(patternName, savedPatterns)
-    const persisted = upsertPattern(
-      existing
-        ? { ...existing, code, prompt: sourcePrompt, updatedAt: now }
-        : {
-            id: crypto.randomUUID(),
-            title: savedTitle,
-            code,
-            prompt: sourcePrompt,
-            createdAt: now,
-            updatedAt: now,
-          },
-    )
-    if (!persisted) {
-      setPatternStorageError(
-        'This browser could not save the pattern. Allow site data and try again.',
-      )
-      return
+    if (likePending) return
+    setLikePending(true)
+    const targetShareId = shareId
+    try {
+      let persisted = true
+      if (currentPatternLiked) {
+        if (libraryPattern) persisted = removePattern(libraryPattern.id)
+      } else {
+        const now = Date.now()
+        const savedTitle = uniquePatternTitle(patternName, savedPatterns)
+        persisted = upsertPattern({
+          id: targetShareId ? sharedLibraryId(targetShareId) : crypto.randomUUID(),
+          title: savedTitle,
+          code,
+          prompt: sourcePrompt,
+          shareId: targetShareId ?? undefined,
+          createdAt: now,
+          updatedAt: now,
+        })
+        if (!targetShareId && savedTitle !== patternName) {
+          commitCustomTitle(savedTitle)
+        }
+      }
+      if (!persisted) {
+        setPatternStorageError(
+          'This browser could not update the library. Allow site data and try again.',
+        )
+        return
+      }
+      setPatternStorageError(null)
+      setLibraryWasCleared(false)
+      if (targetShareId) {
+        try {
+          const vote = await voteForPattern(
+            targetShareId,
+            currentPatternLiked ? 0 : 1,
+          )
+          if (shareIdRef.current === targetShareId) {
+            setViewerVote(vote.viewerVote)
+          }
+        } catch {
+          setPatternStorageError(
+            currentPatternLiked
+              ? 'Removed from this library, but the public like could not be removed.'
+              : 'Added to this library, but the public like could not be recorded.',
+          )
+        }
+      }
+    } finally {
+      setLikePending(false)
     }
-    if (savedTitle !== patternName) commitCustomTitle(savedTitle)
-    setPatternStorageError(null)
-    setLibraryWasCleared(false)
   }
 
   const exportPattern = () => {
@@ -250,6 +283,12 @@ export function PurpleStudio() {
         </div>
         <div className="topbar-actions">
           <a
+            className="chrome patterns-link"
+            href="/patterns"
+          >
+            PATTERNS
+          </a>
+          <a
             className="chrome source-link"
             href="https://github.com/ferdousbhai/purple"
             rel="noreferrer"
@@ -304,6 +343,22 @@ export function PurpleStudio() {
         </Suspense>
       ) : null}
 
+      {shareOpen ? (
+        <Suspense fallback={null}>
+          <ShareDialog
+            code={code}
+            existingId={shareId}
+            title={patternName}
+            onClose={() => setShareOpen(false)}
+            onShared={(id, sharedTitle) => {
+              commitCustomTitle(sharedTitle)
+              setShareId(id)
+              setViewerVote(0)
+            }}
+          />
+        </Suspense>
+      ) : null}
+
       {libraryOpen ? (
         <section className="library-popover" ref={libraryRef} aria-label="Pattern library">
           <header className="library-head">
@@ -315,8 +370,8 @@ export function PurpleStudio() {
           {savedPatterns.length === 0 ? (
             <p className="muted" role={libraryWasCleared ? 'status' : undefined}>
               {libraryWasCleared
-                ? 'Library is clean. No saved patterns.'
-                : 'Nothing saved yet. SAVE keeps a pattern in this browser.'}
+                ? 'Library is clean. No liked patterns.'
+                : 'Nothing liked yet. LIKE keeps a pattern in this browser.'}
             </p>
           ) : (
             [...savedPatterns]
@@ -329,6 +384,8 @@ export function PurpleStudio() {
                       commitCode(pattern.code)
                       commitCustomTitle(pattern.title)
                       setSourcePrompt(pattern.prompt)
+                      setShareId(pattern.shareId ?? null)
+                      setViewerVote(0)
                       setPatternStorageError(null)
                       setLibraryOpen(false)
                     }}
@@ -347,6 +404,19 @@ export function PurpleStudio() {
                         return
                       }
                       setPatternStorageError(null)
+                      if (pattern.shareId) {
+                        void voteForPattern(pattern.shareId, 0)
+                          .then((vote) => {
+                            if (shareIdRef.current === pattern.shareId) {
+                              setViewerVote(vote.viewerVote)
+                            }
+                          })
+                          .catch(() => {
+                            setPatternStorageError(
+                              'Removed from this library, but the public like could not be removed.',
+                            )
+                          })
+                      }
                       if (savedPatterns.length === 1) setLibraryWasCleared(true)
                     }}
                   >
@@ -370,16 +440,23 @@ export function PurpleStudio() {
               maxLength={60}
             />
             <button
-              className={`chrome ${currentPatternSaved ? 'saved' : ''}`}
-              disabled={patternLocked}
-              onClick={save}
+              className={`chrome ${currentPatternLiked ? 'liked' : ''}`}
+              disabled={patternLocked || likePending}
+              onClick={() => void toggleLike()}
               title={
-                currentPatternSaved
-                  ? 'Saved in this browser’s library'
-                  : 'Save to this browser’s library'
+                currentPatternLiked
+                  ? 'Remove from this browser’s library'
+                  : 'Like and add to this browser’s library'
               }
             >
-              <span aria-live="polite">{currentPatternSaved ? 'SAVED ✓' : 'SAVE'}</span>
+              <span aria-live="polite">{currentPatternLiked ? '♥ LIKED' : '♡ LIKE'}</span>
+            </button>
+            <button
+              className="chrome"
+              disabled={patternLocked || !code.trim() || code.length > MAX_PATTERN_LENGTH}
+              onClick={() => setShareOpen(true)}
+            >
+              SHARE
             </button>
             <button
               className="chrome export"
@@ -458,7 +535,7 @@ export function PurpleStudio() {
                 getCodeRevision={getCodeRevision}
                 getTitleRevision={getTitleRevision}
                 registerGeneratedPatternController={registerGeneratedPatternController}
-                setCustomTitle={setCustomTitle}
+                setCustomTitle={commitCustomTitle}
                 setSourcePrompt={setSourcePrompt}
               />
             </Suspense>
@@ -484,8 +561,8 @@ function KeyCard(props: {
     <section className="key-card">
       <h2>YOUR GEMINI KEY</h2>
       <p>
-        Purple has no accounts and keeps no data. Your key, your chat, and your saved patterns
-        live only in this browser - generation requests go straight from here to Google.
+        Purple has no accounts. Your Gemini key, chat, and library stay in this browser.
+        Patterns you choose to share publish their title and code for anyone to play.
       </p>
       <p>
         Get a free key from{' '}
@@ -551,14 +628,29 @@ function titleFromPrompt(prompt: string | undefined): string | null {
   return text.length <= 48 ? text : `${text.slice(0, 47).trimEnd()}…`
 }
 
-function loadInitialPattern() {
+function loadInitialPattern(sharedPattern?: SharedPattern) {
+  if (sharedPattern) {
+    return {
+      code: sharedPattern.code,
+      customTitle: sharedPattern.title,
+      sourcePrompt: undefined,
+      shareId: sharedPattern.id,
+      viewerVote: sharedPattern.viewerVote,
+    }
+  }
   const restored = loadSessionPattern()
-  if (restored) return restored
+  if (restored) return {
+    ...restored,
+    shareId: restored.shareId ?? null,
+    viewerVote: 0 as const,
+  }
   const starter = randomStarter()
   return {
     code: starter.code,
     customTitle: starter.title,
     sourcePrompt: undefined,
+    shareId: null,
+    viewerVote: 0 as const,
   }
 }
 

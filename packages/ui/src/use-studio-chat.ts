@@ -84,7 +84,13 @@ type PatternResolution =
   | { ok: false; error: string };
 
 function fallbackTurn(pattern: string): GeneratedTurn {
-  return { pattern, title: null, suggestions: [], explanation: "" };
+  return {
+    pattern,
+    progression: null,
+    title: null,
+    suggestions: [],
+    explanation: "",
+  };
 }
 
 const DEFAULT_STREAM_TIMEOUT_MS = 90_000;

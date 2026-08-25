@@ -66,6 +66,10 @@ const suggestions = [
 function generatedTurn(pattern: string): string {
   return JSON.stringify({
     pattern,
+    progression: {
+      afterCycles: 16,
+      nextAction: 'Strip back to bass and filtered drums',
+    },
     title: 'Test pattern',
     suggestions,
     explanation: 'A focused groove.',
@@ -136,6 +140,7 @@ describe('BYOK streaming backend', () => {
     ).resolves.toEqual({
       turn: {
         pattern: 's("bd*4")',
+        progression: null,
         title: null,
         suggestions: [],
         explanation: '',
@@ -156,6 +161,7 @@ describe('BYOK streaming backend', () => {
         responseJsonSchema: {
           properties: {
             pattern: unknown
+            progression: unknown
             title: unknown
             suggestions: unknown
             explanation: unknown
@@ -187,6 +193,10 @@ describe('BYOK streaming backend', () => {
       promptTokens: null,
       turn: {
         pattern: 'drum✨',
+        progression: {
+          afterCycles: 16,
+          nextAction: 'Strip back to bass and filtered drums',
+        },
         title: 'Test pattern',
         suggestions,
         explanation: 'A focused groove.',
@@ -207,6 +217,10 @@ describe('BYOK streaming backend', () => {
       promptTokens: null,
       turn: {
         pattern: 's("bd")',
+        progression: {
+          afterCycles: 16,
+          nextAction: 'Strip back to bass and filtered drums',
+        },
         title: 'Test pattern',
         suggestions,
         explanation: 'A focused groove.',

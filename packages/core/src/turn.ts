@@ -5,10 +5,16 @@ import {
   validatePatternCode,
   type TransitionSuggestion,
 } from "./pattern";
+import {
+  validatePatternProgression,
+  type PatternProgression,
+} from "./progression";
 
 /** The single structured result produced for a normal studio turn. */
 export interface GeneratedTurn {
   pattern: string;
+  /** Missing or malformed planning metadata disables autonomous continuation. */
+  progression: PatternProgression | null;
   /** Invalid or truncated optional metadata never discards a usable pattern. */
   title: string | null;
   suggestions: TransitionSuggestion[];
@@ -29,6 +35,7 @@ export function parseGeneratedTurn(
   const pattern = validatePatternCode(rawPattern ?? fallbackPattern ?? "");
   if (pattern === null) return null;
 
+  const progression = validatePatternProgression(members?.get("progression"));
   const rawTitle = members === null ? null : jsonText(members.get("title"));
   const title =
     rawTitle === null ? null : validateGeneratedPatternTitle(rawTitle);
@@ -38,7 +45,7 @@ export function parseGeneratedTurn(
   const suggestions =
     validateTransitionSuggestions(members?.get("suggestions")) ?? [];
 
-  return { pattern, title, suggestions, explanation };
+  return { pattern, progression, title, suggestions, explanation };
 }
 
 function validateExplanation(value: string | null): string {
@@ -54,6 +61,9 @@ export function formatGeneratedTurn(turn: GeneratedTurn): string {
   const metadata = [
     turn.title ? `Title: ${turn.title}` : "",
     turn.explanation,
+    turn.progression
+      ? `Next after ${turn.progression.afterCycles} cycles: ${turn.progression.nextAction}`
+      : "",
   ].filter(Boolean);
   return metadata.length > 0 ? `${block}\n${metadata.join("\n")}` : block;
 }

@@ -1,3 +1,7 @@
+import {
+  MAX_PROGRESSION_CYCLES,
+  MIN_PROGRESSION_CYCLES,
+} from "./progression";
 import { SHOWCASE_PATTERNS } from "./recipes";
 
 /**
@@ -89,12 +93,18 @@ movement (signals, .off, .sometimes) and space (.room, .delay, .pan).
 
 Return the structured turn requested by the response schema. The "pattern" field
 must come first and contain the unfenced Strudel expression. Create a memorable
-2 to 6 word title with no ending punctuation. Then propose exactly three
-compatible but meaningfully different next directions. Each suggestion label is
-an inviting 2 to 5 word action. Each suggestion prompt is a standalone
-music-generation instruction with the target groove, mood, instrumentation, and
-a gentle relationship to this pattern. The explanation is at most one short
-sentence.`;
+2 to 6 word title with no ending punctuation. Choose how many complete Strudel
+cycles the pattern should play before it progresses, using musical form, tempo,
+and density rather than a fixed default. Prefer 32 cycles for a typical section,
+using ${MIN_PROGRESSION_CYCLES} for quicker development and up to
+${MAX_PROGRESSION_CYCLES} for patient long-form music.
+Write one specific plain-English next action that can be sent back verbatim as
+a standalone music-generation request and evolves this pattern without abruptly
+replacing its identity. Then propose exactly three compatible but meaningfully
+different next directions. Each suggestion label is an inviting 2 to 5 word
+action. Each suggestion prompt is a standalone music-generation instruction
+with the target groove, mood, instrumentation, and a gentle relationship to
+this pattern. The explanation is at most one short sentence.`;
 
 /** The same grounded producer context with repair-only response behavior. */
 export const REPAIR_SYSTEM_PROMPT = `${STRUDEL_CONTEXT}
@@ -126,7 +136,7 @@ export function buildRetryMessage(code: string, error: string): string {
 
 /** The JSON Schema subset forwarded to Gemini's structured output. */
 export interface ResponseSchema {
-  type: "object" | "array" | "string";
+  type: "object" | "array" | "string" | "integer";
   description?: string;
   properties?: Record<string, ResponseSchema>;
   items?: ResponseSchema;
@@ -134,6 +144,8 @@ export interface ResponseSchema {
   additionalProperties?: boolean;
   minItems?: number;
   maxItems?: number;
+  minimum?: number;
+  maximum?: number;
 }
 
 const SUGGESTION_ITEM_SCHEMA = {
@@ -160,6 +172,25 @@ export const GENERATED_TURN_SCHEMA = {
       type: "string",
       description: "One unfenced evaluable Strudel expression, emitted first",
     },
+    progression: {
+      type: "object",
+      properties: {
+        afterCycles: {
+          type: "integer",
+          minimum: MIN_PROGRESSION_CYCLES,
+          maximum: MAX_PROGRESSION_CYCLES,
+          description:
+            "Complete cycles to play before generating the next progression",
+        },
+        nextAction: {
+          type: "string",
+          description:
+            "One standalone plain-English instruction that meaningfully evolves this pattern",
+        },
+      },
+      required: ["afterCycles", "nextAction"],
+      additionalProperties: false,
+    },
     title: {
       type: "string",
       description: "A memorable 2 to 6 word music title, at most 60 characters",
@@ -175,7 +206,7 @@ export const GENERATED_TURN_SCHEMA = {
       description: "At most one short sentence describing the generated music",
     },
   },
-  required: ["pattern", "title", "suggestions", "explanation"],
+  required: ["pattern", "progression", "title", "suggestions", "explanation"],
   additionalProperties: false,
 } as const;
 

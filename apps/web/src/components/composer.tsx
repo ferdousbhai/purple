@@ -1,12 +1,19 @@
 import {
+  DEFAULT_PROGRESSION_RUN_DURATION_MS,
   DEFAULT_TRANSITION_CYCLES,
   EXPLANATORY_STYLE_INSTRUCTION,
+  PROGRESSION_RUN_DURATION_PRESETS_MS,
   PROMPT_MODIFIERS,
   PROMPT_PRESETS,
   TRANSITION_CYCLE_OPTIONS,
+  boundedProgressionRunDurationMs,
+  continueProgressionRun,
   generateRandomPrompt,
+  progressionStepFromTurn,
   visibleTextWithoutCodeBlocks,
   withExplanatoryStyle,
+  type GeneratedTurn,
+  type ProgressionStep,
   type TransitionSuggestion,
 } from '@purple/core'
 import {
@@ -36,9 +43,8 @@ import { useStudioChat } from '@purple/ui/use-studio-chat'
 
 const UNDO_CLEAR_WINDOW_MS = 10_000
 type Playback = ReturnType<typeof usePlayback>
-export type GeneratedPatternPlayer = (code: string) => Promise<void>
 export interface GeneratedPatternController {
-  play: GeneratedPatternPlayer
+  play(code: string): Promise<boolean>
   invalidate(): void
 }
 
@@ -55,6 +61,45 @@ interface PatternStateBindings {
 interface PreparedPattern {
   code: string
   valid: boolean
+}
+
+type ActiveProgressionRunPhase =
+  | 'starting'
+  | 'waiting'
+  | 'generating'
+  | 'transitioning'
+
+type ProgressionRunView =
+  | { phase: 'idle' }
+  | {
+      phase: ActiveProgressionRunPhase
+      nextAction: string
+      afterCycles: number
+    }
+
+interface ActiveProgressionRun {
+  controller: AbortController
+  deadlineTimer?: ReturnType<typeof setTimeout>
+}
+
+const IDLE_PROGRESSION_RUN: ProgressionRunView = {
+  phase: 'idle',
+}
+
+interface StopProgressionRunOptions {
+  abortGeneration?: boolean
+  clearPlan?: boolean
+  notice?: string
+}
+
+function cancelActiveProgressionRun(run: ActiveProgressionRun | null): void {
+  if (run?.deadlineTimer !== undefined) clearTimeout(run.deadlineTimer)
+  run?.controller.abort()
+}
+
+function progressionRunDurationLabel(durationMs: number): string {
+  const minutes = durationMs / 60_000
+  return minutes < 60 ? `${minutes} MIN` : `${minutes / 60} HR`
 }
 
 function usePatternFlow(deps: PatternStateBindings & {
@@ -126,12 +171,11 @@ function usePatternFlow(deps: PatternStateBindings & {
     setSuggestions(nextSuggestions)
   }
 
-  const playPattern = useCallback(async (pattern: string): Promise<void> => {
+  const playPattern = useCallback(async (pattern: string): Promise<boolean> => {
     if (!generatedPattern.isCurrent(pattern)) {
-      await playbackRef.current.play(pattern)
-      return
+      return (await playbackRef.current.play(pattern)).ok
     }
-    if (playbackRepairRef.current) return
+    if (playbackRepairRef.current) return false
 
     playbackRepairRef.current = true
     setIsPlaybackRepairPending(true)
@@ -146,16 +190,17 @@ function usePatternFlow(deps: PatternStateBindings & {
           ? null
           : generatedPlaybackFailureMessage(outcome.result),
       )
+      return outcome.result.ok
     } finally {
       playbackRepairRef.current = false
       setIsPlaybackRepairPending(false)
     }
   }, [generatedPattern.attempt, generatedPattern.isCurrent])
 
-  const transitionStaged = async (durationCycles: number): Promise<void> => {
-    const stagedCandidate = stagedCode
-    if (!stagedCandidate) return
-
+  const transitionPattern = async (
+    candidate: string,
+    durationCycles: number,
+  ): Promise<boolean> => {
     // Consume the one-shot control immediately. Candidate evaluation failures
     // use the remaining repair budget; errors in Purple's generated transition
     // wrapper are kept out of the model conversation.
@@ -167,16 +212,16 @@ function usePatternFlow(deps: PatternStateBindings & {
         ? playbackRef.current.activeCode
         : null
     try {
-      const validated = await generatedPattern.validate(stagedCandidate)
+      const validated = await generatedPattern.validate(candidate)
       if (!isValidatedGeneratedPattern(validated)) {
         setUiError(validationFailureMessage(validated))
-        return
+        return false
       }
       if (
         playingBeforeValidation !== null &&
         (playbackRef.current.playbackState !== 'playing' ||
           playbackRef.current.activeCode !== playingBeforeValidation)
-      ) return
+      ) return false
 
       let transitionFailed = false
       const outcome = await generatedPattern.attempt(validated.code, async (revision) => {
@@ -190,15 +235,22 @@ function usePatternFlow(deps: PatternStateBindings & {
         return result
       })
 
-      if (outcome.result.ok || (outcome.result.kind === 'cancelled' && !transitionFailed)) return
+      if (outcome.result.ok) return true
+      if (outcome.result.kind === 'cancelled' && !transitionFailed) return false
       if (transitionFailed) {
         setUiError(TRANSITION_ERROR)
       } else {
         setUiError(generatedPlaybackFailureMessage(outcome.result))
       }
+      return false
     } finally {
       setIsTransitionPending(false)
     }
+  }
+
+  const transitionStaged = async (durationCycles: number): Promise<void> => {
+    const candidate = stagedCode
+    if (candidate) await transitionPattern(candidate, durationCycles)
   }
 
   return {
@@ -216,6 +268,7 @@ function usePatternFlow(deps: PatternStateBindings & {
     playPattern,
     invalidate: generatedPattern.invalidate,
     isCurrent: generatedPattern.isCurrent,
+    transitionPattern,
     transitionStaged,
   }
 }
@@ -245,10 +298,30 @@ export function Composer(props: PatternStateBindings & {
   const [explanatoryStyle, setExplanatoryStyle] = useState(false)
   const [chatStorageError, setChatStorageError] = useState<string | null>(null)
   const [showUndo, setShowUndo] = useState(false)
+  const [progressionStep, setProgressionStepState] =
+    useState<ProgressionStep | null>(null)
+  const progressionStepRef = useRef<ProgressionStep | null>(null)
+  const [progressionRun, setProgressionRunState] =
+    useState<ProgressionRunView>(IDLE_PROGRESSION_RUN)
+  const [progressionRunDurationMs, setProgressionRunDurationMs] = useState(
+    DEFAULT_PROGRESSION_RUN_DURATION_MS,
+  )
+  const [progressionRunNotice, setProgressionRunNotice] =
+    useState<string | null>(null)
+  const progressionRunViewRef = useRef<ProgressionRunView>(IDLE_PROGRESSION_RUN)
+  const activeProgressionRunRef = useRef<ActiveProgressionRun | null>(null)
   const patternExplanatoryStyleRef = useRef(false)
   const turnRequestRef = useRef(0)
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const backend = useMemo(() => createByokBackend(props.byokKey), [props.byokKey])
+  const setProgressionStep = useCallback((step: ProgressionStep | null) => {
+    progressionStepRef.current = step
+    setProgressionStepState(step)
+  }, [])
+  const setProgressionRun = useCallback((view: ProgressionRunView) => {
+    progressionRunViewRef.current = view
+    setProgressionRunState(view)
+  }, [])
   const chat = useStudioChat(backend, {
     initialState: initialChat,
     onStateChange: (state) => {
@@ -286,8 +359,31 @@ export function Composer(props: PatternStateBindings & {
         return null
       }
     },
-    onPatternFixed: chat.replaceLastAssistantPattern,
+    onPatternFixed: (broken, fixed) => {
+      chat.replaceLastAssistantPattern(broken, fixed)
+      const step = progressionStepRef.current
+      if (step?.pattern === broken) {
+        setProgressionStep({ ...step, pattern: fixed })
+      }
+    },
   })
+
+  const stopProgressionRun = useCallback((
+    options: StopProgressionRunOptions = {},
+  ): void => {
+    const activeRun = activeProgressionRunRef.current
+    cancelActiveProgressionRun(activeRun)
+    activeProgressionRunRef.current = null
+    if (
+      options.abortGeneration &&
+      progressionRunViewRef.current.phase === 'generating'
+    ) {
+      chat.abortStream()
+    }
+    setProgressionRun(IDLE_PROGRESSION_RUN)
+    setProgressionRunNotice(options.notice ?? null)
+    if (options.clearPlan) setProgressionStep(null)
+  }, [chat.abortStream, setProgressionRun, setProgressionStep])
 
   useEffect(() => {
     props.registerGeneratedPatternController({
@@ -305,6 +401,9 @@ export function Composer(props: PatternStateBindings & {
   ])
 
   useEffect(() => () => {
+    const activeRun = activeProgressionRunRef.current
+    cancelActiveProgressionRun(activeRun)
+    activeProgressionRunRef.current = null
     turnRequestRef.current++
     props.setPatternPending(false)
     props.setPatternProvisional(false)
@@ -336,6 +435,7 @@ export function Composer(props: PatternStateBindings & {
     flow.stagedCode,
     flow.isTransitionPending,
     isAcceptingPattern,
+    progressionRun.phase,
   ])
 
   const busy =
@@ -343,7 +443,35 @@ export function Composer(props: PatternStateBindings & {
     isAcceptingPattern ||
     flow.isPlaybackRepairPending ||
     flow.isTransitionPending ||
+    props.playback.playbackState === 'loading' ||
     props.playback.playbackState === 'transitioning'
+
+  useEffect(() => {
+    if (
+      isAcceptingPattern ||
+      progressionRunViewRef.current.phase === 'generating' ||
+      progressionRunViewRef.current.phase === 'transitioning'
+    ) return
+    const step = progressionStepRef.current
+    if (step && step.pattern !== props.code) {
+      stopProgressionRun({ clearPlan: true })
+    }
+  }, [isAcceptingPattern, props.code, stopProgressionRun])
+
+  useEffect(() => {
+    if (
+      activeProgressionRunRef.current === null ||
+      progressionRunViewRef.current.phase === 'starting'
+    ) {
+      return
+    }
+    if (
+      props.playback.playbackState === 'stopped' ||
+      props.playback.playbackState === 'error'
+    ) {
+      stopProgressionRun()
+    }
+  }, [props.playback.playbackState, stopProgressionRun])
 
   const hideUndo = () => {
     if (undoTimerRef.current) {
@@ -353,9 +481,12 @@ export function Composer(props: PatternStateBindings & {
     setShowUndo(false)
   }
 
-  const send = (text: string) => {
+  const generateTurn = (
+    text: string,
+    options: { clearInput?: boolean } = {},
+  ): Promise<GeneratedTurn | null> => {
     const prompt = text.trim()
-    if (!prompt || busy) return
+    if (!prompt || busy) return Promise.resolve(null)
     // A new turn makes the stashed session unrestorable, so retire the offer
     // rather than leave a button that would refuse.
     hideUndo()
@@ -427,16 +558,16 @@ export function Composer(props: PatternStateBindings & {
         return beginPatternPreparation(pattern).then((prepared) => prepared.code)
       },
     })
-    setInput('')
-    void turnPromise
+    if (options.clearInput) setInput('')
+    return turnPromise
       .then(async (turn) => {
-        if (!turn || turnRequestRef.current !== turnRequest) return
+        if (!turn || turnRequestRef.current !== turnRequest) return null
         const preparation =
           preparedPattern ?? beginPatternPreparation(turn.pattern)
         const prepared = await preparation
         finishPatternPreparation()
-        if (!prepared.valid || turnRequestRef.current !== turnRequest) return
-        if (!flow.isCurrent(turn.pattern)) return
+        if (!prepared.valid || turnRequestRef.current !== turnRequest) return null
+        if (!flow.isCurrent(turn.pattern)) return null
 
         // Metadata belongs to the original turn. Pattern repairs carry its
         // suggestions and title forward with the corrected code.
@@ -449,6 +580,7 @@ export function Composer(props: PatternStateBindings & {
         ) {
           props.setCustomTitle(turn.title)
         }
+        return turn
       })
       .finally(() => {
         setIsAcceptingPattern(false)
@@ -459,8 +591,108 @@ export function Composer(props: PatternStateBindings & {
       })
   }
 
+  const send = (text: string) => {
+    const prompt = text.trim()
+    if (!prompt || busy) return
+    stopProgressionRun({ clearPlan: true })
+    void generateTurn(prompt, { clearInput: true }).then((turn) => {
+      if (turn) setProgressionStep(progressionStepFromTurn(turn))
+    })
+  }
+
+  const startProgressionRun = (): void => {
+    const initialStep = progressionStepRef.current
+    if (!initialStep || busy || activeProgressionRunRef.current) return
+
+    const durationMs = boundedProgressionRunDurationMs(
+      progressionRunDurationMs,
+    )
+    const activeRun: ActiveProgressionRun = {
+      controller: new AbortController(),
+    }
+    activeProgressionRunRef.current = activeRun
+    activeRun.deadlineTimer = setTimeout(() => {
+      if (activeProgressionRunRef.current !== activeRun) return
+      stopProgressionRun({
+        abortGeneration: true,
+        notice: `${progressionRunDurationLabel(durationMs)} COMPLETE`,
+      })
+    }, durationMs)
+    setProgressionRunNotice(null)
+    const isCurrent = () =>
+      activeProgressionRunRef.current === activeRun &&
+      !activeRun.controller.signal.aborted
+    const showPhase = (
+      phase: ActiveProgressionRunPhase,
+      step: ProgressionStep,
+    ) => {
+      if (!isCurrent()) return
+      setProgressionRun({
+        phase,
+        nextAction: step.nextAction,
+        afterCycles: step.afterCycles,
+      })
+    }
+
+    showPhase('starting', initialStep)
+    flow.setStagedCode(null)
+    void (async () => {
+      const alreadyPlaying =
+        props.playback.playbackState === 'playing' &&
+        props.playback.activeCode === initialStep.pattern
+      const started = alreadyPlaying
+        ? true
+        : props.playback.playbackState === 'playing'
+          ? await flow.transitionPattern(
+              initialStep.pattern,
+              DEFAULT_TRANSITION_CYCLES,
+            )
+          : await flow.playPattern(initialStep.pattern)
+      if (!isCurrent()) return
+      if (!started) {
+        stopProgressionRun()
+        return
+      }
+
+      await continueProgressionRun(initialStep, {
+        isCurrent,
+        wait: async (step) => {
+          showPhase('waiting', step)
+          const result = await props.playback.waitForCycles(
+            step.afterCycles,
+            activeRun.controller.signal,
+          )
+          if (!result.ok && result.kind !== 'cancelled' && isCurrent()) {
+            flow.setUiError(result.error)
+          }
+          return result.ok
+        },
+        generate: async (step) => {
+          showPhase('generating', step)
+          return generateTurn(step.nextAction)
+        },
+        transition: async (turn) => {
+          setProgressionStep(progressionStepFromTurn(turn))
+          showPhase('transitioning', {
+            pattern: turn.pattern,
+            afterCycles: turn.progression?.afterCycles ?? initialStep.afterCycles,
+            nextAction: turn.progression?.nextAction ?? initialStep.nextAction,
+          })
+          return flow.transitionPattern(
+            turn.pattern,
+            DEFAULT_TRANSITION_CYCLES,
+          )
+        },
+      })
+
+      if (!isCurrent()) return
+      stopProgressionRun()
+    })()
+  }
+
   const clearSession = () => {
     const hadConversation = chat.messages.length > 0
+    stopProgressionRun({ clearPlan: true })
     turnRequestRef.current++
     chat.clearChat()
     flow.setUiError(null)
@@ -611,6 +843,24 @@ export function Composer(props: PatternStateBindings & {
         </div>
       ) : null}
 
+      {progressionStep || progressionRun.phase !== 'idle' ? (
+        <ProgressionRow
+          busy={busy}
+          durationMs={progressionRunDurationMs}
+          notice={progressionRunNotice}
+          run={progressionRun}
+          step={progressionStep}
+          onDurationChange={(durationMs) => {
+            setProgressionRunDurationMs(
+              boundedProgressionRunDurationMs(durationMs),
+            )
+            setProgressionRunNotice(null)
+          }}
+          onStart={startProgressionRun}
+          onStop={() => stopProgressionRun({ abortGeneration: true })}
+        />
+      ) : null}
+
       {sessionError ? <p className="error" role="alert">{sessionError}</p> : null}
 
       <form
@@ -646,6 +896,75 @@ export function Composer(props: PatternStateBindings & {
       </form>
     </section>
   )
+}
+
+function ProgressionRow(props: {
+  busy: boolean
+  durationMs: number
+  notice: string | null
+  run: ProgressionRunView
+  step: ProgressionStep | null
+  onDurationChange(durationMs: number): void
+  onStart(): void
+  onStop(): void
+}) {
+  const running = props.run.phase !== 'idle'
+  const afterCycles = props.run.phase === 'idle'
+    ? props.step?.afterCycles
+    : props.run.afterCycles
+  const action = props.run.phase === 'idle'
+    ? props.step?.nextAction
+    : props.run.nextAction
+  const status = progressionRunStatus(props.run, afterCycles, props.notice)
+
+  return (
+    <div className="progression-row" aria-live="polite">
+      <span className="chip-label">RUN</span>
+      <span className="progression-copy" title={action ?? undefined}>
+        <strong>{status}</strong>
+        <span>{action}</span>
+      </span>
+      <select
+        aria-label="Run duration"
+        className="run-duration"
+        disabled={running || props.busy}
+        value={props.durationMs}
+        onChange={(event) => props.onDurationChange(Number(event.target.value))}
+      >
+        {PROGRESSION_RUN_DURATION_PRESETS_MS.map((durationMs) => (
+          <option key={durationMs} value={durationMs}>
+            {progressionRunDurationLabel(durationMs)}
+          </option>
+        ))}
+      </select>
+      <button
+        className={`primary ${running ? 'stop' : ''}`}
+        disabled={!running && props.busy}
+        onClick={running ? props.onStop : props.onStart}
+      >
+        {running ? 'STOP RUN' : 'START RUN'}
+      </button>
+    </div>
+  )
+}
+
+function progressionRunStatus(
+  run: ProgressionRunView,
+  afterCycles: number | undefined,
+  notice: string | null,
+): string {
+  switch (run.phase) {
+    case 'idle':
+      return notice ?? `${afterCycles ?? ''} CYCLES`
+    case 'starting':
+      return 'STARTING'
+    case 'waiting':
+      return `PLAYING ${run.afterCycles} CYCLES`
+    case 'generating':
+      return 'GENERATING NEXT'
+    case 'transitioning':
+      return 'XFADING'
+  }
 }
 
 function MixRow(props: {

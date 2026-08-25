@@ -49,6 +49,8 @@ const studio = vi.hoisted(() => ({
   playResults: [] as unknown[],
   transitionCalls: [] as string[],
   transitionResults: [] as unknown[],
+  progressionWaitCalls: [] as number[],
+  progressionWaitGates: [] as Promise<void>[],
   prepareValidationCalls: 0,
   stopCalls: 0,
   clearChatCalls: 0,
@@ -62,6 +64,7 @@ const studio = vi.hoisted(() => ({
     title: string
     code: string
     prompt?: string
+    shareId?: string
     createdAt: number
     updatedAt: number
   }>,
@@ -69,11 +72,13 @@ const studio = vi.hoisted(() => ({
     code: string
     customTitle: string | null
     sourcePrompt?: string
+    shareId?: string
   }>,
   restoredPattern: null as {
     code: string
     customTitle: string | null
     sourcePrompt?: string
+    shareId?: string
   } | null,
 }))
 
@@ -105,6 +110,10 @@ vi.mock('#/lib/byok', () => ({
       return {
         turn: {
           pattern,
+          progression: {
+            afterCycles: 16,
+            nextAction: 'Strip back to bass and filtered drums',
+          },
           title: 'Browser smoke pattern',
           suggestions: NEXT_SUGGESTIONS,
           explanation: 'Here is the pattern.',
@@ -148,6 +157,7 @@ vi.mock('#/lib/patterns', () => ({
   }) => {
     studio.savedSessionPatterns.push(pattern)
   },
+  sharedLibraryId: (id: string) => `shared:${id}`,
   uniquePatternTitle: (title: string) => title,
   upsertPattern: () => true,
   usePatterns: () => studio.savedPatterns,
@@ -257,6 +267,33 @@ vi.mock('@purple/ui/use-playback', async () => {
         return result
       }, [])
 
+      const waitForCycles = React.useCallback((
+        cycles: number,
+        signal?: AbortSignal,
+      ): Promise<EvalResult> => {
+        studio.progressionWaitCalls.push(cycles)
+        const gate = studio.progressionWaitGates.shift()
+        if (!gate) {
+          return Promise.resolve({ ok: false, kind: 'cancelled' })
+        }
+        return new Promise((resolve) => {
+          let settled = false
+          const finish = (result: EvalResult) => {
+            if (settled) return
+            settled = true
+            signal?.removeEventListener('abort', cancel)
+            resolve(result)
+          }
+          const cancel = () => finish({ ok: false, kind: 'cancelled' })
+          if (signal?.aborted) {
+            cancel()
+            return
+          }
+          signal?.addEventListener('abort', cancel, { once: true })
+          void gate.then(() => finish({ ok: true }))
+        })
+      }, [])
+
       const stop = React.useCallback(() => {
         studio.stopCalls++
         stopTokenRef.current++
@@ -275,6 +312,7 @@ vi.mock('@purple/ui/use-playback', async () => {
         prepareValidation,
         play,
         transition,
+        waitForCycles,
         stop,
         getStopToken: () => stopTokenRef.current,
         validatePattern,
@@ -301,6 +339,8 @@ beforeEach(() => {
   studio.playResults.length = 0
   studio.transitionCalls.length = 0
   studio.transitionResults.length = 0
+  studio.progressionWaitCalls.length = 0
+  studio.progressionWaitGates.length = 0
   studio.prepareValidationCalls = 0
   studio.stopCalls = 0
   studio.clearChatCalls = 0
@@ -388,6 +428,20 @@ async function startAndStageRevision() {
   await screen.findByRole('button', { name: 'XFADE' })
 }
 
+async function startModelPlannedRun() {
+  const musicalWake = deferred()
+  studio.generations.push(FIRST_PATTERN, SECOND_PATTERN)
+  studio.progressionWaitGates.push(musicalWake.promise)
+  render(<PurpleStudio />)
+
+  await sendPrompt('Start a beat')
+  await screen.findByRole('button', { name: 'START RUN' })
+  await userEvent.click(screen.getByRole('button', { name: 'START RUN' }))
+  await waitFor(() => expect(studio.activeCode).toBe(FIRST_PATTERN))
+  await waitFor(() => expect(studio.progressionWaitCalls).toEqual([16]))
+  return musicalWake
+}
+
 async function startDelayedPlayRepair(error: string) {
   const repair = deferred()
   studio.generations.push(FIRST_PATTERN)
@@ -450,7 +504,7 @@ describe('Purple studio browser flow', () => {
     )
     expect(screen.getByLabelText('Pattern code')).toHaveAttribute('readonly')
     expect(screen.getByLabelText('Pattern title')).toBeDisabled()
-    expect(screen.getByRole('button', { name: /SAVE/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /LIKE/ })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'EXPORT' })).toBeDisabled()
     expect(studio.validationCalls).toEqual([])
 
@@ -465,7 +519,7 @@ describe('Purple studio browser flow', () => {
     )
     expect(screen.getByLabelText('Pattern code')).not.toHaveAttribute('readonly')
     expect(screen.getByLabelText('Pattern title')).not.toBeDisabled()
-    expect(screen.getByRole('button', { name: /SAVE/ })).not.toBeDisabled()
+    expect(screen.getByRole('button', { name: /LIKE/ })).not.toBeDisabled()
     expect(screen.getByRole('button', { name: 'EXPORT' })).not.toBeDisabled()
     expect(studio.playCalls).toEqual([])
 
@@ -632,6 +686,94 @@ describe('Purple studio browser flow', () => {
 
     await waitFor(() => expect(studio.activeCode).toBe(SECOND_PATTERN))
     expect(studio.transitionCalls).toEqual([SECOND_PATTERN])
+  })
+
+  it('keeps autonomous playback opt-in with bounded duration presets', async () => {
+    studio.generations.push(FIRST_PATTERN)
+    render(<PurpleStudio />)
+
+    await sendPrompt('Start a beat')
+
+    const duration = await screen.findByRole('combobox', {
+      name: 'Run duration',
+    }) as HTMLSelectElement
+    expect(duration.value).toBe(String(30 * 60_000))
+    expect(Array.from(duration.options, ({ text }) => text)).toEqual([
+      '30 MIN',
+      '1 HR',
+      '2 HR',
+      '3 HR',
+      '4 HR',
+      '5 HR',
+    ])
+    expect(studio.playCalls).toEqual([])
+
+    await userEvent.selectOptions(duration, String(3 * 60 * 60_000))
+    expect(duration.value).toBe(String(3 * 60 * 60_000))
+    expect(studio.playCalls).toEqual([])
+  })
+
+  it('runs the model-planned action after its musical wait and crossfades it', async () => {
+    const musicalWake = await startModelPlannedRun()
+    expect(studio.progressionWaitCalls).toEqual([16])
+    expect(studio.streamMessages).toHaveLength(1)
+
+    musicalWake.resolve()
+
+    await waitFor(() => expect(studio.activeCode).toBe(SECOND_PATTERN))
+    expect(studio.transitionCalls).toEqual([SECOND_PATTERN])
+    expect(studio.streamMessages).toHaveLength(2)
+    const automaticRequest = studio.streamMessages[1] as Array<{
+      role: string
+      content: string
+    }>
+    expect(automaticRequest.at(-1)).toMatchObject({
+      role: 'user',
+      content: 'Strip back to bass and filtered drums',
+    })
+  })
+
+  it('ends a run at its duration limit without stopping the current music', async () => {
+    const musicalWake = deferred()
+    studio.generations.push(FIRST_PATTERN)
+    studio.progressionWaitGates.push(musicalWake.promise)
+    render(<PurpleStudio />)
+
+    await sendPrompt('Start a beat')
+    vi.useFakeTimers()
+    await act(async () => {
+      screen.getByRole('button', { name: 'START RUN' }).click()
+      await Promise.resolve()
+    })
+    expect(studio.progressionWaitCalls).toEqual([16])
+    expect(studio.activeCode).toBe(FIRST_PATTERN)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30 * 60_000)
+    })
+
+    expect(screen.getByRole('button', { name: 'START RUN' })).toBeEnabled()
+    expect(screen.getByText('30 MIN COMPLETE')).toBeInTheDocument()
+    expect(studio.activeCode).toBe(FIRST_PATTERN)
+    expect(studio.stopCalls).toBe(0)
+    expect(studio.streamMessages).toHaveLength(1)
+  })
+
+  it('cancels a musical wait when the visitor sends a new direction', async () => {
+    await startModelPlannedRun()
+
+    await sendPrompt('Take it toward weightless ambient')
+
+    await waitFor(() => expect(studio.streamMessages).toHaveLength(2))
+    const manualRequest = studio.streamMessages[1] as Array<{
+      role: string
+      content: string
+    }>
+    expect(manualRequest.at(-1)).toMatchObject({
+      role: 'user',
+      content: 'Take it toward weightless ambient',
+    })
+    expect(studio.transitionCalls).toEqual([])
   })
 
   it('repairs an untouched generated pattern when explicit PLAY fails', async () => {

@@ -1,10 +1,12 @@
 /**
  * Saved patterns, persisted as a plain JSON array in localStorage. The studio
  * reads them through `usePatterns`; cross-tab edits arrive via the `storage`
- * event. No server ever sees them.
+ * event. Library entries stay in this browser, including local copies of
+ * patterns that were deliberately published through the share service.
  */
 import { useSyncExternalStore } from 'react'
 import { MAX_PATTERN_LENGTH } from '@purple/core/pattern'
+import { isShareId } from '@purple/core/shared-pattern'
 import {
   isJsonNumber,
   isJsonString,
@@ -13,11 +15,12 @@ import {
 } from '@purple/core/json'
 import { createPatternStore } from '@purple/ui/session-store'
 
-interface SavedPattern {
+export interface SavedPattern {
   id: string
   title: string
   code: string
   prompt?: string
+  shareId?: string
   createdAt: number
   updatedAt: number
 }
@@ -63,6 +66,7 @@ function parsePattern(value: JsonValue): SavedPattern | null {
   const title = fields?.get('title')
   const code = fields?.get('code')
   const prompt = fields?.get('prompt')
+  const shareId = fields?.get('shareId')
   const createdAt = fields?.get('createdAt')
   const updatedAt = fields?.get('updatedAt')
   if (
@@ -75,8 +79,9 @@ function parsePattern(value: JsonValue): SavedPattern | null {
     code.length > MAX_PATTERN_LENGTH ||
     (prompt !== undefined &&
       (!isJsonString(prompt) || prompt.length > 4_000)) ||
-    !isFiniteNumber(createdAt) ||
-    !isFiniteNumber(updatedAt)
+    (shareId !== undefined && (!isJsonString(shareId) || !isShareId(shareId))) ||
+    !isJsonNumber(createdAt) ||
+    !isJsonNumber(updatedAt)
   ) {
     return null
   }
@@ -88,11 +93,8 @@ function parsePattern(value: JsonValue): SavedPattern | null {
     updatedAt,
   }
   if (isJsonString(prompt)) pattern.prompt = prompt
+  if (isJsonString(shareId)) pattern.shareId = shareId
   return pattern
-}
-
-function isFiniteNumber(value: JsonValue | undefined): value is number {
-  return isJsonNumber(value)
 }
 
 function normalizePattern(pattern: SavedPattern): SavedPattern | null {
@@ -102,6 +104,7 @@ function normalizePattern(pattern: SavedPattern): SavedPattern | null {
     pattern.code.length === 0 ||
     pattern.code.length > MAX_PATTERN_LENGTH ||
     (pattern.prompt !== undefined && pattern.prompt.length > 4_000) ||
+    (pattern.shareId !== undefined && !isShareId(pattern.shareId)) ||
     !Number.isFinite(pattern.createdAt) ||
     !Number.isFinite(pattern.updatedAt)
   ) {
@@ -115,6 +118,7 @@ function normalizePattern(pattern: SavedPattern): SavedPattern | null {
     updatedAt: pattern.updatedAt,
   }
   if (pattern.prompt !== undefined) normalized.prompt = pattern.prompt
+  if (pattern.shareId !== undefined) normalized.shareId = pattern.shareId
   return normalized
 }
 
@@ -186,6 +190,11 @@ export function upsertPattern(pattern: SavedPattern): boolean {
 
 export function removePattern(id: string): boolean {
   return commit(snapshot().filter((pattern) => pattern.id !== id))
+}
+
+export function sharedLibraryId(shareId: string): string {
+  if (!isShareId(shareId)) throw new TypeError('Invalid shared pattern id.')
+  return `shared:${shareId}`
 }
 
 /** Keep a colliding title recognizable without overwriting another pattern. */

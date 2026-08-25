@@ -3,6 +3,7 @@ import {
   EXPLANATORY_STYLE_INSTRUCTION,
   REPAIR_SYSTEM_PROMPT,
   SYSTEM_PROMPT,
+  GENERATED_TURN_SCHEMA,
   withExplanatoryStyle,
 } from "./prompts";
 
@@ -13,6 +14,14 @@ describe("generation and repair context", () => {
     expect(SYSTEM_PROMPT).toContain("Aim for song-like arrangements");
     expect(REPAIR_SYSTEM_PROMPT).not.toContain("Aim for song-like arrangements");
     expect(REPAIR_SYSTEM_PROMPT).toContain("changing only what the reported");
+    expect(SYSTEM_PROMPT).toContain("how many complete Strudel");
+    expect(GENERATED_TURN_SCHEMA.properties.progression).toMatchObject({
+      properties: {
+        afterCycles: { type: "integer", minimum: 16, maximum: 128 },
+        nextAction: { type: "string" },
+      },
+      required: ["afterCycles", "nextAction"],
+    });
   });
 });
 

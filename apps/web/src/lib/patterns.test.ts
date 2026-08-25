@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { parseStored, uniquePatternTitle } from './patterns'
+import { parseStored, sharedLibraryId, uniquePatternTitle } from './patterns'
 import { localStorageStub } from '@purple/ui/testing'
 
 const pattern = {
@@ -29,6 +29,13 @@ describe('parseStored', () => {
     expect(parseStored(JSON.stringify([{ ...pattern, internal: 'discard me' }]))).toEqual([
       pattern,
     ])
+  })
+
+  it('keeps a valid public share reference and rejects a malformed one', () => {
+    const shared = { ...pattern, shareId: 'Abc_123-xYz9' }
+    expect(parseStored(JSON.stringify([shared]))).toEqual([shared])
+    expect(parseStored(JSON.stringify([{ ...pattern, shareId: 'short' }]))).toEqual([])
+    expect(sharedLibraryId(shared.shareId)).toBe('shared:Abc_123-xYz9')
   })
 
   it('rejects entries outside the persisted bounds', () => {

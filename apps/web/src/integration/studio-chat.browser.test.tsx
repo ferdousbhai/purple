@@ -30,6 +30,7 @@ function testBackend(options: {
       return {
         turn: {
           pattern,
+          progression: null,
           title: "Test pattern",
           suggestions: [],
           explanation: "A test groove.",

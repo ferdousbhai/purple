@@ -15,6 +15,10 @@ describe("structured studio turns", () => {
   it("parses metadata and rebuilds the established transcript envelope", () => {
     const turn = parseGeneratedTurn(JSON.stringify({
       pattern: 's("bd*4")',
+      progression: {
+        afterCycles: 16,
+        nextAction: "Strip back to bass and filtered drums",
+      },
       title: "Night Transit",
       suggestions,
       explanation: "A driving late-night groove.",
@@ -22,18 +26,23 @@ describe("structured studio turns", () => {
 
     expect(turn).toEqual({
       pattern: 's("bd*4")',
+      progression: {
+        afterCycles: 16,
+        nextAction: "Strip back to bass and filtered drums",
+      },
       title: "Night Transit",
       suggestions,
       explanation: "A driving late-night groove.",
     });
     expect(formatGeneratedTurn(turn!)).toBe(
-      '```strudel\ns("bd*4")\n```\nTitle: Night Transit\nA driving late-night groove.',
+      '```strudel\ns("bd*4")\n```\nTitle: Night Transit\nA driving late-night groove.\nNext after 16 cycles: Strip back to bass and filtered drums',
     );
   });
 
   it("keeps a decoded pattern when later metadata is truncated", () => {
     expect(parseGeneratedTurn('{"pattern":"s(\\"bd\\")",', 's("bd")')).toEqual({
       pattern: 's("bd")',
+      progression: null,
       title: null,
       suggestions: [],
       explanation: "",

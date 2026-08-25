@@ -5,11 +5,13 @@ idea in plain English and Gemini writes a Strudel pattern that you can inspect,
 edit, and play in the studio.
 
 Use the hosted app at [soundspurple.com](https://soundspurple.com), or run it
-locally. Purple has no accounts, server-side storage, or server-side inference.
-Your Gemini API key, chat history, and saved patterns remain in your browser.
-Generation requests go directly from the page to Google. If you deliberately
-submit the feedback form, its category, message, and optional reply address are
-sent through a Turnstile-protected Cloudflare Worker to the maintainer's inbox.
+locally. Purple has no accounts or server-side inference. Your Gemini API key,
+chat history, and personal library remain in your browser, and generation
+requests go directly from the page to Google. Patterns you explicitly share
+publish their title and Strudel code through Cloudflare D1 so anyone can play
+them. If you deliberately submit the feedback form, its category, message, and
+optional reply address are sent through a Turnstile-protected Cloudflare Worker
+to the maintainer's inbox.
 
 ## Requirements
 
@@ -43,7 +45,7 @@ pnpm run test          # Run unit and integration tests
 pnpm run test:browser  # Run browser flow tests in Chromium
 pnpm run typecheck     # Check all TypeScript projects
 pnpm run check         # Lint, test, typecheck, and build
-pnpm run deploy        # Build and deploy with Wrangler
+pnpm run deploy        # Build, migrate remote D1, and deploy with Wrangler
 ```
 
 ## Architecture
@@ -56,11 +58,12 @@ pnpm run deploy        # Build and deploy with Wrangler
 - `apps/web/vite` contains build checks and the plugin that serves Strudel's
   AudioWorklet from the application's own origin.
 
-Cloudflare Workers serves the static application assets and one stateless
-`/api/feedback` route. That route validates Cloudflare Turnstile and uses a
-fixed-destination email binding; it does not store submissions. Cloudflare
-Workers Builds deploys the site on pushes to `master` after running
-`pnpm run check`.
+Cloudflare Workers serves the static application assets, a stateless
+`/api/feedback` route, and the public pattern API. Feedback validates Cloudflare
+Turnstile and uses a fixed-destination email binding without storing
+submissions. Explicitly shared pattern titles and code, plus anonymous votes,
+are stored in D1. Cloudflare Workers Builds deploys the site on pushes to
+`master` after running `pnpm run check`.
 
 ## Keyboard shortcuts
 

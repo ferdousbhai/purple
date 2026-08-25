@@ -1,43 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-
-const TURNSTILE_SCRIPT_ID = 'purple-turnstile-script'
-const TURNSTILE_SCRIPT_URL =
-  'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
-const TURNSTILE_TEST_SITE_KEY = '1x00000000000000000000AA'
-const TURNSTILE_PRODUCTION_SITE_KEY = '0x4AAAAAAEahuZIY1bbd6u2g'
-const TURNSTILE_ACTION = 'purple_feedback'
-
-const TURNSTILE_SITE_KEY = import.meta.env.DEV
-  ? TURNSTILE_TEST_SITE_KEY
-  : TURNSTILE_PRODUCTION_SITE_KEY
-
-interface TurnstileOptions {
-  sitekey: string
-  action: string
-  appearance: 'interaction-only'
-  size: 'flexible'
-  theme: 'auto'
-  callback: (token: string) => void
-  'error-callback': () => void
-  'expired-callback': () => void
-}
-
-interface TurnstileApi {
-  render(container: HTMLElement, options: TurnstileOptions): string
-  remove(widgetId: string): void
-  reset(widgetId: string): void
-}
-
-declare global {
-  interface Window {
-    turnstile?: TurnstileApi
-  }
-}
-
-let turnstileLoad: Promise<TurnstileApi> | null = null
+import {
+  useCallback,
+  useState,
+  type FormEvent,
+} from 'react'
+import { DialogSubmitActions, ModalDialog } from './modal-dialog'
+import { TurnstileFormEnd } from './turnstile-widget'
 
 export function FeedbackDialog({ onClose }: { onClose: () => void }) {
-  const dialogRef = useRef<HTMLDialogElement | null>(null)
   const [category, setCategory] = useState('idea')
   const [email, setEmail] = useState('')
   const [message, setMessage] = useState('')
@@ -57,17 +26,6 @@ export function FeedbackDialog({ onClose }: { onClose: () => void }) {
     setTurnstileToken('')
     setTurnstileError('Bot protection could not verify this browser. Please retry.')
   }, [])
-
-  useEffect(() => {
-    const dialog = dialogRef.current
-    if (dialog && !dialog.open) dialog.showModal()
-  }, [])
-
-  const close = () => {
-    const dialog = dialogRef.current
-    if (dialog?.open) dialog.close()
-    else onClose()
-  }
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -110,34 +68,19 @@ export function FeedbackDialog({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <dialog
-      ref={dialogRef}
+    <ModalDialog
       className="feedback-dialog"
-      aria-labelledby="feedback-title"
-      aria-describedby="feedback-privacy"
+      titleId="feedback-title"
+      descriptionId="feedback-privacy"
+      eyebrow="FEEDBACK"
+      title="Send a note to Ferdous"
+      closeLabel="Close feedback"
       onClose={onClose}
-      onCancel={(event) => {
-        event.preventDefault()
-        close()
-      }}
-      onPointerDown={(event) => {
-        if (event.target === event.currentTarget) close()
-      }}
     >
-      <header className="feedback-head">
-        <div>
-          <span>FEEDBACK</span>
-          <h2 id="feedback-title">Send a note to Ferdous</h2>
-        </div>
-        <button type="button" aria-label="Close feedback" onClick={close}>
-          ×
-        </button>
-      </header>
-
-      {submitted ? (
+      {(close) => submitted ? (
         <section className="feedback-success" role="status">
           <strong>MESSAGE SENT</strong>
-          <p>Thanks. Your note reached my inbox.</p>
+          <p id="feedback-privacy">Thanks. Your note reached my inbox.</p>
           <button type="button" className="primary" onClick={close}>DONE</button>
         </section>
       ) : (
@@ -193,114 +136,27 @@ export function FeedbackDialog({ onClose }: { onClose: () => void }) {
             />
           </label>
 
-          <TurnstileWidget
+          {submitError ? <p className="error" role="alert">{submitError}</p> : null}
+
+          <TurnstileFormEnd
+            action="purple_feedback"
             resetKey={resetKey}
             onToken={acceptTurnstileToken}
             onError={rejectTurnstileToken}
-          />
-
-          {turnstileError ? <p className="error" role="alert">{turnstileError}</p> : null}
-          {submitError ? <p className="error" role="alert">{submitError}</p> : null}
-
-          <div className="feedback-actions">
-            <button type="button" className="chrome" onClick={close}>CANCEL</button>
-            <button
-              className="primary"
+            error={turnstileError}
+          >
+            <DialogSubmitActions
               disabled={!message.trim() || !turnstileToken || submitting}
-            >
-              {submitting ? 'SENDING…' : 'SEND FEEDBACK'}
-            </button>
-          </div>
+              idleLabel="SEND FEEDBACK"
+              onCancel={close}
+              pending={submitting}
+              pendingLabel="SENDING…"
+            />
+          </TurnstileFormEnd>
         </form>
       )}
-    </dialog>
+    </ModalDialog>
   )
-}
-
-function TurnstileWidget(props: {
-  resetKey: number
-  onToken: (token: string) => void
-  onError: () => void
-}) {
-  const containerRef = useRef<HTMLDivElement | null>(null)
-  const widgetIdRef = useRef<string | null>(null)
-  const previousResetKeyRef = useRef(props.resetKey)
-
-  useEffect(() => {
-    let cancelled = false
-    const container = containerRef.current
-    if (!container) return
-
-    void loadTurnstile()
-      .then((turnstile) => {
-        if (cancelled) return
-        widgetIdRef.current = turnstile.render(container, {
-          sitekey: TURNSTILE_SITE_KEY,
-          action: TURNSTILE_ACTION,
-          appearance: 'interaction-only',
-          size: 'flexible',
-          theme: 'auto',
-          callback: props.onToken,
-          'error-callback': props.onError,
-          'expired-callback': props.onError,
-        })
-      })
-      .catch(props.onError)
-
-    return () => {
-      cancelled = true
-      const widgetId = widgetIdRef.current
-      if (widgetId && window.turnstile) window.turnstile.remove(widgetId)
-      widgetIdRef.current = null
-    }
-  }, [props.onError, props.onToken])
-
-  useEffect(() => {
-    if (previousResetKeyRef.current === props.resetKey) return
-    previousResetKeyRef.current = props.resetKey
-    const widgetId = widgetIdRef.current
-    if (widgetId && window.turnstile) window.turnstile.reset(widgetId)
-  }, [props.resetKey])
-
-  return <div className="feedback-turnstile" ref={containerRef} aria-label="Bot protection" />
-}
-
-function loadTurnstile(): Promise<TurnstileApi> {
-  if (window.turnstile) return Promise.resolve(window.turnstile)
-  if (turnstileLoad) return turnstileLoad
-
-  turnstileLoad = new Promise<TurnstileApi>((resolve, reject) => {
-    const existing = document.getElementById(TURNSTILE_SCRIPT_ID)
-    const script = existing instanceof HTMLScriptElement
-      ? existing
-      : document.createElement('script')
-
-    const loaded = () => {
-      if (window.turnstile) resolve(window.turnstile)
-      else {
-        turnstileLoad = null
-        script.remove()
-        reject(new Error('Turnstile loaded without its browser API.'))
-      }
-    }
-    const failed = () => {
-      turnstileLoad = null
-      script.remove()
-      reject(new Error('Turnstile could not load.'))
-    }
-
-    script.addEventListener('load', loaded, { once: true })
-    script.addEventListener('error', failed, { once: true })
-    if (!existing) {
-      script.id = TURNSTILE_SCRIPT_ID
-      script.src = TURNSTILE_SCRIPT_URL
-      script.async = true
-      script.defer = true
-      document.head.appendChild(script)
-    }
-  })
-
-  return turnstileLoad
 }
 
 function feedbackError(status: number): string {

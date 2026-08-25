@@ -31,24 +31,80 @@ export type TransitionResult =
 const DEFAULT_TRANSITION_WAIT_TIMEOUT_MS = 60_000;
 const MIN_TRANSITION_WAIT_TIMEOUT_MS = 30_000;
 const MAX_TRANSITION_WAIT_TIMEOUT_MS = 10 * 60_000;
+const TRANSITION_POLL_MS = 50;
+const DEFAULT_PROGRESSION_POLL_MS = 1_000;
+const MIN_PROGRESSION_POLL_MS = 100;
+const MAX_PROGRESSION_POLL_MS = 30_000;
+const MAX_PROGRESSION_WAIT_TIMEOUT_MS = 30 * 60_000;
+
+function cycleDurationMs(
+  remainingCycles: number,
+  cyclesPerSecond: number,
+): number | null {
+  return Number.isFinite(remainingCycles) &&
+    Number.isFinite(cyclesPerSecond) &&
+    remainingCycles >= 0 &&
+    cyclesPerSecond > 0
+    ? (remainingCycles / cyclesPerSecond) * 1_000
+    : null;
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.min(maximum, Math.max(minimum, value));
+}
+
+function cycleWaitTimeoutMs(
+  remainingCycles: number,
+  cyclesPerSecond: number,
+  maximum: number,
+): number {
+  const expectedMs = cycleDurationMs(remainingCycles, cyclesPerSecond);
+  return expectedMs === null
+    ? DEFAULT_TRANSITION_WAIT_TIMEOUT_MS
+    : clamp(
+        expectedMs * 2 + 10_000,
+        MIN_TRANSITION_WAIT_TIMEOUT_MS,
+        maximum,
+      );
+}
 
 /** Allow twice the scheduler's expected duration plus startup slack. */
 export function transitionWaitTimeoutMs(
   remainingCycles: number,
   cyclesPerSecond: number,
 ): number {
-  if (
-    !Number.isFinite(remainingCycles) ||
-    !Number.isFinite(cyclesPerSecond) ||
-    remainingCycles < 0 ||
-    cyclesPerSecond <= 0
-  ) {
-    return DEFAULT_TRANSITION_WAIT_TIMEOUT_MS;
-  }
-  const expectedMs = (remainingCycles / cyclesPerSecond) * 1000;
-  return Math.min(
+  return cycleWaitTimeoutMs(
+    remainingCycles,
+    cyclesPerSecond,
     MAX_TRANSITION_WAIT_TIMEOUT_MS,
-    Math.max(MIN_TRANSITION_WAIT_TIMEOUT_MS, expectedMs * 2 + 10_000),
+  );
+}
+
+/** Sleep near the musical wake instead of polling throughout a long pattern. */
+export function progressionWaitPollMs(
+  remainingCycles: number,
+  cyclesPerSecond: number,
+): number {
+  const expectedMs = cycleDurationMs(remainingCycles, cyclesPerSecond);
+  if (expectedMs === null) {
+    return DEFAULT_PROGRESSION_POLL_MS;
+  }
+  return clamp(
+    expectedMs,
+    MIN_PROGRESSION_POLL_MS,
+    MAX_PROGRESSION_POLL_MS,
+  );
+}
+
+/** Give slow musical plans headroom while still detecting a stalled scheduler. */
+export function progressionWaitTimeoutMs(
+  remainingCycles: number,
+  cyclesPerSecond: number,
+): number {
+  return cycleWaitTimeoutMs(
+    remainingCycles,
+    cyclesPerSecond,
+    MAX_PROGRESSION_WAIT_TIMEOUT_MS,
   );
 }
 
@@ -65,6 +121,13 @@ function classifyTransitionResult(
 
 interface PlaybackQueue {
   current: Promise<void>;
+}
+
+interface CycleWaitOptions {
+  signal?: AbortSignal;
+  pollMs?: (remainingCycles: number, cyclesPerSecond: number) => number;
+  timeoutMs?: (remainingCycles: number, cyclesPerSecond: number) => number;
+  timeoutError?: string;
 }
 
 /** Serialize scheduler replacements so an overtaken evaluation cannot land late. */
@@ -94,23 +157,23 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
   const operationRef = useRef(0);
   const stopTokenRef = useRef(0);
   const playQueueRef = useRef<Promise<void>>(Promise.resolve());
-  const cancelTransitionWaitRef = useRef<(() => void) | null>(null);
+  const cancelCycleWaitRef = useRef<(() => void) | null>(null);
   stateRef.current = state;
 
-  const cancelTransitionWait = useCallback(() => {
-    cancelTransitionWaitRef.current?.();
-    cancelTransitionWaitRef.current = null;
+  const cancelCycleWait = useCallback(() => {
+    cancelCycleWaitRef.current?.();
+    cancelCycleWaitRef.current = null;
   }, []);
 
   const beginOperation = useCallback(
     async (state: "loading" | "transitioning") => {
       const operation = ++operationRef.current;
-      cancelTransitionWait();
+      cancelCycleWait();
       dispatch({ type: state });
       const release = await waitForPlaybackTurn(playQueueRef);
       return { operation, release };
     },
-    [cancelTransitionWait],
+    [cancelCycleWait],
   );
 
   const activateAudio = useCallback(async (): Promise<AudioActivationResult> => {
@@ -218,7 +281,11 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
   );
 
   const waitForCycle = useCallback(
-    (targetCycle: number, operation: number): Promise<EvalResult> =>
+    (
+      targetCycle: number,
+      operation: number,
+      waitOptions: CycleWaitOptions = {},
+    ): Promise<EvalResult> =>
       new Promise((resolve) => {
         let timeoutId: number | undefined;
         let deadlineId: number | undefined;
@@ -229,9 +296,10 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
           settled = true;
           if (timeoutId !== undefined) window.clearTimeout(timeoutId);
           if (deadlineId !== undefined) window.clearTimeout(deadlineId);
-          if (cancelTransitionWaitRef.current === cancel) {
-            cancelTransitionWaitRef.current = null;
+          if (cancelCycleWaitRef.current === cancel) {
+            cancelCycleWaitRef.current = null;
           }
+          waitOptions.signal?.removeEventListener("abort", cancel);
           resolve(result);
         };
 
@@ -242,11 +310,15 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
             return;
           }
 
+          let pollMs = TRANSITION_POLL_MS;
           try {
-            if (getSchedulerPosition().cycle >= targetCycle) {
+            const position = getSchedulerPosition();
+            const remainingCycles = targetCycle - position.cycle;
+            if (remainingCycles <= 0) {
               finish({ ok: true });
               return;
             }
+            pollMs = waitOptions.pollMs?.(remainingCycles, position.cps) ?? pollMs;
           } catch (timingError) {
             const message =
               timingError instanceof Error
@@ -256,15 +328,21 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
             return;
           }
 
-          timeoutId = window.setTimeout(poll, 50);
+          timeoutId = window.setTimeout(poll, pollMs);
         };
 
-        cancelTransitionWaitRef.current = cancel;
+        cancelCycleWaitRef.current = cancel;
+        if (waitOptions.signal?.aborted) {
+          cancel();
+          return;
+        }
+        waitOptions.signal?.addEventListener("abort", cancel, { once: true });
         let deadlineMs = DEFAULT_TRANSITION_WAIT_TIMEOUT_MS;
         try {
           const position = getSchedulerPosition();
-          deadlineMs = transitionWaitTimeoutMs(
-            Math.max(0, targetCycle - position.cycle),
+          const remainingCycles = Math.max(0, targetCycle - position.cycle);
+          deadlineMs = (waitOptions.timeoutMs ?? transitionWaitTimeoutMs)(
+            remainingCycles,
             position.cps,
           );
         } catch {
@@ -275,13 +353,50 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
             finish({
               ok: false,
               kind: "evaluation",
-              error: "The crossfade did not finish before its timing deadline.",
+              error:
+                waitOptions.timeoutError ??
+                "The crossfade did not finish before its timing deadline.",
             }),
           deadlineMs,
         );
         poll();
       }),
     [getSchedulerPosition],
+  );
+
+  const waitForCycles = useCallback(
+    (cycles: number, signal?: AbortSignal): Promise<EvalResult> => {
+      if (!Number.isInteger(cycles) || cycles <= 0) {
+        return Promise.resolve({
+          ok: false,
+          kind: "evaluation",
+          error: "The progression wait must use a positive whole number of cycles.",
+        });
+      }
+
+      let startCycle: number;
+      try {
+        startCycle = getSchedulerPosition().cycle;
+      } catch (timingError) {
+        return Promise.resolve({
+          ok: false,
+          kind: "evaluation",
+          error:
+            timingError instanceof Error
+              ? timingError.message
+              : String(timingError),
+        });
+      }
+
+      return waitForCycle(startCycle + cycles, operationRef.current, {
+        signal,
+        pollMs: progressionWaitPollMs,
+        timeoutMs: progressionWaitTimeoutMs,
+        timeoutError:
+          "The progression wait did not finish before its timing deadline.",
+      });
+    },
+    [getSchedulerPosition, waitForCycle],
   );
 
   const transition = useCallback(
@@ -406,20 +521,21 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
   const stop = useCallback(() => {
     stopTokenRef.current++;
     ++operationRef.current;
-    cancelTransitionWait();
+    cancelCycleWait();
     hush();
     dispatch({ type: "stopped" });
-  }, [cancelTransitionWait, hush]);
+  }, [cancelCycleWait, hush]);
 
   const getStopToken = useCallback(() => stopTokenRef.current, []);
 
-  useEffect(() => cancelTransitionWait, [cancelTransitionWait]);
+  useEffect(() => cancelCycleWait, [cancelCycleWait]);
 
   return {
     ...state,
     prepareValidation,
     play,
     transition,
+    waitForCycles,
     stop,
     /** Changes only for an explicit Stop action, not an internal eval failure. */
     getStopToken,

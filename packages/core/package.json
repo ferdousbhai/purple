@@ -9,6 +9,8 @@
     "./error": "./src/error.ts",
     "./json": "./src/json.ts",
     "./pattern": "./src/pattern.ts",
+    "./progression": "./src/progression.ts",
+    "./shared-pattern": "./src/shared-pattern.ts",
     "./prompts": "./src/prompts.ts",
     "./recipes": "./src/recipes.ts",
     "./repair": "./src/repair.ts",
