@@ -6,7 +6,6 @@ export function ModalDialog(props: {
   closeLabel: string
   descriptionId: string
   dismissible?: boolean
-  eyebrow: string
   onClose: () => void
   title: string
   titleId: string
@@ -41,10 +40,7 @@ export function ModalDialog(props: {
       }}
     >
       <header className="feedback-head">
-        <div>
-          <span>{props.eyebrow}</span>
-          <h2 id={props.titleId}>{props.title}</h2>
-        </div>
+        <h2 id={props.titleId}>{props.title}</h2>
         <button
           type="button"
           aria-label={props.closeLabel}

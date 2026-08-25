@@ -71,16 +71,14 @@ export function ShareDialog(props: {
       dismissible={!submitting}
       titleId="share-title"
       descriptionId="share-privacy"
-      eyebrow="PUBLIC LINK"
       title="Share this pattern"
       closeLabel="Close sharing"
       onClose={props.onClose}
     >
       {(close) => url ? (
         <section className="share-success" role="status">
-          <strong>PATTERN PUBLISHED</strong>
           <p id="share-privacy">
-            Anyone with this link can play the pattern without a Gemini key.
+            This pattern is published, and anyone with the link can play it without a Gemini key.
           </p>
           <div className="share-link-row">
             <input aria-label="Shared pattern link" readOnly value={url} onFocus={(event) => event.currentTarget.select()} />

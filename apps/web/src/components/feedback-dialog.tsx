@@ -73,15 +73,13 @@ export function FeedbackDialog({ onClose }: { onClose: () => void }) {
       dismissible={!submitting}
       titleId="feedback-title"
       descriptionId="feedback-privacy"
-      eyebrow="FEEDBACK"
       title="Send a note to Ferdous"
       closeLabel="Close feedback"
       onClose={onClose}
     >
       {(close) => submitted ? (
         <section className="feedback-success" role="status">
-          <strong>MESSAGE SENT</strong>
-          <p id="feedback-privacy">Thanks. Your note reached my inbox.</p>
+          <p id="feedback-privacy">Your note reached Ferdous.</p>
           <button type="button" className="primary" onClick={close}>DONE</button>
         </section>
       ) : (

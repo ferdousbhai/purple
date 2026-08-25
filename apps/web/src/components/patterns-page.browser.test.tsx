@@ -6,11 +6,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PatternsPage } from './patterns-page'
 
 const gallery = vi.hoisted(() => ({
+  activeCode: '',
   navigateCalls: [] as string[],
   failSort: null as string | null,
   fetchCalls: [] as Array<[string, string | null]>,
   nextCursor: null as string | null,
   playCalls: [] as string[],
+  playbackState: 'stopped',
   library: [] as Array<{
     id: string
     title: string
@@ -83,9 +85,9 @@ vi.mock('#/lib/patterns', () => ({
 vi.mock('#/lib/media-channel', () => ({ unlockMediaChannel: () => undefined }))
 vi.mock('@purple/ui/use-playback', () => ({
   usePlayback: () => ({
-    activeCode: '',
+    activeCode: gallery.activeCode,
     error: null,
-    playbackState: 'stopped',
+    playbackState: gallery.playbackState,
     play: async (code: string) => {
       gallery.playCalls.push(code)
       return { ok: true as const }
@@ -98,11 +100,13 @@ vi.mock('@purple/ui/use-playback', () => ({
 
 afterEach(() => {
   cleanup()
+  gallery.activeCode = ''
   gallery.navigateCalls.length = 0
   gallery.failSort = null
   gallery.fetchCalls.length = 0
   gallery.nextCursor = null
   gallery.playCalls.length = 0
+  gallery.playbackState = 'stopped'
   gallery.library = []
   gallery.removed.length = 0
   gallery.saved.length = 0
@@ -125,10 +129,21 @@ function savedAcidPattern() {
 
 describe('public pattern gallery', () => {
   it('plays a card and makes Like update the library and public vote', async () => {
+    gallery.activeCode = 's("hh*4")'
+    gallery.playbackState = 'playing'
     const user = userEvent.setup()
     render(<PatternsPage navigate={(href) => gallery.navigateCalls.push(href)} />)
 
     const heading = await screen.findByRole('heading', { name: 'Acid rain' })
+    expect(screen.getByRole('heading', {
+      level: 1,
+      name: 'Preview public patterns without a Gemini key, like the ones you want to keep, and open any pattern in the studio to edit it.',
+    })).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'STOP AUDIO' })).toBeNull()
+    expect(screen.getByRole('link', { name: 'BACK TO STUDIO' })).toHaveClass(
+      'primary',
+      'patterns-studio-link',
+    )
     expect(heading).toBeVisible()
     const open = screen.getByRole('link', { name: 'Open Acid rain in studio' })
     expect(open).toHaveAttribute(

@@ -61,7 +61,9 @@ describe('share dialog', () => {
     expect(onClose).not.toHaveBeenCalled()
 
     await act(async () => sharing.gate?.resolve())
-    expect(await screen.findByText('PATTERN PUBLISHED')).toBeVisible()
+    expect(await screen.findByText(
+      'This pattern is published, and anyone with the link can play it without a Gemini key.',
+    )).toBeVisible()
     expect(onShared).toHaveBeenCalledWith('New_123-xYz9', 'Acid rain')
   })
 })

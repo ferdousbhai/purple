@@ -43,7 +43,7 @@ describe('feedback dialog', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'SEND FEEDBACK' })).toBeEnabled())
     await user.click(screen.getByRole('button', { name: 'SEND FEEDBACK' }))
 
-    expect(await screen.findByText('MESSAGE SENT')).toBeVisible()
+    expect(await screen.findByText('Your note reached Ferdous.')).toBeVisible()
     expect(renderedSiteKey).toBe('1x00000000000000000000AA')
     expect(submission.body?.get('category')).toBe('bug')
     expect(submission.body?.get('email')).toBe('listener@example.com')

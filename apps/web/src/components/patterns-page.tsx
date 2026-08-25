@@ -233,24 +233,15 @@ function PatternsPageView({
         </InternalLink>
         <nav className="topbar-actions" aria-label="Primary">
           <span className="chrome open" aria-current="page">PATTERNS</span>
-          {playbackActive ? (
-            <button className="chrome pattern-gallery-stop" onClick={playback.stop}>
-              STOP AUDIO
-            </button>
-          ) : null}
-          <InternalLink className="chrome" href="/" navigate={navigate}>
-            OPEN STUDIO
+          <InternalLink className="primary patterns-studio-link" href="/" navigate={navigate}>
+            BACK TO STUDIO
           </InternalLink>
         </nav>
       </header>
 
       <section className="patterns-content">
         <header className="patterns-intro">
-          <div>
-            <p>PUBLIC PATTERNS</p>
-            <h1>Press play. Keep what you like.</h1>
-            <span>Playback works without a Gemini key. Preview freely, then open a pattern when you want to edit it.</span>
-          </div>
+          <h1>Preview public patterns without a Gemini key, like the ones you want to keep, and open any pattern in the studio to edit it.</h1>
           <div className="pattern-sort" role="group" aria-label="Sort patterns">
             <button
               className={sort === 'fresh' ? 'active' : ''}
