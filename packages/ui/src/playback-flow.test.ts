@@ -6,23 +6,8 @@ import {
   hasUnappliedEditorChanges,
   isTransitionInfrastructureFailure,
   isValidatedGeneratedPattern,
-  resolveGeneratedPatternMode,
   validationFailureMessage,
 } from "./playback-flow";
-
-describe("resolveGeneratedPatternMode", () => {
-  it("stages ordinary prompts while music is playing", () => {
-    expect(resolveGeneratedPatternMode("play", "playing")).toBe("stage");
-  });
-
-  it("plays ordinary prompts when playback is stopped", () => {
-    expect(resolveGeneratedPatternMode("play", "stopped")).toBe("play");
-  });
-
-  it("keeps explicitly staged next moves staged", () => {
-    expect(resolveGeneratedPatternMode("stage", "stopped")).toBe("stage");
-  });
-});
 
 describe("hasUnappliedEditorChanges", () => {
   it("reports edits that differ from the currently playing code", () => {

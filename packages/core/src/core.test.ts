@@ -3,8 +3,8 @@ import {
   buildTransitionCode,
   extractPattern,
   generateRandomPrompt,
-  parseTransitionSuggestions,
   patternFilename,
+  validateTransitionSuggestions,
   visibleTextWithoutCodeBlocks,
 } from "./index";
 
@@ -25,12 +25,12 @@ describe("@purple/core", () => {
   });
 
   it("validates exactly three distinct suggestions", () => {
-    const value = JSON.stringify({ suggestions: [
+    const suggestions = [
       { label: "Drift to dub", prompt: "A gentle dub continuation" },
       { label: "Lift the pulse", prompt: "A brighter house continuation" },
       { label: "Melt to ambient", prompt: "A spacious ambient continuation" },
-    ] });
-    expect(parseTransitionSuggestions(value)).toHaveLength(3);
+    ];
+    expect(validateTransitionSuggestions(suggestions)).toHaveLength(3);
   });
 
   it("builds deterministic crossfades and recipes", () => {

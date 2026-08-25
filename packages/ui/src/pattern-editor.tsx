@@ -24,6 +24,8 @@ export interface PatternEditorProps {
   getActiveSourceRanges: () => readonly SourceRange[];
   onEvaluate: () => void;
   className?: string;
+  /** Streamed model prefixes are display-only until the pattern is complete. */
+  readOnly?: boolean;
   /** Wrap long lines instead of scrolling sideways - the readable choice on
    * touch-width screens. */
   wrapLines?: boolean;
@@ -36,6 +38,7 @@ export function PatternEditor({
   getActiveSourceRanges,
   onEvaluate,
   className,
+  readOnly = false,
   wrapLines = false,
 }: PatternEditorProps) {
   const viewRef = useRef<EditorView | null>(null);
@@ -48,19 +51,23 @@ export function PatternEditor({
       javascript(),
       playbackHighlightExtension,
       ...(wrapLines ? [EditorView.lineWrapping] : []),
-      Prec.high(
-        keymap.of([
-          {
-            key: "Mod-Enter",
-            run: () => {
-              evaluateRef.current();
-              return true;
-            },
-          },
-        ]),
-      ),
+      ...(readOnly
+        ? [EditorView.editable.of(false)]
+        : [
+            Prec.high(
+              keymap.of([
+                {
+                  key: "Mod-Enter",
+                  run: () => {
+                    evaluateRef.current();
+                    return true;
+                  },
+                },
+              ]),
+            ),
+          ]),
     ],
-    [wrapLines],
+    [readOnly, wrapLines],
   );
 
   // CodeMirror owns decoration state outside React. Poll the scheduler beside

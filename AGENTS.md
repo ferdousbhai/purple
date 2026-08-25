@@ -12,13 +12,14 @@ patterns, and audio plays through Web Audio. The production site is
 
 There is one application:
 
-- `apps/web`: React SPA served as static assets by a Cloudflare Worker
+- `apps/web`: React SPA and a narrow feedback route on a Cloudflare Worker
 - `packages/core`: shared dependency-free product logic
 - `packages/ui`: React, CodeMirror, Strudel, playback, and persistence modules
 
 The visitor's Gemini key, chat history, and saved patterns stay in the browser.
-The page calls Google directly. There is no server code, account system, or
-Cloudflare binding.
+The page calls Google directly. There is no account system or server-side
+storage. The only server path is a Turnstile-protected feedback form that sends
+the fields a visitor deliberately submits to a fixed email destination.
 
 ## Layout
 
@@ -29,7 +30,8 @@ apps/web/
   src/lib/patterns.ts               saved-pattern persistence
   src/lib/media-channel.ts          iOS audio activation
   vite/                             build checks and AudioWorklet plugin
-  wrangler.jsonc                    assets-only Worker configuration
+  worker/index.ts                   feedback validation and email delivery
+  wrangler.jsonc                    assets and feedback Worker configuration
 packages/core/                      prompts, parsing, recipes, compaction,
                                     repair, validation, transitions, types
 packages/ui/                        Strudel, safe interpreter, editor, chat,
@@ -68,8 +70,10 @@ Repository workflows do not deploy the site.
   a measured, acceptable bundle cost.
 - `apps/web/src/lib/byok.ts` is the only inference path. Gemini requests leave
   the browser directly and carry the visitor's key in a header.
-- Cloudflare serves static assets only. Do not add server-side secrets or
-  stateful bindings without revisiting the local-first security model.
+- Cloudflare serves static assets plus `/api/feedback`. That route may use only
+  Turnstile and the fixed-destination email binding. Do not put Gemini keys,
+  chat, patterns, inference, accounts, or stored application state on the
+  server without revisiting the local-first security model.
 - `use-studio-chat` compacts into a rolling artifact only after Gemini reports
   more than `COMPACTION_TRIGGER_TOKENS` prompt tokens. Uncovered history remains
   uncapped, and late folding preserves Gemini prefix-cache efficiency.
@@ -99,8 +103,8 @@ Repository workflows do not deploy the site.
 
 ## Environment
 
-No server-side environment variables are required. Visitors enter their Gemini
-key in the application.
+`TURNSTILE_SECRET` is the only server secret. Visitors enter their Gemini key
+in the application; it never reaches Purple's Worker.
 
 ## Gotchas
 

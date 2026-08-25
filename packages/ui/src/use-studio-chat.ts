@@ -7,10 +7,15 @@ import {
   type CompactionSummarizer,
 } from "@purple/core/compaction";
 import { errorMessage } from "@purple/core/error";
-import { acceptRawPattern } from "@purple/core/pattern";
 import type { ChatMessage, PatternStreamer } from "@purple/core/types";
+import {
+  formatGeneratedTurn,
+  type GeneratedTurn,
+} from "@purple/core/turn";
 
-export type StudioChatBackend = PatternStreamer & CompactionSummarizer;
+export type StudioChatBackend = PatternStreamer & CompactionSummarizer & {
+  abortCompaction?(): void;
+};
 
 export interface StudioChatMessage {
   id: string;
@@ -32,11 +37,14 @@ export interface UseStudioChatOptions {
 }
 
 export interface SendMessageOptions {
-  /** Run a model exchange without showing or persisting either side. Repairs
-   * use this path, then replace the broken code in the original assistant turn. */
-  transient?: boolean;
   /** Appended to the outbound request only; never shown or persisted. */
   requestInstruction?: string;
+  /** Paint the decoded pattern prefix without treating it as generated code yet. */
+  onPatternPreview?: (pattern: string) => void;
+  /** Restore the editor snapshot when generation fails before it can commit. */
+  onPatternPreviewDiscarded?: () => void;
+  /** Validate and repair the complete pattern while metadata keeps streaming. */
+  resolvePattern?: (pattern: string) => string | Promise<string>;
 }
 
 export function withRequestInstruction(
@@ -60,12 +68,23 @@ interface StreamSession {
   assistantId: string;
   firstDeltaSeen: boolean;
   frameId?: number;
+  discardPatternPreview?: () => void;
   resolve?: () => void;
   terminalReason: "streaming" | "done" | "error" | "cancelled";
-  text: string;
-  truncated: boolean;
+  previewText: string;
+  patternComplete: boolean;
+  patternResolution?: Promise<PatternResolution>;
+  turn?: GeneratedTurn;
   error?: string;
   timeoutId?: ReturnType<typeof setTimeout>;
+}
+
+type PatternResolution =
+  | { ok: true; pattern: string }
+  | { ok: false; error: string };
+
+function fallbackTurn(pattern: string): GeneratedTurn {
+  return { pattern, title: null, suggestions: [], explanation: "" };
 }
 
 const DEFAULT_STREAM_TIMEOUT_MS = 90_000;
@@ -80,7 +99,29 @@ function settleStream(
   if (stream.frameId !== undefined) cancelAnimationFrame(stream.frameId);
   stream.terminalReason = reason;
   stream.error = error;
+  if (reason !== "done") discardPatternPreview(stream);
   stream.resolve?.();
+}
+
+function cancelStreamSession(stream: StreamSession): void {
+  if (stream.terminalReason === "streaming") {
+    settleStream(stream, "cancelled");
+    return;
+  }
+  if (stream.terminalReason === "done") {
+    stream.terminalReason = "cancelled";
+    discardPatternPreview(stream);
+  }
+}
+
+function streamWasCancelled(stream: StreamSession): boolean {
+  return stream.terminalReason === "cancelled";
+}
+
+function discardPatternPreview(stream: StreamSession): void {
+  const discard = stream.discardPatternPreview;
+  stream.discardPatternPreview = undefined;
+  discard?.();
 }
 
 /** Fire-and-forget abort; a failed abort is only worth a diagnostic. */
@@ -104,7 +145,6 @@ async function reportFailedAbort(
 
 interface ChatView {
   messages: StudioChatMessage[];
-  streamingText: string;
   isStreaming: boolean;
   error: string | null;
 }
@@ -160,11 +200,9 @@ export function useStudioChat(
   const [initial] = useState(() => initialSession(options.initialState));
   const [view, setView] = useState<ChatView>({
     messages: initial.messages,
-    streamingText: "",
     isStreaming: false,
     error: null,
   });
-  const visibleMessagesRef = useRef<StudioChatMessage[]>(initial.messages);
   const conversationRef = useRef<StudioChatMessage[]>(initial.messages);
   const busyRef = useRef(false);
   const idCounter = useRef(initial.messages.length);
@@ -225,7 +263,7 @@ export function useStudioChat(
   /**
    * Fold older history into the rolling summary in the background. Never
    * blocks a send: a send that happens mid-flight simply uses the previous
-   * summary state, and `buildContextWindow` caps the uncovered tail.
+   * summary state, and `buildContextWindow` keeps the uncovered tail intact.
    */
   const maybeCompact = useCallback(
     (conversation: StudioChatMessage[]): void => {
@@ -243,28 +281,31 @@ export function useStudioChat(
 
   useEffect(() => {
     return () => {
+      foldScheduler.reset();
+      backendRef.current.abortCompaction?.();
       const stream = streamRef.current;
       if (!stream) return;
 
-      settleStream(stream, "cancelled");
+      cancelStreamSession(stream);
       streamRef.current = null;
       busyRef.current = false;
       abortBackend(backendRef.current.abortStream, "during cleanup");
     };
-  }, []);
+  }, [foldScheduler]);
 
   const abortStream = useCallback(() => {
     const stream = streamRef.current;
     if (!stream) return;
     abortBackend(backendRef.current.abortStream, "on request");
-    settleStream(stream, "cancelled");
+    cancelStreamSession(stream);
   }, []);
 
   const clearChat = useCallback(() => {
+    backendRef.current.abortCompaction?.();
     const stream = streamRef.current;
     if (stream) {
       abortBackend(backendRef.current.abortStream, "while clearing the chat");
-      settleStream(stream, "cancelled");
+      cancelStreamSession(stream);
       streamRef.current = null;
     }
 
@@ -280,12 +321,11 @@ export function useStudioChat(
       };
     }
 
-    visibleMessagesRef.current = [];
     conversationRef.current = [];
     compactionRef.current = freshCompactionState();
     foldScheduler.reset();
     setSuggestNewSession(false);
-    setView({ messages: [], streamingText: "", isStreaming: false, error: null });
+    setView({ messages: [], isStreaming: false, error: null });
     busyRef.current = false;
     optionsRef.current.onClear?.();
   }, [foldScheduler]);
@@ -309,13 +349,12 @@ export function useStudioChat(
       id: nextId(),
     }));
     conversationRef.current = messages;
-    visibleMessagesRef.current = messages;
     compactionRef.current = {
       artifact: stash.artifact,
       coveredCount: Math.min(stash.coveredCount, messages.length),
       promptTokens: null,
     };
-    setView({ messages, streamingText: "", isStreaming: false, error: null });
+    setView({ messages, isStreaming: false, error: null });
     refreshNewSessionSuggestion();
     persist();
     return true;
@@ -325,7 +364,7 @@ export function useStudioChat(
     async (
       text: string,
       sendOptions: SendMessageOptions = {},
-    ): Promise<string | null> => {
+    ): Promise<GeneratedTurn | null> => {
       if (busyRef.current) return null;
       busyRef.current = true;
 
@@ -334,30 +373,29 @@ export function useStudioChat(
         role: "user",
         content: text,
       };
-      const previousConversation = conversationRef.current;
       const conversation = [...conversationRef.current, userMsg];
-      const visibleMessages = sendOptions.transient
-        ? visibleMessagesRef.current
-        : [...visibleMessagesRef.current, userMsg];
-      if (!sendOptions.transient) conversationRef.current = conversation;
-      visibleMessagesRef.current = visibleMessages;
-      if (!sendOptions.transient) persist();
+      conversationRef.current = conversation;
+      persist();
       setView({
-        messages: visibleMessages,
-        streamingText: "",
+        messages: conversation,
         isStreaming: true,
         error: null,
       });
       const activeStream: StreamSession = {
         assistantId: nextId(),
         firstDeltaSeen: false,
+        discardPatternPreview: sendOptions.onPatternPreviewDiscarded,
         terminalReason: "streaming",
-        text: "",
-        truncated: false,
+        previewText: "",
+        patternComplete: false,
       };
       streamRef.current = activeStream;
 
-      const appendDelta = (delta: string): void => {
+      const paintPreview = (): void => {
+        sendOptions.onPatternPreview?.(activeStream.previewText);
+      };
+
+      const appendPatternDelta = (delta: string): void => {
         if (
           streamRef.current !== activeStream ||
           activeStream.terminalReason !== "streaming"
@@ -365,13 +403,14 @@ export function useStudioChat(
           return;
         }
 
-        activeStream.text += delta;
-        if (sendOptions.transient) return;
+        activeStream.previewText += delta;
+        if (!sendOptions.onPatternPreview) return;
 
-        // Paint the first token immediately; later ones batch on a frame.
+        // Paint the first decoded token immediately; later ones batch by frame
+        // so CodeMirror does not rebuild for every network chunk.
         if (!activeStream.firstDeltaSeen) {
           activeStream.firstDeltaSeen = true;
-          setView((current) => ({ ...current, streamingText: activeStream.text }));
+          paintPreview();
           return;
         }
 
@@ -382,12 +421,39 @@ export function useStudioChat(
             streamRef.current === activeStream &&
             activeStream.terminalReason === "streaming"
           ) {
-            setView((current) => ({
-              ...current,
-              streamingText: activeStream.text,
-            }));
+            paintPreview();
           }
         });
+      };
+
+      const completePattern = (pattern: string): void => {
+        if (
+          streamRef.current !== activeStream ||
+          activeStream.terminalReason !== "streaming" ||
+          activeStream.patternComplete
+        ) {
+          return;
+        }
+        activeStream.patternComplete = true;
+        activeStream.previewText = pattern;
+        if (activeStream.frameId !== undefined) {
+          cancelAnimationFrame(activeStream.frameId);
+          activeStream.frameId = undefined;
+        }
+        paintPreview();
+
+        try {
+          const resolution = sendOptions.resolvePattern?.(pattern) ?? pattern;
+          activeStream.patternResolution = Promise.resolve(resolution).then(
+            (resolved) => ({ ok: true, pattern: resolved }),
+            (cause: unknown) => ({ ok: false, error: errorMessage(cause) }),
+          );
+        } catch (cause) {
+          activeStream.patternResolution = Promise.resolve({
+            ok: false,
+            error: errorMessage(cause),
+          });
+        }
       };
 
       // Decoding a rejection reason happens here, at the `catch` that produced
@@ -395,21 +461,36 @@ export function useStudioChat(
       const runStream = async (): Promise<void> => {
         try {
           const { artifact, coveredCount } = compactionRef.current;
-          const { truncated, promptTokens } = await backendRef.current.stream(
+          const { turn, promptTokens } = await backendRef.current.stream(
             withRequestInstruction(
               buildContextWindow(artifact, coveredCount, conversation),
               sendOptions.requestInstruction,
             ),
-            appendDelta,
+            {
+              onPatternDelta: appendPatternDelta,
+              onPatternComplete: completePattern,
+            },
           );
-          activeStream.truncated = truncated;
-          if (promptTokens !== null) {
-            compactionRef.current = { ...compactionRef.current, promptTokens };
+          if (
+            streamRef.current !== activeStream ||
+            activeStream.terminalReason !== "streaming"
+          ) {
+            return;
           }
+          activeStream.turn = turn;
+          compactionRef.current = { ...compactionRef.current, promptTokens };
           settleStream(activeStream, "done");
         } catch (error) {
           if (streamRef.current !== activeStream) return;
-          settleStream(activeStream, "error", errorMessage(error));
+          // Once a complete pattern is available, metadata is best-effort. A
+          // dropped or malformed tail must not discard music already being
+          // validated and repaired locally.
+          if (activeStream.patternComplete) {
+            activeStream.turn = fallbackTurn(activeStream.previewText);
+            settleStream(activeStream, "done");
+          } else {
+            settleStream(activeStream, "error", errorMessage(error));
+          }
         }
       };
 
@@ -419,11 +500,16 @@ export function useStudioChat(
           if (streamRef.current !== activeStream) return;
 
           abortBackend(backendRef.current.abortStream, "after a timeout");
-          settleStream(
-            activeStream,
-            "error",
-            "The model did not finish responding. Please try again.",
-          );
+          if (activeStream.patternComplete) {
+            activeStream.turn = fallbackTurn(activeStream.previewText);
+            settleStream(activeStream, "done");
+          } else {
+            settleStream(
+              activeStream,
+              "error",
+              "The model did not finish responding. Please try again.",
+            );
+          }
         }, optionsRef.current.streamTimeoutMs ?? DEFAULT_STREAM_TIMEOUT_MS);
 
         // Dispatched synchronously: the async body runs up to its first await
@@ -434,22 +520,21 @@ export function useStudioChat(
       if (streamRef.current !== activeStream) return null;
 
       const finishFailedStream = (error: string | null): null => {
-        conversationRef.current =
-          sendOptions.transient ? previousConversation : conversation;
+        discardPatternPreview(activeStream);
+        conversationRef.current = conversation;
         refreshNewSessionSuggestion();
         setView({
-          messages: visibleMessages,
-          streamingText: "",
+          messages: conversation,
           isStreaming: false,
-          error: sendOptions.transient ? null : error,
+          error,
         });
         busyRef.current = false;
         streamRef.current = null;
-        if (!sendOptions.transient) persist();
+        persist();
         return null;
       };
 
-      if (activeStream.terminalReason === "cancelled") {
+      if (streamWasCancelled(activeStream)) {
         return finishFailedStream(null);
       }
 
@@ -459,42 +544,31 @@ export function useStudioChat(
         );
       }
 
-      const fullText = activeStream.text;
-      const acceptance = acceptRawPattern(fullText);
-      if (!acceptance.ok) {
-        return finishFailedStream(
-          activeStream.truncated
-            ? "Gemini reached its output limit before completing the Strudel pattern. Please try again."
-            : acceptance.error,
-        );
+      const streamedTurn = activeStream.turn;
+      if (!streamedTurn) {
+        return finishFailedStream("Gemini did not return a valid Strudel pattern.");
       }
-      const pattern = acceptance.pattern;
-
-      if (sendOptions.transient) {
-        setView({
-          messages: visibleMessages,
-          streamingText: "",
-          isStreaming: false,
-          error: null,
-        });
-        busyRef.current = false;
-        streamRef.current = null;
-        return pattern;
+      const resolution = activeStream.patternResolution
+        ? await activeStream.patternResolution
+        : { ok: true as const, pattern: streamedTurn.pattern };
+      if (streamRef.current !== activeStream) return null;
+      if (streamWasCancelled(activeStream)) {
+        return finishFailedStream(null);
       }
+      if (!resolution.ok) return finishFailedStream(resolution.error);
+      const turn = { ...streamedTurn, pattern: resolution.pattern };
 
+      const fullText = formatGeneratedTurn(turn);
       const assistantMsg: StudioChatMessage = {
         id: activeStream.assistantId,
         role: "assistant",
         content: fullText,
       };
       const finalConversation = [...conversation, assistantMsg];
-      const finalVisibleMessages = [...visibleMessages, assistantMsg];
       conversationRef.current = finalConversation;
-      visibleMessagesRef.current = finalVisibleMessages;
       refreshNewSessionSuggestion();
       setView({
-        messages: finalVisibleMessages,
-        streamingText: "",
+        messages: finalConversation,
         isStreaming: false,
         error: null,
       });
@@ -504,13 +578,28 @@ export function useStudioChat(
 
       maybeCompact(finalConversation);
 
-      return pattern;
+      return turn;
     },
     [maybeCompact, persist, refreshNewSessionSuggestion],
   );
 
   const replaceLastAssistantPattern = useCallback(
     (broken: string, fixed: string): void => {
+      const stream = streamRef.current;
+      if (stream?.patternComplete) {
+        const pendingResolution =
+          stream.patternResolution ??
+          Promise.resolve({
+            ok: true as const,
+            pattern: stream.previewText,
+          });
+        stream.patternResolution = pendingResolution.then((resolution) =>
+          resolution.ok && resolution.pattern === broken
+            ? { ok: true, pattern: fixed }
+            : resolution,
+        );
+      }
+
       const last = conversationRef.current[conversationRef.current.length - 1];
       if (
         !last ||
@@ -528,12 +617,16 @@ export function useStudioChat(
         ...conversationRef.current.slice(0, -1),
         replacement,
       ];
-      visibleMessagesRef.current = visibleMessagesRef.current.map((message) =>
-        message.id === last.id ? replacement : message,
-      );
+      const { artifact, coveredCount } = compactionRef.current;
+      if (artifact && conversationRef.current.length <= coveredCount) {
+        compactionRef.current = {
+          ...compactionRef.current,
+          artifact: { ...artifact, latestPattern: fixed },
+        };
+      }
       setView((current) => ({
         ...current,
-        messages: visibleMessagesRef.current,
+        messages: conversationRef.current,
       }));
       persist();
     },

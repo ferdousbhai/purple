@@ -1,13 +1,32 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  // Assets-only Worker: the app is a static SPA. There is no server code at
-  // all - patterns, chat and the Gemini key live in the visitor's browser,
-  // and generation requests go straight to Google.
+  // Patterns, chat, the Gemini key and inference remain browser-only. The
+  // Worker runs first for one stateless feedback route, validates Turnstile,
+  // and sends only the submitted form fields to a fixed email destination.
   "name": "purple-web",
-  "compatibility_date": "2026-08-08",
+  "main": "./worker/index.ts",
+  "compatibility_date": "2026-08-24",
+  "compatibility_flags": ["nodejs_compat"],
   "assets": {
     "directory": "./dist",
-    "not_found_handling": "404-page"
+    "binding": "ASSETS",
+    "not_found_handling": "404-page",
+    "run_worker_first": ["/api/*"]
+  },
+  "send_email": [
+    {
+      "name": "FEEDBACK_EMAIL",
+      "destination_address": "ferdous@hey.com",
+      "allowed_sender_addresses": ["feedback@soundspurple.com"]
+    }
+  ],
+  "secrets": {
+    "required": ["TURNSTILE_SECRET"]
+  },
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true, "head_sampling_rate": 1 },
+    "traces": { "enabled": true, "head_sampling_rate": 0.1 }
   },
   "routes": [
     { "pattern": "soundspurple.com", "custom_domain": true },

@@ -1,5 +1,7 @@
 import { MAX_PATTERN_LENGTH, patternFilename } from '@purple/core/pattern'
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { SHOWCASE_PATTERNS, type ShowcasePattern } from '@purple/core/recipes'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import type { GeneratedPatternController } from './composer'
 import {
   clearByokChat,
   getByokKey,
@@ -30,11 +32,6 @@ const WEB_AUDIO_OPTIONS = {
   },
 }
 
-const STARTER_PATTERNS = [
-  's("bd*4").gain(0.8)',
-  'stack(s("bd ~ sd ~"), s("hh*8").gain(0.35))',
-  'note("<c3 eb3 g3 bb3>").s("sawtooth").slow(2).lpf(700).gain(0.5)',
-] as const
 const PatternEditor = lazy(async () => {
   const editor = await import('@purple/ui/pattern-editor')
   return { default: editor.PatternEditor }
@@ -42,6 +39,10 @@ const PatternEditor = lazy(async () => {
 const Composer = lazy(async () => {
   const composer = await import('./composer')
   return { default: composer.Composer }
+})
+const FeedbackDialog = lazy(async () => {
+  const feedback = await import('./feedback-dialog')
+  return { default: feedback.FeedbackDialog }
 })
 
 function DeferredPatternEditor(props: PatternEditorProps) {
@@ -72,28 +73,58 @@ export function PurpleStudio() {
   const [byokKey, setByokKeyState] = useState<string | null>(() => getByokKey())
   const [keyPanelOpen, setKeyPanelOpen] = useState(false)
   const [libraryOpen, setLibraryOpen] = useState(false)
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
   const [libraryWasCleared, setLibraryWasCleared] = useState(false)
   const [patternStorageError, setPatternStorageError] = useState<string | null>(null)
   // The chat transcript survives reloads (loadByokChat), so the pattern it
   // produced must too - restoring one without the other desyncs the session.
-  const [restored] = useState(loadSessionPattern)
-  const [code, setCode] = useState(() => restored?.code ?? randomStarter())
-  const [customTitle, setCustomTitle] = useState(restored?.customTitle ?? null)
-  const [sourcePrompt, setSourcePrompt] = useState(restored?.sourcePrompt)
+  const [initialPattern] = useState(loadInitialPattern)
+  const [code, setCode] = useState(initialPattern.code)
+  const [patternPreview, setPatternPreview] = useState<string | null>(null)
+  const [patternPending, setPatternPending] = useState(false)
+  const [patternProvisional, setPatternProvisional] = useState(false)
+  const [customTitle, setCustomTitle] = useState(initialPattern.customTitle)
+  const [sourcePrompt, setSourcePrompt] = useState(initialPattern.sourcePrompt)
   const playback = usePlayback(WEB_AUDIO_OPTIONS)
   const isPhoneWidth = usePhoneWidth()
   const savedPatterns = usePatterns()
   const libraryRef = useRef<HTMLElement | null>(null)
   const libraryButtonRef = useRef<HTMLButtonElement | null>(null)
+  const generatedPatternControllerRef = useRef<GeneratedPatternController | null>(null)
+  const codeRevisionRef = useRef(0)
+  const titleRevisionRef = useRef(0)
+  const registerGeneratedPatternController = useCallback(
+    (controller: GeneratedPatternController | null) => {
+      generatedPatternControllerRef.current = controller
+    },
+    [],
+  )
+  const getCodeRevision = useCallback(() => codeRevisionRef.current, [])
+  const getTitleRevision = useCallback(() => titleRevisionRef.current, [])
+  const patternLocked = patternPreview !== null || patternPending
   const editorHasUnappliedChanges = hasUnappliedEditorChanges(
     playback.playbackState,
     code,
     playback.activeCode,
   )
+  const commitGeneratedCode = useCallback((nextCode: string) => {
+    setPatternPreview(null)
+    setCode(nextCode)
+  }, [])
+  const commitCode = useCallback((nextCode: string) => {
+    codeRevisionRef.current++
+    generatedPatternControllerRef.current?.invalidate()
+    commitGeneratedCode(nextCode)
+  }, [commitGeneratedCode])
+  const commitCustomTitle = useCallback((nextTitle: string | null) => {
+    titleRevisionRef.current++
+    setCustomTitle(nextTitle)
+  }, [])
 
   useEffect(() => {
+    if (patternProvisional) return
     saveSessionPattern({ code, customTitle, sourcePrompt })
-  }, [code, customTitle, sourcePrompt])
+  }, [code, customTitle, patternProvisional, sourcePrompt])
 
   /** False when the browser blocks localStorage, so the key cannot outlive this render. */
   const updateByokKey = (key: string | null): boolean => {
@@ -139,7 +170,7 @@ export function PurpleStudio() {
       )
       return
     }
-    if (savedTitle !== patternName) setCustomTitle(savedTitle)
+    if (savedTitle !== patternName) commitCustomTitle(savedTitle)
     setPatternStorageError(null)
     setLibraryWasCleared(false)
   }
@@ -156,13 +187,19 @@ export function PurpleStudio() {
     setTimeout(() => URL.revokeObjectURL(url), 10_000)
   }
 
+  const playCurrentPattern = () => {
+    const generatedController = generatedPatternControllerRef.current
+    if (generatedController) void generatedController.play(code)
+    else void playback.play(code)
+  }
+
   const togglePlayback = () => {
     if (
       playback.playbackState === 'playing' ||
       playback.playbackState === 'loading' ||
       playback.playbackState === 'transitioning'
     ) playback.stop()
-    else void playback.play(code)
+    else playCurrentPattern()
   }
 
   useEffect(() => {
@@ -229,6 +266,16 @@ export function PurpleStudio() {
           >
             ♥ STRUDEL
           </a>
+          <button
+            className="chrome feedback-trigger"
+            aria-haspopup="dialog"
+            onClick={() => {
+              setLibraryOpen(false)
+              setFeedbackOpen(true)
+            }}
+          >
+            FEEDBACK
+          </button>
           {audible ? (
             <SpectrumBars className="eq-bars" getAnalyser={playback.getOutputAnalyser} />
           ) : null}
@@ -251,6 +298,12 @@ export function PurpleStudio() {
         </div>
       </header>
 
+      {feedbackOpen ? (
+        <Suspense fallback={null}>
+          <FeedbackDialog onClose={() => setFeedbackOpen(false)} />
+        </Suspense>
+      ) : null}
+
       {libraryOpen ? (
         <section className="library-popover" ref={libraryRef} aria-label="Pattern library">
           <header className="library-head">
@@ -271,9 +324,10 @@ export function PurpleStudio() {
               .map((pattern) => (
                 <div key={pattern.id} className="library-row">
                   <button
+                    disabled={patternLocked}
                     onClick={() => {
-                      setCode(pattern.code)
-                      setCustomTitle(pattern.title)
+                      commitCode(pattern.code)
+                      commitCustomTitle(pattern.title)
                       setSourcePrompt(pattern.prompt)
                       setPatternStorageError(null)
                       setLibraryOpen(false)
@@ -311,11 +365,13 @@ export function PurpleStudio() {
               className="title-input"
               aria-label="Pattern title"
               value={title}
-              onChange={(event) => setCustomTitle(event.target.value)}
+              disabled={patternLocked}
+              onChange={(event) => commitCustomTitle(event.target.value)}
               maxLength={60}
             />
             <button
               className={`chrome ${currentPatternSaved ? 'saved' : ''}`}
+              disabled={patternLocked}
               onClick={save}
               title={
                 currentPatternSaved
@@ -325,19 +381,27 @@ export function PurpleStudio() {
             >
               <span aria-live="polite">{currentPatternSaved ? 'SAVED ✓' : 'SAVE'}</span>
             </button>
-            <button className="chrome export" onClick={exportPattern}>EXPORT</button>
+            <button
+              className="chrome export"
+              disabled={patternLocked}
+              onClick={exportPattern}
+            >
+              EXPORT
+            </button>
             {editorHasUnappliedChanges ? (
               <button
                 className="chrome apply-changes"
                 aria-label="Apply editor changes to playback (Ctrl+Enter)"
                 title="Apply editor changes (Ctrl+Enter)"
-                onClick={() => void playback.play(code)}
+                disabled={patternLocked}
+                onClick={playCurrentPattern}
               >
                 APPLY
               </button>
             ) : null}
             <button
               className={`transport ${audible || playback.playbackState === 'loading' ? 'stop' : 'start'}`}
+              disabled={patternLocked && !audible}
               onClick={togglePlayback}
             >
               {transportLabel(playback.playbackState)}
@@ -346,16 +410,19 @@ export function PurpleStudio() {
 
           <div className="editor-surface">
             <DeferredPatternEditor
-              code={code}
+              code={patternPreview ?? code}
               playbackHighlightActive={
-                playback.playbackState === 'playing' && code === playback.activeCode
+                playback.playbackState === 'playing' &&
+                patternPreview === null &&
+                code === playback.activeCode
               }
               getActiveSourceRanges={playback.getActiveSourceRanges}
-              onCodeChange={setCode}
+              onCodeChange={commitCode}
+              readOnly={patternLocked}
               wrapLines={isPhoneWidth}
               // Strudel convention: Mod+Enter always (re-)evaluates, so a live
               // edit mid-playback picks up the new pattern instead of stopping.
-              onEvaluate={() => void playback.play(code)}
+              onEvaluate={playCurrentPattern}
             />
           </div>
 
@@ -381,8 +448,16 @@ export function PurpleStudio() {
               <Composer
                 byokKey={byokKey}
                 code={code}
+                customTitle={customTitle}
+                sourcePrompt={sourcePrompt}
                 playback={playback}
-                setCode={setCode}
+                setCode={commitGeneratedCode}
+                setPatternPreview={setPatternPreview}
+                setPatternPending={setPatternPending}
+                setPatternProvisional={setPatternProvisional}
+                getCodeRevision={getCodeRevision}
+                getTitleRevision={getTitleRevision}
+                registerGeneratedPatternController={registerGeneratedPatternController}
                 setCustomTitle={setCustomTitle}
                 setSourcePrompt={setSourcePrompt}
               />
@@ -476,9 +551,20 @@ function titleFromPrompt(prompt: string | undefined): string | null {
   return text.length <= 48 ? text : `${text.slice(0, 47).trimEnd()}…`
 }
 
-function randomStarter(): string {
+function loadInitialPattern() {
+  const restored = loadSessionPattern()
+  if (restored) return restored
+  const starter = randomStarter()
+  return {
+    code: starter.code,
+    customTitle: starter.title,
+    sourcePrompt: undefined,
+  }
+}
+
+function randomStarter(): ShowcasePattern {
   const random = crypto.getRandomValues(new Uint32Array(1))[0] ?? 0
-  return STARTER_PATTERNS[random % STARTER_PATTERNS.length] ?? STARTER_PATTERNS[0]
+  return SHOWCASE_PATTERNS[random % SHOWCASE_PATTERNS.length] ?? SHOWCASE_PATTERNS[0]
 }
 
 function transportLabel(state: Playback['playbackState']): string {

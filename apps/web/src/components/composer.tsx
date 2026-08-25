@@ -4,11 +4,10 @@ import {
   PROMPT_MODIFIERS,
   PROMPT_PRESETS,
   TRANSITION_CYCLE_OPTIONS,
-  acceptRawPattern,
   generateRandomPrompt,
   visibleTextWithoutCodeBlocks,
   withExplanatoryStyle,
-  type TransitionSuggestionsResult,
+  type TransitionSuggestion,
 } from '@purple/core'
 import {
   useCallback,
@@ -28,56 +27,54 @@ import {
   generatedPlaybackFailureMessage,
   isTransitionInfrastructureFailure,
   isValidatedGeneratedPattern,
-  resolveGeneratedPatternMode,
   TRANSITION_ERROR,
   validationFailureMessage,
-  type PatternMode,
 } from '@purple/ui/playback-flow'
 import { useGeneratedPattern } from '@purple/ui/use-generated-pattern'
 import type { usePlayback } from '@purple/ui/use-playback'
 import { useStudioChat } from '@purple/ui/use-studio-chat'
-import { useTransitionSuggestions } from '@purple/ui/use-transition-suggestions'
 
 const UNDO_CLEAR_WINDOW_MS = 10_000
-const AUTO_XFADE_DELAY_MS = 5_000
-const AUTO_XFADE_TICK_MS = 250
-
 type Playback = ReturnType<typeof usePlayback>
-
-interface StagedTransitionOptions {
-  /** Refuse an automatic transition if its original pattern stopped or changed. */
-  expectedActiveCode?: string
+export type GeneratedPatternPlayer = (code: string) => Promise<void>
+export interface GeneratedPatternController {
+  play: GeneratedPatternPlayer
+  invalidate(): void
 }
 
 /**
- * Pattern acceptance: retry playback through the repair function, stage or
- * play, and keep next-move suggestions fresh.
+ * Pattern acceptance: validate and repair generated code, stage revisions,
+ * and keep next-move suggestions fresh.
  */
 interface PatternStateBindings {
   playback: Playback
   setCode: (code: string) => void
-  setCustomTitle: (title: string | null) => void
   setSourcePrompt: (prompt: string | undefined) => void
 }
 
+interface PreparedPattern {
+  code: string
+  valid: boolean
+}
+
 function usePatternFlow(deps: PatternStateBindings & {
+  abortRepair: () => void
   /** Send the prepared repair message; the fixed pattern, or null on failure. */
   requestFix: (message: string) => Promise<string | null>
   /** A repair replaced `broken` with `fixed`: propagate it into the stored
    * transcript, so future generations and compaction folds see the pattern
    * that actually plays - not the mistake the repair just removed. */
   onPatternFixed: (broken: string, fixed: string) => void
-  suggest: (code: string, sourcePrompt?: string) => Promise<TransitionSuggestionsResult>
 }) {
   const [uiError, setUiError] = useState<string | null>(null)
   const [stagedCode, setStagedCode] = useState<string | null>(null)
   const [isTransitionPending, setIsTransitionPending] = useState(false)
+  const [isPlaybackRepairPending, setIsPlaybackRepairPending] = useState(false)
+  const [suggestions, setSuggestions] = useState<TransitionSuggestion[]>([])
+  const playbackRepairRef = useRef(false)
   const lastPromptRef = useRef('')
   const playbackRef = useRef(deps.playback)
   playbackRef.current = deps.playback
-  const nextMoves = useTransitionSuggestions({
-    suggestTransitions: deps.suggest,
-  })
   const generatedPattern = useGeneratedPattern({
     validatePattern: deps.playback.validatePattern,
     requestFix: deps.requestFix,
@@ -92,19 +89,13 @@ function usePatternFlow(deps: PatternStateBindings & {
         playbackRef.current.play(fixed, { reportEvaluationError: false }),
     },
     getStopToken: deps.playback.getStopToken,
-    onPlaybackSuccess: (code, sourcePrompt) =>
-      nextMoves.generate({ code, sourcePrompt }),
+    onInvalidate: deps.abortRepair,
   })
 
-  useEffect(() => {
-    if (nextMoves.error) setUiError(nextMoves.error)
-  }, [nextMoves.error])
-
-  /** Resolves with whether a pattern actually landed in the editor. */
-  const acceptPattern = async (pattern: string, mode: PatternMode): Promise<boolean> => {
+  /** Adopt and validate as soon as the leading structured field is complete. */
+  const preparePattern = async (pattern: string): Promise<PreparedPattern> => {
     const sourcePrompt = lastPromptRef.current
-    generatedPattern.adopt(pattern, sourcePrompt)
-    deps.setCustomTitle(null)
+    generatedPattern.adopt(pattern)
     deps.setSourcePrompt(sourcePrompt)
 
     // Audit the pattern against the live engine before it plays or stages:
@@ -115,41 +106,55 @@ function usePatternFlow(deps: PatternStateBindings & {
     if (!isValidatedGeneratedPattern(validated)) {
       setStagedCode(null)
       setUiError(validationFailureMessage(validated))
-      return false
+      return { code: validated.code, valid: false }
     }
-    if (mode === 'stage') {
-      setStagedCode(validated.code)
-      setUiError(null)
-      return true
-    }
-
-    const outcome = await generatedPattern.attempt(
-      validated.code,
-      (candidate) =>
-        deps.playback.play(candidate, { reportEvaluationError: false }),
-    )
-    if (outcome.result.ok) {
-      setStagedCode(null)
-      setUiError(null)
-    } else {
-      setUiError(generatedPlaybackFailureMessage(outcome.result))
-    }
-    return true
+    setUiError(null)
+    return { code: validated.code, valid: true }
   }
 
-  const transitionStaged = async (
-    durationCycles: number,
-    options: StagedTransitionOptions = {},
-  ): Promise<void> => {
+  /** Land validated code without starting audio; revisions can be crossfaded. */
+  const landPattern = (pattern: string): void => {
+    setStagedCode(
+      playbackRef.current.playbackState === 'playing' ? pattern : null,
+    )
+    setUiError(null)
+  }
+
+  const showSuggestions = (
+    nextSuggestions: TransitionSuggestion[],
+  ): void => {
+    setSuggestions(nextSuggestions)
+  }
+
+  const playPattern = useCallback(async (pattern: string): Promise<void> => {
+    if (!generatedPattern.isCurrent(pattern)) {
+      await playbackRef.current.play(pattern)
+      return
+    }
+    if (playbackRepairRef.current) return
+
+    playbackRepairRef.current = true
+    setIsPlaybackRepairPending(true)
+    try {
+      const outcome = await generatedPattern.attempt(
+        pattern,
+        (candidate) =>
+          playbackRef.current.play(candidate, { reportEvaluationError: false }),
+      )
+      setUiError(
+        outcome.result.ok
+          ? null
+          : generatedPlaybackFailureMessage(outcome.result),
+      )
+    } finally {
+      playbackRepairRef.current = false
+      setIsPlaybackRepairPending(false)
+    }
+  }, [generatedPattern.attempt, generatedPattern.isCurrent])
+
+  const transitionStaged = async (durationCycles: number): Promise<void> => {
     const stagedCandidate = stagedCode
     if (!stagedCandidate) return
-    if (options.expectedActiveCode !== undefined) {
-      const current = playbackRef.current
-      if (
-        current.playbackState !== 'playing' ||
-        current.activeCode !== options.expectedActiveCode
-      ) return
-    }
 
     // Consume the one-shot control immediately. Candidate evaluation failures
     // use the remaining repair budget; errors in Purple's generated transition
@@ -202,9 +207,15 @@ function usePatternFlow(deps: PatternStateBindings & {
     stagedCode,
     setStagedCode,
     isTransitionPending,
-    suggestions: nextMoves.suggestions,
+    isPlaybackRepairPending,
+    suggestions,
     lastPromptRef,
-    acceptPattern,
+    preparePattern,
+    landPattern,
+    showSuggestions,
+    playPattern,
+    invalidate: generatedPattern.invalidate,
+    isCurrent: generatedPattern.isCurrent,
     transitionStaged,
   }
 }
@@ -214,6 +225,17 @@ type PatternFlow = ReturnType<typeof usePatternFlow>
 export function Composer(props: PatternStateBindings & {
   byokKey: string
   code: string
+  customTitle: string | null
+  sourcePrompt: string | undefined
+  setCustomTitle: (title: string | null) => void
+  setPatternPreview: (code: string | null) => void
+  setPatternPending: (pending: boolean) => void
+  setPatternProvisional: (provisional: boolean) => void
+  getCodeRevision: () => number
+  getTitleRevision: () => number
+  registerGeneratedPatternController: (
+    controller: GeneratedPatternController | null,
+  ) => void
 }) {
   const [input, setInput] = useState('')
   const [initialChat] = useState(
@@ -224,7 +246,7 @@ export function Composer(props: PatternStateBindings & {
   const [chatStorageError, setChatStorageError] = useState<string | null>(null)
   const [showUndo, setShowUndo] = useState(false)
   const patternExplanatoryStyleRef = useRef(false)
-  const titleRequestRef = useRef(0)
+  const turnRequestRef = useRef(0)
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const backend = useMemo(() => createByokBackend(props.byokKey), [props.byokKey])
   const chat = useStudioChat(backend, {
@@ -246,35 +268,48 @@ export function Composer(props: PatternStateBindings & {
   })
   const transcriptRef = useRef<HTMLDivElement | null>(null)
 
-  useEffect(() => () => {
-    titleRequestRef.current++
-    if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
-  }, [])
-
   const flow = usePatternFlow({
     playback: props.playback,
+    abortRepair: backend.abortRepair,
     setCode: props.setCode,
-    setCustomTitle: props.setCustomTitle,
     setSourcePrompt: props.setSourcePrompt,
     requestFix: async (message) => {
       try {
-        const acceptance = acceptRawPattern(
-          await backend.repairPattern(
-            withExplanatoryStyle(
-              message,
-              patternExplanatoryStyleRef.current,
-            ),
+        return await backend.repairPattern(
+          withExplanatoryStyle(
+            message,
+            patternExplanatoryStyleRef.current,
           ),
         )
-        return acceptance.ok ? acceptance.pattern : null
       } catch {
         // The caller reports a generic pattern failure after the repair budget ends.
         return null
       }
     },
     onPatternFixed: chat.replaceLastAssistantPattern,
-    suggest: backend.suggestTransitions,
   })
+
+  useEffect(() => {
+    props.registerGeneratedPatternController({
+      play: flow.playPattern,
+      invalidate: flow.invalidate,
+    })
+    return () => {
+      flow.invalidate()
+      props.registerGeneratedPatternController(null)
+    }
+  }, [
+    flow.invalidate,
+    flow.playPattern,
+    props.registerGeneratedPatternController,
+  ])
+
+  useEffect(() => () => {
+    turnRequestRef.current++
+    props.setPatternPending(false)
+    props.setPatternProvisional(false)
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
+  }, [props.setPatternPending, props.setPatternProvisional])
 
   useEffect(() => {
     const stagedCode = flow.stagedCode
@@ -298,7 +333,6 @@ export function Composer(props: PatternStateBindings & {
   }, [
     chat.messages,
     chat.isStreaming,
-    chat.streamingText,
     flow.stagedCode,
     flow.isTransitionPending,
     isAcceptingPattern,
@@ -307,9 +341,9 @@ export function Composer(props: PatternStateBindings & {
   const busy =
     chat.isStreaming ||
     isAcceptingPattern ||
+    flow.isPlaybackRepairPending ||
     flow.isTransitionPending ||
     props.playback.playbackState === 'transitioning'
-  const streamingProse = visibleTextWithoutCodeBlocks(chat.streamingText)
 
   const hideUndo = () => {
     if (undoTimerRef.current) {
@@ -319,52 +353,115 @@ export function Composer(props: PatternStateBindings & {
     setShowUndo(false)
   }
 
-  const send = (text: string, mode: PatternMode = 'play') => {
+  const send = (text: string) => {
     const prompt = text.trim()
     if (!prompt || busy) return
     // A new turn makes the stashed session unrestorable, so retire the offer
     // rather than leave a button that would refuse.
     hideUndo()
-    const titleRequest = ++titleRequestRef.current
+    const turnRequest = ++turnRequestRef.current
+    const codeRevision = props.getCodeRevision()
+    const titleRevision = props.getTitleRevision()
+    const previousPattern = {
+      code: props.code,
+      customTitle: props.customTitle,
+      sourcePrompt: props.sourcePrompt,
+    }
     // The staged transition belongs to the preceding assistant turn. Once a
     // new turn begins, its one-shot controls are no longer actionable.
     flow.setStagedCode(null)
     flow.lastPromptRef.current = prompt
     patternExplanatoryStyleRef.current = explanatoryStyle
     flow.setUiError(null)
-    const resolvedMode = resolveGeneratedPatternMode(mode, props.playback.playbackState)
-    const patternPromise = chat.sendMessage(prompt, {
+    let preparedPattern: Promise<PreparedPattern> | null = null
+    let patternAdopted = false
+    let patternRestored = false
+    const finishPatternPreparation = () => {
+      if (turnRequestRef.current === turnRequest) {
+        props.setPatternPending(false)
+      }
+    }
+    const restorePreviousPattern = () => {
+      if (!patternAdopted || patternRestored) return
+      patternRestored = true
+      if (props.getCodeRevision() !== codeRevision) return
+      flow.invalidate()
+      props.setCode(previousPattern.code)
+      props.setSourcePrompt(previousPattern.sourcePrompt)
+      if (props.getTitleRevision() === titleRevision) {
+        props.setCustomTitle(previousPattern.customTitle)
+      }
+    }
+    const beginPatternPreparation = (pattern: string) => {
+      patternAdopted = true
+      if (props.getTitleRevision() === titleRevision) {
+        props.setCustomTitle(null)
+      }
+      const preparation = flow.preparePattern(pattern)
+      preparedPattern = preparation
+      void preparation.then(
+        finishPatternPreparation,
+        finishPatternPreparation,
+      )
+      return preparation
+    }
+    setIsAcceptingPattern(true)
+    props.setPatternPending(true)
+    props.setPatternProvisional(true)
+    void props.playback.prepareValidation()
+    const turnPromise = chat.sendMessage(prompt, {
       requestInstruction: explanatoryStyle
         ? EXPLANATORY_STYLE_INSTRUCTION
         : undefined,
+      onPatternPreview: props.setPatternPreview,
+      onPatternPreviewDiscarded: () => {
+        props.setPatternPreview(null)
+        restorePreviousPattern()
+        finishPatternPreparation()
+        if (turnRequestRef.current === turnRequest) {
+          props.setPatternProvisional(false)
+        }
+      },
+      resolvePattern: (pattern) => {
+        props.setPatternPreview(null)
+        return beginPatternPreparation(pattern).then((prepared) => prepared.code)
+      },
     })
-    void props.playback.prepareAudio()
     setInput('')
-    // Ask for a title in parallel. A request token prevents a slow title from
-    // an older turn replacing the title of a newer pattern.
-    const titlePromise = backend.generateTitle(prompt)
-    void patternPromise
-      .then(async (pattern) => {
-        if (!pattern) return
-        // Keep sends disabled through validation and repair round-trips.
-        setIsAcceptingPattern(true)
-        const landed = await flow.acceptPattern(pattern, resolvedMode)
-        if (landed) {
-          void titlePromise.then((title) => {
-            if (title.ok && titleRequestRef.current === titleRequest) {
-              props.setCustomTitle(title.title)
-            }
-          })
+    void turnPromise
+      .then(async (turn) => {
+        if (!turn || turnRequestRef.current !== turnRequest) return
+        const preparation =
+          preparedPattern ?? beginPatternPreparation(turn.pattern)
+        const prepared = await preparation
+        finishPatternPreparation()
+        if (!prepared.valid || turnRequestRef.current !== turnRequest) return
+        if (!flow.isCurrent(turn.pattern)) return
+
+        // Metadata belongs to the original turn. Pattern repairs carry its
+        // suggestions and title forward with the corrected code.
+        flow.showSuggestions(turn.suggestions)
+        flow.landPattern(turn.pattern)
+        if (
+          turn.title &&
+          turnRequestRef.current === turnRequest &&
+          props.getTitleRevision() === titleRevision
+        ) {
+          props.setCustomTitle(turn.title)
         }
       })
       .finally(() => {
         setIsAcceptingPattern(false)
+        finishPatternPreparation()
+        if (turnRequestRef.current === turnRequest) {
+          props.setPatternProvisional(false)
+        }
       })
   }
 
   const clearSession = () => {
     const hadConversation = chat.messages.length > 0
-    titleRequestRef.current++
+    turnRequestRef.current++
     chat.clearChat()
     flow.setUiError(null)
     flow.setStagedCode(null)
@@ -391,8 +488,7 @@ export function Composer(props: PatternStateBindings & {
   }
 
   const isEmpty = chat.messages.length === 0
-  // Streaming updates often; settled messages only need transforming when
-  // the transcript itself changes.
+  // Settled messages only need transforming when the transcript changes.
   const transcript = useMemo(
     () =>
       chat.messages.map((message) => ({
@@ -457,16 +553,13 @@ export function Composer(props: PatternStateBindings & {
               <p key={message.key} className={message.role}>{message.prose}</p>
             ) : null,
           )}
-          {streamingProse ? (
-            <p className="assistant streaming">{streamingProse}</p>
-          ) : null}
-          {busy && !streamingProse ? (
+          {busy ? (
             <span className="stream-dots" aria-label="Generating">
               <span>.</span><span>.</span><span>.</span>
             </span>
           ) : null}
           {flow.stagedCode ? (
-            <MixRow flow={flow} playback={props.playback} editorCode={props.code} />
+            <MixRow flow={flow} playback={props.playback} />
           ) : null}
         </div>
       )}
@@ -510,7 +603,7 @@ export function Composer(props: PatternStateBindings & {
               className="chip"
               disabled={busy}
               title={suggestion.prompt}
-              onClick={() => send(suggestion.prompt, 'stage')}
+              onClick={() => send(suggestion.prompt)}
             >
               {suggestion.label}
             </button>
@@ -558,132 +651,10 @@ export function Composer(props: PatternStateBindings & {
 function MixRow(props: {
   flow: PatternFlow
   playback: Playback
-  editorCode: string
 }) {
-  const { flow, playback, editorCode } = props
+  const { flow, playback } = props
   const [transitionCycles, setTransitionCycles] = useState(DEFAULT_TRANSITION_CYCLES)
-  const [autoXfade, setAutoXfade] = useState<AutoXfadeState>(() =>
-    createAutoXfadeState(flow.stagedCode, playback),
-  )
-  const [remainingSeconds, setRemainingSeconds] = useState(
-    AUTO_XFADE_DELAY_MS / 1_000,
-  )
-  const autoXfadeRef = useRef(autoXfade)
-  const flowRef = useRef(flow)
-  const playbackRef = useRef(playback)
-  const editorCodeRef = useRef(editorCode)
-  const transitionCyclesRef = useRef(transitionCycles)
-  autoXfadeRef.current = autoXfade
-  flowRef.current = flow
-  playbackRef.current = playback
-  editorCodeRef.current = editorCode
-  transitionCyclesRef.current = transitionCycles
   const mixing = playback.playbackState === 'transitioning'
-
-  const cancelAutoXfade = useCallback(() => {
-    const current = autoXfadeRef.current
-    if (current.kind !== 'armed') return
-    const cancelled: AutoXfadeState = {
-      kind: 'cancelled',
-      stagedCode: current.stagedCode,
-    }
-    autoXfadeRef.current = cancelled
-    setAutoXfade(cancelled)
-  }, [])
-
-  const startArmedXfade = useCallback((armed: ArmedAutoXfade) => {
-    if (autoXfadeRef.current !== armed) return
-    const latestFlow = flowRef.current
-    const latestPlayback = playbackRef.current
-    if (
-      latestFlow.stagedCode !== armed.stagedCode ||
-      editorCodeRef.current !== armed.stagedCode ||
-      latestPlayback.playbackState !== 'playing' ||
-      latestPlayback.activeCode !== armed.activeCode
-    ) {
-      const cancelled: AutoXfadeState = {
-        kind: 'cancelled',
-        stagedCode: armed.stagedCode,
-      }
-      autoXfadeRef.current = cancelled
-      setAutoXfade(cancelled)
-      return
-    }
-
-    const started: AutoXfadeState = {
-      kind: 'started',
-      stagedCode: armed.stagedCode,
-    }
-    autoXfadeRef.current = started
-    setAutoXfade(started)
-    void latestFlow.transitionStaged(transitionCyclesRef.current, {
-      expectedActiveCode: armed.activeCode,
-    })
-  }, [])
-
-  useEffect(() => {
-    const stagedCode = flow.stagedCode
-    if (!stagedCode || autoXfadeRef.current.stagedCode === stagedCode) return
-    const next = createAutoXfadeState(stagedCode, playbackRef.current)
-    autoXfadeRef.current = next
-    setAutoXfade(next)
-    setRemainingSeconds(AUTO_XFADE_DELAY_MS / 1_000)
-  }, [flow.stagedCode])
-
-  useEffect(() => {
-    const armed = autoXfadeRef.current
-    if (
-      armed.kind === 'armed' &&
-      (flow.stagedCode !== armed.stagedCode ||
-        editorCode !== armed.stagedCode ||
-        playback.playbackState !== 'playing' ||
-        playback.activeCode !== armed.activeCode)
-    ) cancelAutoXfade()
-  }, [
-    cancelAutoXfade,
-    editorCode,
-    flow.stagedCode,
-    playback.activeCode,
-    playback.playbackState,
-  ])
-
-  useEffect(() => {
-    if (autoXfade.kind !== 'armed') return
-    const armed = autoXfade
-    const updateRemaining = () => {
-      setRemainingSeconds(
-        Math.max(1, Math.ceil((armed.deadline - Date.now()) / 1_000)),
-      )
-    }
-    updateRemaining()
-    const tickId = window.setInterval(updateRemaining, AUTO_XFADE_TICK_MS)
-    const timeoutId = window.setTimeout(
-      () => startArmedXfade(armed),
-      Math.max(0, armed.deadline - Date.now()),
-    )
-    return () => {
-      window.clearInterval(tickId)
-      window.clearTimeout(timeoutId)
-    }
-  }, [autoXfade, startArmedXfade])
-
-  useEffect(() => {
-    if (autoXfade.kind !== 'armed') return
-    const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== 'Escape') return
-      event.preventDefault()
-      cancelAutoXfade()
-    }
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') cancelAutoXfade()
-    }
-    document.addEventListener('keydown', onKeyDown)
-    document.addEventListener('visibilitychange', onVisibilityChange)
-    return () => {
-      document.removeEventListener('keydown', onKeyDown)
-      document.removeEventListener('visibilitychange', onVisibilityChange)
-    }
-  }, [autoXfade.kind, cancelAutoXfade])
 
   return (
     <div className="mix-row">
@@ -701,66 +672,11 @@ function MixRow(props: {
       ))}
       <button
         className="primary"
-        disabled={mixing || autoXfade.kind === 'started'}
-        aria-label={
-          autoXfade.kind === 'armed'
-            ? 'XFADE NOW; AUTOMATIC XFADE IN 5 SECONDS'
-            : undefined
-        }
-        onClick={() => {
-          if (autoXfade.kind === 'armed') {
-            startArmedXfade(autoXfade)
-            return
-          }
-          if (autoXfade.kind === 'cancelled') {
-            void flow.transitionStaged(transitionCycles)
-          }
-        }}
+        disabled={mixing}
+        onClick={() => void flow.transitionStaged(transitionCycles)}
       >
-        {mixing || autoXfade.kind === 'started' ? (
-          'XFADING…'
-        ) : autoXfade.kind === 'armed' ? (
-          <span aria-hidden="true">XFADE IN {remainingSeconds}s</span>
-        ) : (
-          'XFADE'
-        )}
+        {mixing ? 'XFADING…' : 'XFADE'}
       </button>
-      {autoXfade.kind === 'armed' ? (
-        <button
-          className="chrome mix-cancel"
-          aria-keyshortcuts="Escape"
-          onClick={cancelAutoXfade}
-        >
-          CANCEL / ESC
-        </button>
-      ) : null}
     </div>
   )
-}
-
-interface ArmedAutoXfade {
-  kind: 'armed'
-  stagedCode: string
-  activeCode: string
-  deadline: number
-}
-
-type AutoXfadeState =
-  | ArmedAutoXfade
-  | { kind: 'cancelled' | 'started'; stagedCode: string }
-
-function createAutoXfadeState(
-  stagedCode: string | null,
-  playback: Playback,
-): AutoXfadeState {
-  const code = stagedCode ?? ''
-  if (playback.playbackState !== 'playing' || !playback.activeCode) {
-    return { kind: 'cancelled', stagedCode: code }
-  }
-  return {
-    kind: 'armed',
-    stagedCode: code,
-    activeCode: playback.activeCode,
-    deadline: Date.now() + AUTO_XFADE_DELAY_MS,
-  }
 }

@@ -207,11 +207,6 @@ describe("parseCompactionSummary", () => {
         '{"summary":"Techno.","latestPattern":"```strudel\\ns(\\"bd\\")\\n```"}',
       ),
     ).toEqual({ summary: "Techno.", latestPattern: 's("bd")' });
-    expect(
-      parseCompactionSummary(
-        '{"summary":"Techno.","latestPattern":"``` broken"}',
-      ),
-    ).toEqual({ summary: "Techno.", latestPattern: "" });
   });
 
   it("rejects malformed payloads", () => {
@@ -235,6 +230,17 @@ describe("parseCompactionSummary", () => {
       parseCompactionSummary(
         '{"summary":"```js code```","latestPattern":""}',
       ),
+    ).toBeNull();
+    expect(
+      parseCompactionSummary(
+        '{"summary":"Techno.","latestPattern":"``` broken"}',
+      ),
+    ).toBeNull();
+    expect(
+      parseCompactionSummary(JSON.stringify({
+        summary: "Too large.",
+        latestPattern: "x".repeat(30_001),
+      })),
     ).toBeNull();
   });
 });
@@ -281,6 +287,14 @@ describe("createFoldScheduler", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
 
+  function deferredHarness() {
+    let finish: (result: CompactionSummaryResult) => void = () => {};
+    const h = harness({
+      summarize: () => new Promise((resolve) => { finish = resolve; }),
+    });
+    return { h, finish: (result: CompactionSummaryResult) => finish(result) };
+  }
+
   it("folds a due conversation and commits against the live state", async () => {
     const h = harness();
     h.scheduler.maybeFold(h.live);
@@ -308,14 +322,11 @@ describe("createFoldScheduler", () => {
   });
 
   it("runs at most one summarizer call at a time", async () => {
-    let release: (result: CompactionSummaryResult) => void = () => {};
-    const h = harness({
-      summarize: () => new Promise((resolve) => { release = resolve; }),
-    });
+    const { h, finish } = deferredHarness();
     h.scheduler.maybeFold(h.live);
     h.scheduler.maybeFold(h.live);
     expect(h.summarize).toHaveBeenCalledOnce();
-    release({ ok: true, artifact: ARTIFACT });
+    finish({ ok: true, artifact: ARTIFACT });
     await settle();
     expect(h.live.artifact).toEqual(ARTIFACT);
   });
@@ -332,6 +343,18 @@ describe("createFoldScheduler", () => {
       promptTokens: null,
     };
     await settle();
+    expect(h.live.artifact).toBeNull();
+    expect(h.live.coveredCount).toBe(0);
+  });
+
+  it("discards an in-flight result after reset", async () => {
+    const { h, finish } = deferredHarness();
+    h.scheduler.maybeFold(h.live);
+
+    h.scheduler.reset();
+    finish({ ok: true, artifact: ARTIFACT });
+    await settle();
+
     expect(h.live.artifact).toBeNull();
     expect(h.live.coveredCount).toBe(0);
   });

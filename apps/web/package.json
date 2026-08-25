@@ -13,7 +13,7 @@
     "deploy": "pnpm run build && wrangler deploy",
     "test": "vitest run",
     "test:browser": "vitest run --config vitest.browser.config.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "wrangler types && tsc --noEmit && tsc --noEmit -p worker/tsconfig.json",
     "check": "pnpm run test && pnpm run typecheck && pnpm run build"
   },
   "dependencies": {

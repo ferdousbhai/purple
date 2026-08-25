@@ -255,8 +255,8 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
   const validate = useCallback(async (
     code: string,
   ): Promise<ValidationProblem[] | null> => {
-    // A send gesture usually kicked init off already; wait for it rather than
-    // skipping. If init never started (or failed), validation is skipped.
+    // The send gesture kicks initialization off without starting playback.
+    // Wait for it here; if initialization failed, validation is skipped.
     if (!replRef.current && initPromiseRef.current) {
       try {
         await initPromiseRef.current;

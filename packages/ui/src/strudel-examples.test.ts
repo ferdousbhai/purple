@@ -7,6 +7,7 @@
  */
 import { beforeAll, describe, expect, it } from "vitest";
 import { PROMPT_EXAMPLES } from "@purple/core/prompts";
+import { SHOWCASE_PATTERNS } from "@purple/core/recipes";
 import { buildTransitionCode } from "@purple/core/transitions";
 import { auditHapSounds, type AuditableHap } from "@purple/core/validation";
 // @strudel/core does not publish declarations for this runtime test surface.
@@ -115,6 +116,30 @@ describe("PROMPT_EXAMPLES", () => {
       ]),
     );
   });
+});
+
+describe("SHOWCASE_PATTERNS", () => {
+  it.each(SHOWCASE_PATTERNS)(
+    "$title evaluates to a pattern with events",
+    async ({ code }) => {
+      await expectPatternEvents(code);
+    },
+  );
+
+  it("are titled multi-line pieces rather than one-line placeholders", () => {
+    expect(SHOWCASE_PATTERNS).toHaveLength(3);
+    for (const showcase of SHOWCASE_PATTERNS) {
+      expect(showcase.title).toMatch(/^\S+(?:\s+\S+)+$/);
+      expect(showcase.code.split("\n").length).toBeGreaterThanOrEqual(4);
+    }
+  });
+
+  it.each(SHOWCASE_PATTERNS)(
+    "$title stays composable when a visitor crossfades from it",
+    async ({ code }) => {
+      await expectPatternEvents(buildTransitionCode(code, 's("bd*4")', 8, 4));
+    },
+  );
 });
 
 describe("expanded vocabulary", () => {

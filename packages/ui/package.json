@@ -13,8 +13,7 @@
     "./use-generated-pattern": "./src/use-generated-pattern.ts",
     "./use-playback": "./src/use-playback.ts",
     "./use-studio-chat": "./src/use-studio-chat.ts",
-    "./use-strudel": "./src/use-strudel.ts",
-    "./use-transition-suggestions": "./src/use-transition-suggestions.ts"
+    "./use-strudel": "./src/use-strudel.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

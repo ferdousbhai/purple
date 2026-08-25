@@ -123,11 +123,11 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
     }
   }, [activate]);
 
-  const prepareAudio = useCallback(async (): Promise<EvalResult> => {
+  /** Start engine initialization from the Send gesture so generated-pattern
+   * validation can run before the visitor explicitly starts playback. */
+  const prepareValidation = useCallback(async (): Promise<EvalResult> => {
     const result = await activateAudio();
-    if (!result.ok) {
-      dispatch({ type: "error", error: result.error });
-    }
+    if (!result.ok) dispatch({ type: "error", error: result.error });
     return result;
   }, [activateAudio]);
 
@@ -417,7 +417,7 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
 
   return {
     ...state,
-    prepareAudio,
+    prepareValidation,
     play,
     transition,
     stop,

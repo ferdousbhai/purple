@@ -1,4 +1,4 @@
-import { jsonMembers, jsonText, parseJsonMembers } from "./json";
+import { jsonMembers, jsonText, type JsonValue } from "./json";
 
 export interface TransitionSuggestion {
   label: string;
@@ -21,26 +21,10 @@ export function extractPattern(text: string): string | null {
 /** Patterns larger than this are rejected rather than landed in the editor. */
 export const MAX_PATTERN_LENGTH = 30_000;
 
-export type PatternAcceptance =
-  | { ok: true; pattern: string }
-  | { ok: false; error: string };
-
-/**
- * Extract and size-guard the pattern from a raw model response before it
- * reaches the editor.
- */
-export function acceptRawPattern(raw: string): PatternAcceptance {
-  const pattern = extractPattern(raw);
-  if (!pattern) {
-    return { ok: false, error: "Gemini did not return a Strudel pattern." };
-  }
-  if (pattern.length > MAX_PATTERN_LENGTH) {
-    return {
-      ok: false,
-      error: "Gemini returned a pattern larger than 30,000 characters.",
-    };
-  }
-  return { ok: true, pattern };
+/** Validate an unfenced pattern returned through structured output. */
+export function validatePatternCode(value: string): string | null {
+  const pattern = value.trim();
+  return pattern && pattern.length <= MAX_PATTERN_LENGTH ? pattern : null;
 }
 
 /** Hide complete and still-streaming fenced code while keeping assistant prose. */
@@ -75,21 +59,10 @@ export function validateGeneratedPatternTitle(value: string): string | null {
   return title;
 }
 
-/** Parse the raw JSON response produced under the title schema. */
-export function parseGeneratedPatternTitle(value: string): string | null {
-  const members = parseJsonMembers(value);
-  if (members === null || members.size !== 1) return null;
-  const title = jsonText(members.get("title"));
-  return title === null ? null : validateGeneratedPatternTitle(title);
-}
-
-/** Parse the raw JSON response produced under the transition-suggestions schema. */
-export function parseTransitionSuggestions(
-  value: string,
+/** Validate the decoded suggestions from a structured turn. */
+export function validateTransitionSuggestions(
+  candidates: JsonValue | undefined,
 ): TransitionSuggestion[] | null {
-  const members = parseJsonMembers(value);
-  if (members === null || members.size !== 1) return null;
-  const candidates = members.get("suggestions");
   if (!Array.isArray(candidates) || candidates.length !== 3) return null;
 
   const suggestions: TransitionSuggestion[] = [];

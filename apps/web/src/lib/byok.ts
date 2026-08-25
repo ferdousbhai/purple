@@ -7,17 +7,25 @@
  */
 
 import {
+  COMPACTION_PROMPT,
+  COMPACTION_SCHEMA,
   DEFAULT_GEMINI_MODEL,
+  GENERATED_TURN_SCHEMA,
+  REPAIR_PATTERN_SCHEMA,
+  REPAIR_SYSTEM_PROMPT,
   SYSTEM_PROMPT,
-  createModelHelpers,
+  buildCompactionRequest,
+  createPatternStreamDecoder,
+  errorMessage,
+  parseCompactionSummary,
+  parseGeneratedTurn,
+  validatePatternCode,
   type CompactionSummarizer,
   type ResponseSchema,
 } from '@purple/core'
 import type {
   ChatMessage,
   PatternStreamer,
-  TitleGenerator,
-  TransitionSuggester,
 } from '@purple/core/types'
 import {
   isJsonNumber,
@@ -84,42 +92,88 @@ export const saveByokChat = chatStore.save
  * plus the repair round-trip the shared repair loop plugs into.
  */
 interface ByokBackend
-  extends TitleGenerator,
-    TransitionSuggester,
-    CompactionSummarizer,
+  extends CompactionSummarizer,
     PatternStreamer {
-  /** Send a prepared repair message; resolves with the raw model text. */
+  /** Send a prepared repair message; resolves with the corrected pattern. */
   repairPattern(message: string): Promise<string>
+  /** Cancel a repair that no longer owns the editor pattern. */
+  abortRepair(): void
+  /** Cancel background compaction when its chat session disappears. */
+  abortCompaction(): void
 }
 
 /** Bind the visitor's key into a backend the studio UI talks to. */
 export function createByokBackend(key: string): ByokBackend {
   let activeStream: AbortController | null = null
+  let activeRepair: AbortController | null = null
+  let activeCompaction: AbortController | null = null
 
   return {
-    // Titles, transition suggestions, and compaction summaries share the
-    // structured-generation wrappers in @purple/core; only the transport -
-    // one JSON-mode generateContent call - is supplied here.
-    ...createModelHelpers((systemInstruction, input, schema) =>
-      callGemini(key, systemInstruction, [{ role: 'user', content: input }], {
-        responseMimeType: 'application/json',
-        responseJsonSchema: schema,
-      }),
-    ),
+    // Compaction remains a rare, background structured call after the exact
+    // token threshold. Normal turn metadata travels with the pattern stream.
+    async generateCompactionSummary(previous, messages) {
+      activeCompaction?.abort()
+      const controller = new AbortController()
+      activeCompaction = controller
+      try {
+        const raw = await callGemini(
+          key,
+          COMPACTION_PROMPT,
+          [{
+            role: 'user',
+            content: buildCompactionRequest(previous, messages),
+          }],
+          {
+            responseMimeType: 'application/json',
+            responseJsonSchema: COMPACTION_SCHEMA,
+          },
+          controller.signal,
+        )
+        const artifact = parseCompactionSummary(raw)
+        return artifact
+          ? { ok: true, artifact }
+          : { ok: false, error: 'Gemini returned an invalid session summary.' }
+      } catch (error) {
+        return { ok: false, error: errorMessage(error) }
+      } finally {
+        if (activeCompaction === controller) activeCompaction = null
+      }
+    },
 
-    async stream(messages, onDelta) {
+    abortCompaction() {
+      activeCompaction?.abort()
+      activeCompaction = null
+    },
+
+    async stream(messages, callbacks) {
       activeStream?.abort()
       const controller = new AbortController()
       activeStream = controller
+      const decoder = createPatternStreamDecoder({
+        onDelta: callbacks.onPatternDelta,
+        onComplete: callbacks.onPatternComplete,
+      })
       try {
-        const { promptTokens, truncated } = await streamGemini(
+        const { text, promptTokens, truncated } = await streamGemini(
           key,
           SYSTEM_PROMPT,
           messages,
-          onDelta,
+          (delta) => decoder.push(delta),
           controller.signal,
+          {
+            responseMimeType: 'application/json',
+            responseJsonSchema: GENERATED_TURN_SCHEMA,
+          },
         )
-        return { promptTokens, truncated }
+        const turn = parseGeneratedTurn(text, decoder.pattern() ?? undefined)
+        if (!turn) {
+          throw new Error(
+            truncated
+              ? 'Gemini reached its output limit before completing the Strudel pattern. Please try again.'
+              : 'Gemini did not return a valid Strudel pattern.',
+          )
+        }
+        return { turn, promptTokens }
       } finally {
         if (activeStream === controller) activeStream = null
       }
@@ -130,8 +184,45 @@ export function createByokBackend(key: string): ByokBackend {
       activeStream = null
     },
 
-    repairPattern: (message) =>
-      callGemini(key, SYSTEM_PROMPT, [{ role: 'user', content: message }]),
+    abortRepair() {
+      activeRepair?.abort()
+      activeRepair = null
+    },
+
+    async repairPattern(message) {
+      activeRepair?.abort()
+      const controller = new AbortController()
+      activeRepair = controller
+      try {
+        const raw = await callGemini(
+          key,
+          REPAIR_SYSTEM_PROMPT,
+          [{ role: 'user', content: message }],
+          {
+            responseMimeType: 'application/json',
+            responseJsonSchema: REPAIR_PATTERN_SCHEMA,
+          },
+          controller.signal,
+        )
+        const pattern = parseRepairPattern(raw)
+        if (!pattern) {
+          throw new Error('Gemini did not return a valid repaired pattern.')
+        }
+        return pattern
+      } finally {
+        if (activeRepair === controller) activeRepair = null
+      }
+    },
+  }
+}
+
+function parseRepairPattern(response: string): string | null {
+  try {
+    const parsed: JsonValue = JSON.parse(response)
+    const pattern = jsonMembers(parsed)?.get('pattern')
+    return isJsonString(pattern) ? validatePatternCode(pattern) : null
+  } catch {
+    return null
   }
 }
 
@@ -184,8 +275,12 @@ async function callGemini(
   system: string,
   messages: readonly ChatMessage[],
   generationConfig?: GeminiGenerationConfig,
+  callerSignal?: AbortSignal,
 ): Promise<string> {
   const controller = new AbortController()
+  const abortFromCaller = () => controller.abort()
+  if (callerSignal?.aborted) controller.abort()
+  else callerSignal?.addEventListener('abort', abortFromCaller, { once: true })
   let timedOut = false
   const timeout = setTimeout(() => {
     timedOut = true
@@ -213,10 +308,12 @@ async function callGemini(
     throw error
   } finally {
     clearTimeout(timeout)
+    callerSignal?.removeEventListener('abort', abortFromCaller)
   }
 }
 
 interface StreamedGeneration {
+  text: string
   /** Gemini's reported prompt token count, or null when absent. Feeds the
    * compaction trigger with exact sizes instead of estimates. */
   promptTokens: number | null
@@ -234,6 +331,7 @@ async function streamGemini(
   messages: readonly ChatMessage[],
   onDelta: (text: string) => void,
   signal: AbortSignal,
+  generationConfig?: GeminiGenerationConfig,
 ): Promise<StreamedGeneration> {
   const response = await fetch(`${STREAM_ENDPOINT}?alt=sse`, {
     method: 'POST',
@@ -241,7 +339,7 @@ async function streamGemini(
       'content-type': 'application/json',
       'x-goog-api-key': key,
     },
-    body: JSON.stringify(buildRequestBody(system, messages)),
+    body: JSON.stringify(buildRequestBody(system, messages, generationConfig)),
     signal,
   })
   if (!response.ok) await throwRequestError(response)
@@ -295,7 +393,7 @@ async function streamGemini(
   if (buffered) consumeLine(buffered)
   consumeEvent()
   if (!total) throw new Error('Gemini returned an empty response.')
-  return { promptTokens, truncated }
+  return { text: total, promptTokens, truncated }
 }
 
 function geminiErrorMessage(value: JsonValue): string | null {

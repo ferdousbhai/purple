@@ -82,7 +82,8 @@ describe("buildValidationRetryMessage", () => {
     expect(message).toContain('did you mean "piano"');
     expect(message).toContain("no events");
     expect(message).toContain('s("pianoz")');
-    expect(message).toContain("single Strudel expression");
+    expect(message).not.toContain("documented palette");
+    expect(message).not.toContain("no variable declarations");
   });
 
   it("sends safe-interpreter resource limits back to the model", () => {
@@ -94,7 +95,7 @@ describe("buildValidationRetryMessage", () => {
 
     expect(message).toContain(error);
     expect(message).toContain('s("bd*1024")');
-    expect(message).toContain("Please fix the code");
+    expect(message).toContain("Repair this pattern");
   });
 });
 

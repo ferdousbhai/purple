@@ -123,13 +123,12 @@ export function buildValidationRetryMessage(
   problems: readonly ValidationProblem[],
 ): string {
   const lines = problems.map((problem) => `- ${describeProblem(problem)}`);
-  return `The pattern you generated has problems that would keep it from playing correctly:
+  return `Repair this pattern to resolve these validation problems:
 ${lines.join("\n")}
-Original code:
+Original pattern:
 \`\`\`strudel
 ${code}
-\`\`\`
-Please fix the code. Only use sound names from the documented palette, and remember: no variable declarations, no .play(), just a single Strudel expression.`;
+\`\`\``;
 }
 
 function describeProblem(problem: ValidationProblem): string {

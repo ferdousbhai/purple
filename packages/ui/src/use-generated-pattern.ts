@@ -11,7 +11,6 @@ import type { ValidationProblem } from "@purple/core/validation";
 
 export interface GeneratedPatternContext {
   code: string;
-  sourcePrompt?: string;
   repairsUsed: number;
 }
 
@@ -41,7 +40,8 @@ export interface GeneratedPatternOptions {
   playingRevision?: PlayingRevisionOptions;
   /** Token that changes only when the user explicitly stops playback. */
   getStopToken(): number;
-  onPlaybackSuccess?(code: string, sourcePrompt?: string): void;
+  /** Cancel repair work after ownership moves to a hand edit or unmount. */
+  onInvalidate?(): void;
   onValidationProblems?(problems: readonly ValidationProblem[]): void;
 }
 
@@ -80,7 +80,6 @@ export function useGeneratedPattern(options: GeneratedPatternOptions) {
       optionsRef.current.onPatternFixed?.(current?.code ?? originalCode, fixedCode);
       const repaired = {
         code: fixedCode,
-        sourcePrompt: current?.sourcePrompt,
         repairsUsed: (current?.repairsUsed ?? 0) + 1,
       };
       contextRef.current = repaired;
@@ -90,9 +89,16 @@ export function useGeneratedPattern(options: GeneratedPatternOptions) {
     [],
   );
 
-  const adopt = useCallback((code: string, sourcePrompt?: string): void => {
-    contextRef.current = { code, sourcePrompt, repairsUsed: 0 };
+  const adopt = useCallback((code: string): void => {
+    contextRef.current = { code, repairsUsed: 0 };
     optionsRef.current.onCodeChange(code);
+  }, []);
+
+  /** Stop pending model work from mutating code after a hand edit or unmount. */
+  const invalidate = useCallback((): void => {
+    contextRef.current = null;
+    validationRequestRef.current = null;
+    optionsRef.current.onInvalidate?.();
   }, []);
 
   const isCurrent = useCallback(
@@ -151,17 +157,11 @@ export function useGeneratedPattern(options: GeneratedPatternOptions) {
           supersededCodes.length > 0 &&
           optionsRef.current.playingRevision
         ) {
-          const replacement = await replacePlayingRevision(
+          await replacePlayingRevision(
             supersededCodes,
             outcome.code,
             optionsRef.current.playingRevision,
           );
-          if (replacement?.ok && contextRef.current === context) {
-            optionsRef.current.onPlaybackSuccess?.(
-              outcome.code,
-              context?.sourcePrompt,
-            );
-          }
         }
         return { ...outcome, validationSkipped };
       })();
@@ -208,17 +208,10 @@ export function useGeneratedPattern(options: GeneratedPatternOptions) {
         isStopped: () => optionsRef.current.getStopToken() !== stopToken,
       });
 
-      if (outcome.result.ok) {
-        const current = contextRef.current;
-        optionsRef.current.onPlaybackSuccess?.(
-          outcome.code,
-          current?.code === outcome.code ? current.sourcePrompt : undefined,
-        );
-      }
       return outcome;
     },
     [commitRepair],
   );
 
-  return { adopt, isCurrent, validate, attempt };
+  return { adopt, invalidate, isCurrent, validate, attempt };
 }

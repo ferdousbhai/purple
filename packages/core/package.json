@@ -8,12 +8,12 @@
     "./compaction": "./src/compaction.ts",
     "./error": "./src/error.ts",
     "./json": "./src/json.ts",
-    "./model-helpers": "./src/model-helpers.ts",
     "./pattern": "./src/pattern.ts",
     "./prompts": "./src/prompts.ts",
     "./recipes": "./src/recipes.ts",
     "./repair": "./src/repair.ts",
     "./transitions": "./src/transitions.ts",
+    "./turn": "./src/turn.ts",
     "./types": "./src/types.ts",
     "./validation": "./src/validation.ts"
   },

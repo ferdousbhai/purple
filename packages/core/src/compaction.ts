@@ -12,7 +12,7 @@
 
 import { errorMessage } from "./error";
 import { jsonText, parseJsonMembers } from "./json";
-import { extractPattern } from "./pattern";
+import { extractPattern, validatePatternCode } from "./pattern";
 import type { ChatMessage } from "./types";
 
 /**
@@ -176,7 +176,7 @@ function artifactMessage(summary: string, latestPattern: string): ChatMessage {
  * The context window to send for a generation: the artifact (as a leading
  * user message carrying the summary and, when present, the current pattern)
  * plus every message it does not cover - uncapped. Nothing is ever silently
- * dropped; the character-budget fold is the only bound, and Gemini's
+ * dropped; the token-threshold fold is the only bound, and Gemini's
  * implicit prefix caching keeps resending the append-only history cheap.
  */
 export function buildContextWindow(
@@ -215,7 +215,7 @@ export interface AcceptedFold {
 export interface FoldScheduler<Message> {
   /** Run a background fold when one is due. Never blocks the caller. */
   maybeFold(snapshot: FoldSnapshot<Message>): void;
-  /** Re-arm the failure circuit breaker (a fresh session, say). */
+  /** Invalidate active work and re-arm the failure circuit breaker. */
   reset(): void;
 }
 
@@ -241,6 +241,7 @@ export function createFoldScheduler<Message>(options: {
 }): FoldScheduler<Message> {
   let inFlight = false;
   let consecutiveFailures = 0;
+  let revision = 0;
 
   const fail = (error: string): void => {
     consecutiveFailures += 1;
@@ -259,10 +260,12 @@ export function createFoldScheduler<Message>(options: {
 
       const folded = snapshot.messages.slice(0, plan.foldEnd);
       const startCovered = snapshot.coveredCount;
+      const foldRevision = revision;
       inFlight = true;
       void options
         .summarize(snapshot.artifact, folded.slice(startCovered))
         .then((result) => {
+          if (revision !== foldRevision) return;
           if (!result.ok) {
             fail(result.error);
             return;
@@ -280,12 +283,16 @@ export function createFoldScheduler<Message>(options: {
             return { artifact: result.artifact, coveredCount: folded.length };
           });
         })
-        .catch((cause: unknown) => fail(errorMessage(cause)))
+        .catch((cause: unknown) => {
+          if (revision === foldRevision) fail(errorMessage(cause));
+        })
         .finally(() => {
-          inFlight = false;
+          if (revision === foldRevision) inFlight = false;
         });
     },
     reset() {
+      revision += 1;
+      inFlight = false;
       consecutiveFailures = 0;
     },
   };
@@ -304,12 +311,15 @@ export function parseCompactionSummary(
   const summary = rawSummary.trim();
   if (!summary || summary.includes("```")) return null;
 
-  // The pattern is asked for unfenced; if the model fenced it anyway,
-  // unwrap rather than fail the whole fold.
+  // The pattern is asked for unfenced; tolerate a valid labelled fence, but
+  // reject malformed or oversized code rather than accepting a lossy fold.
   let latestPattern = rawPattern.trim();
   if (latestPattern.includes("```")) {
-    latestPattern = extractPattern(latestPattern) ?? "";
+    const extracted = extractPattern(latestPattern);
+    if (extracted === null) return null;
+    latestPattern = extracted;
   }
+  if (latestPattern && validatePatternCode(latestPattern) === null) return null;
 
   return { summary, latestPattern };
 }

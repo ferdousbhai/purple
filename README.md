@@ -7,7 +7,9 @@ edit, and play in the studio.
 Use the hosted app at [soundspurple.com](https://soundspurple.com), or run it
 locally. Purple has no accounts, server-side storage, or server-side inference.
 Your Gemini API key, chat history, and saved patterns remain in your browser.
-Generation requests go directly from the page to Google.
+Generation requests go directly from the page to Google. If you deliberately
+submit the feedback form, its category, message, and optional reply address are
+sent through a Turnstile-protected Cloudflare Worker to the maintainer's inbox.
 
 ## Requirements
 
@@ -54,9 +56,11 @@ pnpm run deploy        # Build and deploy with Wrangler
 - `apps/web/vite` contains build checks and the plugin that serves Strudel's
   AudioWorklet from the application's own origin.
 
-Cloudflare Workers serves only the static application assets. It has no bindings
-or application backend. Cloudflare Workers Builds deploys the site on pushes to
-`master` after running `pnpm run check`.
+Cloudflare Workers serves the static application assets and one stateless
+`/api/feedback` route. That route validates Cloudflare Turnstile and uses a
+fixed-destination email binding; it does not store submissions. Cloudflare
+Workers Builds deploys the site on pushes to `master` after running
+`pnpm run check`.
 
 ## Keyboard shortcuts
 

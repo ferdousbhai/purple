@@ -41,7 +41,7 @@
 * { box-sizing: border-box; }
 html, body { height: 100%; }
 body { margin: 0; min-width: 320px; background: var(--surface); }
-button, input, textarea { font: inherit; color: inherit; }
+button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; background: none; border: 0; padding: 0; }
 button:disabled { cursor: not-allowed; opacity: 0.35; }
 a { color: var(--accent); }
@@ -350,16 +350,6 @@ a { color: var(--accent); }
   background: color-mix(in srgb, var(--hot) 18%, transparent);
   box-shadow: var(--glow-hot);
 }
-.mix-row .mix-cancel {
-  border-color: color-mix(in srgb, var(--text) 14%, transparent);
-  color: var(--text-dim);
-}
-.mix-row .mix-cancel:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--text) 28%, transparent);
-  background: color-mix(in srgb, var(--text) 6%, transparent);
-  color: var(--text);
-}
-
 /* Prompt input */
 .prompt-form { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
 .explanatory-toggle {
@@ -442,6 +432,70 @@ a { color: var(--accent); }
 }
 .library-row .delete:hover { color: var(--hot); background: color-mix(in srgb, var(--hot) 8%, transparent); }
 
+/* ── Feedback ── */
+.feedback-dialog {
+  width: min(500px, calc(100vw - 28px)); max-height: min(720px, calc(100dvh - 28px));
+  padding: 0; overflow: auto;
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
+  border-radius: 9px;
+  color: var(--text); background: color-mix(in srgb, var(--surface) 96%, var(--panel-base));
+  box-shadow: 0 18px 46px var(--shadow);
+}
+.feedback-dialog::backdrop { background: color-mix(in srgb, var(--surface) 76%, transparent); }
+.feedback-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 18px;
+  padding: 16px 18px 14px; border-bottom: 1px solid var(--border);
+}
+.feedback-head span {
+  display: block; margin-bottom: 4px;
+  color: var(--accent); font: 600 9px var(--font-mono); letter-spacing: 0.24em;
+}
+.feedback-head h2 { margin: 0; color: var(--text); font: 600 18px var(--font-display); }
+.feedback-head > button {
+  flex: none; width: 30px; height: 30px; border-radius: 5px;
+  color: var(--text-dim); font-size: 20px; line-height: 1;
+}
+.feedback-head > button:hover {
+  color: var(--hot); background: color-mix(in srgb, var(--hot) 8%, transparent);
+}
+.feedback-form { display: grid; gap: 14px; padding: 16px 18px 18px; }
+.feedback-privacy { margin: 0; color: var(--text-dim); font: 400 11px/1.55 var(--font-mono); }
+.feedback-form > label:not(.feedback-honeypot) { display: grid; gap: 6px; }
+.feedback-form > label > span {
+  color: var(--text-dim); font: 600 9px var(--font-mono); letter-spacing: 0.16em;
+}
+.feedback-form > label small {
+  color: var(--text-faint); font-size: inherit; font-weight: 400;
+}
+.feedback-form input,
+.feedback-form select,
+.feedback-form textarea {
+  width: 100%; outline: none;
+  border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); background: var(--panel-strong);
+  font: 400 13px/1.5 var(--font-mono);
+  transition: border-color 150ms ease, background 150ms ease;
+}
+.feedback-form input, .feedback-form select { height: 38px; padding: 0 10px; }
+.feedback-form textarea { resize: vertical; min-height: 126px; padding: 9px 10px; }
+.feedback-form input::placeholder, .feedback-form textarea::placeholder { color: var(--text-faint); }
+.feedback-form input:focus, .feedback-form select:focus, .feedback-form textarea:focus {
+  border-color: color-mix(in srgb, var(--accent) 48%, transparent);
+  background: var(--panel-hover);
+}
+.feedback-honeypot {
+  position: fixed; left: -10000px; top: auto;
+  width: 1px; height: 1px; overflow: hidden;
+}
+.feedback-turnstile { min-height: 65px; width: 100%; overflow: hidden; }
+.feedback-turnstile iframe { max-width: 100%; }
+.feedback-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 2px; }
+.feedback-success { display: grid; justify-items: start; gap: 9px; padding: 26px 18px 22px; }
+.feedback-success strong {
+  color: var(--active); font: 600 10px var(--font-mono); letter-spacing: 0.18em;
+}
+.feedback-success p { margin: 0 0 6px; color: var(--text-dim); font-size: 14px; }
+
 /* ── Small screens: stack, editor stays the hero ── */
 @media (max-width: 880px) {
   /* minmax(0, ...) everywhere: a bare 1fr track minimum is min-content, and
@@ -464,6 +518,10 @@ a { color: var(--accent); }
 
 /* ── Phone widths: every pixel goes to the music ── */
 @media (max-width: 560px) {
+  .topbar { padding-inline: 9px; }
+  .topbar-actions { gap: 5px; }
+  .feedback-trigger { padding-inline: 6px; }
+  .brand-name { display: none; }
   /* File downloads are awkward on phones; SAVE and the session store keep work. */
   .editor-bar .export { display: none; }
   /* Line numbers spend ~7% of the viewport on navigation nobody does here. */
@@ -476,6 +534,8 @@ a { color: var(--accent); }
   }
   .chip-row::-webkit-scrollbar { display: none; }
   .chip-row .chip { flex: 0 0 auto; white-space: nowrap; }
+  .feedback-dialog { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
+  .feedback-head, .feedback-form { padding-inline: 14px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

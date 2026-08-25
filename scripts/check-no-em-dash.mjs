@@ -20,7 +20,11 @@ const SKIPPED_DIRECTORIES = new Set([
   'out',
   'target',
 ])
-const SKIPPED_PATHS = new Set(['packaging/src', 'packaging/pkg'])
+const SKIPPED_PATHS = new Set([
+  'apps/web/worker-configuration.d.ts',
+  'packaging/src',
+  'packaging/pkg',
+])
 
 const offenders = []
 
@@ -31,6 +35,7 @@ function scan(directory) {
       if (!SKIPPED_DIRECTORIES.has(entry.name) && !SKIPPED_PATHS.has(path)) scan(path)
       continue
     }
+    if (SKIPPED_PATHS.has(path)) continue
     if (!entry.isFile()) continue
     const contents = readFileSync(path)
     if (contents.includes(0)) continue // binary
