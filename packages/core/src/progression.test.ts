@@ -12,8 +12,8 @@ import {
 } from "./progression";
 
 describe("progression run duration", () => {
-  it("defaults to 30 minutes and extends hourly presets with ten hours", () => {
-    expect(DEFAULT_PROGRESSION_RUN_DURATION_MS).toBe(30 * 60_000);
+  it("defaults to five hours and offers presets from 30 minutes to ten hours", () => {
+    expect(DEFAULT_PROGRESSION_RUN_DURATION_MS).toBe(5 * 60 * 60_000);
     expect(PROGRESSION_RUN_DURATION_PRESETS_MS).toEqual([
       30 * 60_000,
       60 * 60_000,

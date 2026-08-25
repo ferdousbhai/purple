@@ -423,6 +423,7 @@ a { color: var(--accent); }
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
+.progression-copy span:only-child { grid-column: 1 / -1; }
 .progression-copy em {
   margin-right: 7px;
   color: var(--accent);
@@ -456,9 +457,13 @@ a { color: var(--accent); }
   border: 1px solid var(--border);
   border-radius: 5px;
   outline: none;
-  background: var(--panel);
-  color: var(--text-dim);
+  background: var(--panel-strong);
+  color: var(--text);
   font: 500 9px var(--font-mono);
+}
+.run-duration option {
+  background: var(--surface);
+  color: var(--text);
 }
 .run-duration:focus {
   border-color: color-mix(in srgb, var(--active) 45%, transparent);

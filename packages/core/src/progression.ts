@@ -12,9 +12,9 @@ const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
 
 /** Runs are deliberately finite even when a tab is left open. */
-export const DEFAULT_PROGRESSION_RUN_DURATION_MS = 30 * MINUTE_MS;
+export const DEFAULT_PROGRESSION_RUN_DURATION_MS = 5 * HOUR_MS;
 export const PROGRESSION_RUN_DURATION_PRESETS_MS = [
-  DEFAULT_PROGRESSION_RUN_DURATION_MS,
+  30 * MINUTE_MS,
   HOUR_MS,
   2 * HOUR_MS,
   3 * HOUR_MS,

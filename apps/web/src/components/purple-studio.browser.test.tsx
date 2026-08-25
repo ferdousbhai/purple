@@ -1111,7 +1111,11 @@ describe('Purple studio browser flow', () => {
     const duration = await screen.findByRole('combobox', {
       name: 'Run duration',
     }) as HTMLSelectElement
-    expect(duration.value).toBe(String(30 * 60_000))
+    expect(screen.getByText('AUTOPLAY', { selector: '.chip-label' })).toBeVisible()
+    expect(screen.queryByText(`${PLANNED_CYCLES} CYCLES`)).toBeNull()
+    expect(duration.value).toBe(String(5 * 60 * 60_000))
+    expect(getComputedStyle(duration).color)
+      .toBe(getComputedStyle(document.documentElement).color)
     expect(Array.from(duration.options, ({ text }) => text)).toEqual([
       '30 MIN',
       '1 HR',
@@ -1301,11 +1305,11 @@ describe('Purple studio browser flow', () => {
     expect(studio.activeCode).toBe(FIRST_PATTERN)
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(30 * 60_000)
+      await vi.advanceTimersByTimeAsync(5 * 60 * 60_000)
     })
 
     expect(screen.getByRole('button', { name: 'START RUN' })).toBeEnabled()
-    expect(screen.getByText('30 MIN COMPLETE', { selector: 'strong' }))
+    expect(screen.getByText('5 HR COMPLETE', { selector: 'strong' }))
       .toBeInTheDocument()
     expect(studio.activeCode).toBe(FIRST_PATTERN)
     expect(studio.stopCalls).toBe(0)

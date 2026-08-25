@@ -1133,13 +1133,10 @@ function ProgressionRow(props: {
   onXfadeNow(): void
 }) {
   const running = props.run.phase !== 'idle'
-  const afterCycles = props.run.phase === 'idle'
-    ? props.step?.afterCycles
-    : props.run.afterCycles
   const action = props.run.phase === 'idle'
     ? props.step?.nextAction
     : props.run.nextAction
-  const status = progressionRunStatus(props.run, afterCycles, props.notice)
+  const status = progressionRunStatus(props.run, props.notice)
 
   return (
     <div
@@ -1148,12 +1145,14 @@ function ProgressionRow(props: {
       <span className="sr-only" role="status">
         {progressionRunAnnouncement(props.run, action, props.notice)}
       </span>
-      <span className="chip-label">RUN</span>
+      <span className="chip-label">AUTOPLAY</span>
       <div className="progression-body">
         <div className="progression-copy">
-          <strong role={props.run.phase === 'waiting' ? 'timer' : undefined}>
-            {status}
-          </strong>
+          {status ? (
+            <strong role={props.run.phase === 'waiting' ? 'timer' : undefined}>
+              {status}
+            </strong>
+          ) : null}
           {action ? (
             <span>
               {props.overrideQueued ? <em>YOUR NEXT</em> : null}
@@ -1218,12 +1217,11 @@ function progressionRunAnnouncement(
 
 function progressionRunStatus(
   run: ProgressionRunView,
-  afterCycles: number | undefined,
   notice: string | null,
-): string {
+): string | null {
   switch (run.phase) {
     case 'idle':
-      return notice ?? `${afterCycles ?? ''} CYCLES`
+      return notice
     case 'starting':
       return 'STARTING'
     case 'waiting':
