@@ -70,6 +70,7 @@ export function FeedbackDialog({ onClose }: { onClose: () => void }) {
   return (
     <ModalDialog
       className="feedback-dialog"
+      dismissible={!submitting}
       titleId="feedback-title"
       descriptionId="feedback-privacy"
       eyebrow="FEEDBACK"

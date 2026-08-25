@@ -1,7 +1,7 @@
 /* oxlint-disable anti-slop/no-module-mocking -- This exercises real playback orchestration against a deterministic audio-engine boundary. */
 /* oxlint-disable anti-slop/require-safety-comment-for-type-assertion -- Vitest's hoisted mutable fixtures need explicit collection types. */
 import { act } from 'react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import { usePlayback } from '@purple/ui/use-playback'
 
@@ -46,6 +46,8 @@ beforeEach(() => {
   engine.cycle = 0
   engine.cps = 2
 })
+
+afterEach(() => vi.useRealTimers())
 
 describe('usePlayback cancellation in Chromium', () => {
   it('cancels loading before a delayed audio activation can evaluate', async () => {
@@ -98,5 +100,24 @@ describe('usePlayback cancellation in Chromium', () => {
     expect(engine.evaluateCalls).not.toContain('s("hh*8")')
     expect(engine.hushCalls).toBeGreaterThan(0)
     expect(hook.result.current.playbackState).toBe('stopped')
+  })
+
+  it('reports musical countdown progress while waiting for progression cycles', async () => {
+    vi.useFakeTimers()
+    const hook = renderHook(() => usePlayback())
+    const progress = vi.fn()
+    let waitPromise!: ReturnType<typeof hook.result.current.waitForCycles>
+
+    act(() => {
+      waitPromise = hook.result.current.waitForCycles(4, undefined, progress)
+    })
+    expect(progress).toHaveBeenLastCalledWith(4, 2)
+
+    engine.cycle = 1
+    await act(async () => vi.advanceTimersByTimeAsync(1_000))
+    expect(progress).toHaveBeenLastCalledWith(3, 2)
+
+    act(() => hook.result.current.stop())
+    await expect(waitPromise).resolves.toEqual({ ok: false, kind: 'cancelled' })
   })
 })

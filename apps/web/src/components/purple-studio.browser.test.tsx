@@ -2,8 +2,10 @@
 /* oxlint-disable anti-slop/require-safety-comment-for-type-assertion -- Vitest's hoisted mutable fixtures need explicit collection and result types. */
 import { act } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, renderHook, screen, waitFor } from '@testing-library/react'
+import { page } from 'vitest/browser'
+import { cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import '#/styles.css'
 import { PurpleStudio } from './purple-studio'
 import { SHOWCASE_PATTERNS } from '@purple/core/recipes'
 import { useGeneratedPattern } from '@purple/ui/use-generated-pattern'
@@ -14,6 +16,8 @@ const FIRST_PATTERN = 's("bd sd")'
 const SECOND_PATTERN = 's("hh*8")'
 const FIXED_PATTERN = 's("hh*4").gain(0.5)'
 const HAND_EDITED_PATTERN = 's("cp*2")'
+const PLANNED_CYCLES = 1_856
+const NEXT_ACTION = 'Add an evolving granular piano texture drifting in and out of the high register while deepening the resonance of the drone pads'
 const NEXT_SUGGESTIONS = [
   { label: 'Drift to dub', prompt: 'Continue as spacious dub' },
   { label: 'Lift the pulse', prompt: 'Continue as bright house' },
@@ -48,11 +52,13 @@ const studio = vi.hoisted(() => ({
   playCalls: [] as string[],
   playResults: [] as unknown[],
   transitionCalls: [] as string[],
+  transitionCycleCalls: [] as number[],
   transitionResults: [] as unknown[],
   progressionWaitCalls: [] as number[],
   progressionWaitGates: [] as Promise<void>[],
   prepareValidationCalls: 0,
   stopCalls: 0,
+  storedKey: 'browser-test-key' as string | null,
   clearChatCalls: 0,
   saveChatCalls: 0,
   savedChatStates: [] as Array<{
@@ -68,6 +74,12 @@ const studio = vi.hoisted(() => ({
     createdAt: number
     updatedAt: number
   }>,
+  upsertedPatterns: [] as Array<{
+    id: string
+    title: string
+    code: string
+    shareId?: string
+  }>,
   savedSessionPatterns: [] as Array<{
     code: string
     customTitle: string | null
@@ -80,6 +92,11 @@ const studio = vi.hoisted(() => ({
     sourcePrompt?: string
     shareId?: string
   } | null,
+  restoredChat: null as {
+    messages: Array<{ role: 'user' | 'assistant'; content: string }>
+    artifact: null
+    coveredCount: number
+  } | null,
 }))
 
 vi.mock('#/lib/byok', () => ({
@@ -87,14 +104,16 @@ vi.mock('#/lib/byok', () => ({
     studio.clearChatCalls++
     return true
   },
-  getByokKey: () => 'browser-test-key',
-  loadByokChat: () => null,
+  getByokKey: () => studio.storedKey,
+  loadByokChat: () => studio.restoredChat,
   saveByokChat: (state: { messages: Array<{ role: string; content: string }> }) => {
     studio.saveChatCalls++
     studio.savedChatStates.push(state)
     return true
   },
-  setByokKey: () => undefined,
+  setByokKey: (key: string | null) => {
+    studio.storedKey = key?.trim() || null
+  },
   createByokBackend: () => ({
     async stream(messages: unknown[], callbacks: {
       onPatternDelta(delta: string): void
@@ -111,8 +130,8 @@ vi.mock('#/lib/byok', () => ({
         turn: {
           pattern,
           progression: {
-            afterCycles: 16,
-            nextAction: 'Strip back to bass and filtered drums',
+            afterCycles: PLANNED_CYCLES,
+            nextAction: NEXT_ACTION,
           },
           title: 'Browser smoke pattern',
           suggestions: NEXT_SUGGESTIONS,
@@ -143,8 +162,10 @@ vi.mock('#/lib/byok-storage', () => ({
     studio.clearChatCalls++
     return true
   },
-  getByokKey: () => 'browser-test-key',
-  setByokKey: () => undefined,
+  getByokKey: () => studio.storedKey,
+  setByokKey: (key: string | null) => {
+    studio.storedKey = key?.trim() || null
+  },
 }))
 
 vi.mock('#/lib/patterns', () => ({
@@ -159,9 +180,37 @@ vi.mock('#/lib/patterns', () => ({
   },
   sharedLibraryId: (id: string) => `shared:${id}`,
   uniquePatternTitle: (title: string) => title,
-  upsertPattern: () => true,
+  upsertPattern: (pattern: {
+    id: string
+    title: string
+    code: string
+    prompt?: string
+    shareId?: string
+    createdAt: number
+    updatedAt: number
+  }) => {
+    studio.upsertedPatterns.push(pattern)
+    studio.savedPatterns = [
+      ...studio.savedPatterns.filter((saved) => saved.id !== pattern.id),
+      pattern,
+    ]
+    return true
+  },
   usePatterns: () => studio.savedPatterns,
 }))
+
+vi.mock('./share-dialog', async () => {
+  const React = await import('react')
+  return {
+    ShareDialog(props: { onShared(id: string, title: string): void }) {
+      return React.createElement(
+        'button',
+        { onClick: () => props.onShared('New_123-xYz9', 'Published Pattern') },
+        'PUBLISH TEST PATTERN',
+      )
+    },
+  }
+})
 
 vi.mock('@purple/ui/pattern-editor', async () => {
   const React = await import('react')
@@ -244,10 +293,11 @@ vi.mock('@purple/ui/use-playback', async () => {
 
       const transition = React.useCallback(async (
         code: string,
-        _cycles: number,
+        cycles: number,
         options: TestPlaybackOptions = {},
       ) => {
         studio.transitionCalls.push(code)
+        studio.transitionCycleCalls.push(cycles)
         const previous = snapshotRef.current.activeCode
         const operation = ++operationRef.current
         setSnapshot((current) => ({ ...current, playbackState: 'transitioning', error: null }))
@@ -270,8 +320,10 @@ vi.mock('@purple/ui/use-playback', async () => {
       const waitForCycles = React.useCallback((
         cycles: number,
         signal?: AbortSignal,
+        onProgress?: (remainingCycles: number, cyclesPerSecond: number) => void,
       ): Promise<EvalResult> => {
         studio.progressionWaitCalls.push(cycles)
+        onProgress?.(cycles, 0.5)
         const gate = studio.progressionWaitGates.shift()
         if (!gate) {
           return Promise.resolve({ ok: false, kind: 'cancelled' })
@@ -338,18 +390,22 @@ beforeEach(() => {
   studio.playCalls.length = 0
   studio.playResults.length = 0
   studio.transitionCalls.length = 0
+  studio.transitionCycleCalls.length = 0
   studio.transitionResults.length = 0
   studio.progressionWaitCalls.length = 0
   studio.progressionWaitGates.length = 0
   studio.prepareValidationCalls = 0
   studio.stopCalls = 0
+  studio.storedKey = 'browser-test-key'
   studio.clearChatCalls = 0
   studio.saveChatCalls = 0
   studio.savedChatStates.length = 0
   studio.activeCode = ''
   studio.savedPatterns.length = 0
+  studio.upsertedPatterns.length = 0
   studio.savedSessionPatterns.length = 0
   studio.restoredPattern = null
+  studio.restoredChat = null
 })
 
 afterEach(() => {
@@ -368,6 +424,11 @@ async function playGeneratedPattern(expectedActiveCode: string) {
   await screen.findByRole('button', { name: 'Drift to dub' })
   expect(studio.playCalls).toEqual([])
   await userEvent.click(screen.getByRole('button', { name: /PLAY/ }))
+  await waitFor(() => expect(studio.activeCode).toBe(expectedActiveCode))
+}
+
+async function xfadeNow(expectedActiveCode: string) {
+  await userEvent.click(screen.getByRole('button', { name: 'XFADE NOW' }))
   await waitFor(() => expect(studio.activeCode).toBe(expectedActiveCode))
 }
 
@@ -413,6 +474,22 @@ function deferred() {
   return { promise, resolve }
 }
 
+function deferredResult<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((done) => {
+    resolve = done
+  })
+  return { promise, resolve }
+}
+
+async function waitForProgressionWaits(count: number) {
+  await waitFor(() =>
+    expect(studio.progressionWaitCalls).toEqual(
+      Array.from({ length: count }, () => PLANNED_CYCLES),
+    ),
+  )
+}
+
 async function startAndStageRevision() {
   studio.generations.push(FIRST_PATTERN, SECOND_PATTERN)
   render(<PurpleStudio />)
@@ -425,7 +502,7 @@ async function startAndStageRevision() {
   await playGeneratedPattern(FIRST_PATTERN)
 
   await sendPrompt('Make the hats faster')
-  await screen.findByRole('button', { name: 'XFADE' })
+  await screen.findByRole('button', { name: 'XFADE NOW' })
 }
 
 async function startModelPlannedRun() {
@@ -438,7 +515,7 @@ async function startModelPlannedRun() {
   await screen.findByRole('button', { name: 'START RUN' })
   await userEvent.click(screen.getByRole('button', { name: 'START RUN' }))
   await waitFor(() => expect(studio.activeCode).toBe(FIRST_PATTERN))
-  await waitFor(() => expect(studio.progressionWaitCalls).toEqual([16]))
+  await waitForProgressionWaits(1)
   return musicalWake
 }
 
@@ -457,7 +534,169 @@ async function startDelayedPlayRepair(error: string) {
   return repair
 }
 
+async function renderPlayingStudio() {
+  const rendered = render(<PurpleStudio />)
+  await screen.findByLabelText('Pattern code')
+  await screen.findByLabelText('Describe the music')
+  await userEvent.click(await screen.findByRole('button', { name: /PLAY/ }))
+  await waitFor(() => expect(studio.activeCode).not.toBe(''))
+  return rendered
+}
+
 describe('Purple studio browser flow', () => {
+  it('saves a pasted Gemini key and closes the key card immediately', async () => {
+    studio.storedKey = null
+    const user = userEvent.setup()
+    render(<PurpleStudio />)
+    await screen.findByLabelText('Pattern code')
+
+    const keyInput = screen.getByLabelText('Gemini API key')
+    keyInput.focus()
+    await act(async () => {
+      await user.paste('  AIza-pasted-browser-key  ')
+    })
+
+    expect(studio.storedKey).toBe('AIza-pasted-browser-key')
+    expect(screen.queryByLabelText('Gemini API key')).toBeNull()
+    expect(screen.getByRole('button', { name: 'KEY ✓' })).toBeVisible()
+  })
+
+  it('does not send a prompt when Enter confirms IME composition', async () => {
+    render(<PurpleStudio />)
+    const input = await screen.findByLabelText('Describe the music')
+    await userEvent.type(input, 'ゆっくりした音楽')
+
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true })
+
+    expect(studio.streamMessages).toEqual([])
+    expect(input).toHaveValue('ゆっくりした音楽')
+  })
+
+  it('keeps the public patterns route visible in the playing phone topbar', async () => {
+    await act(async () => page.viewport(320, 568))
+    try {
+      const { container } = await renderPlayingStudio()
+
+      expect(screen.getByRole('link', { name: 'PATTERNS' })).toBeVisible()
+      const topbar = container.querySelector('.topbar')
+      expect(topbar?.scrollWidth).toBeLessThanOrEqual(topbar?.clientWidth ?? 0)
+    } finally {
+      await act(async () => page.viewport(1280, 720))
+    }
+  })
+
+  it('uses Save for the local library even when a public pattern was liked', async () => {
+    render(<PurpleStudio sharedPattern={{
+      id: 'Abc_123-xYz9',
+      title: 'Shared pattern',
+      code: FIRST_PATTERN,
+      createdAt: 1_700_000_000_000,
+      likes: 4,
+      dislikes: 1,
+      score: 3,
+      viewerVote: 1,
+    }} />)
+
+    expect(screen.queryByRole('button', { name: /LIKE/ })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'SAVE' }))
+    expect(studio.upsertedPatterns).toEqual([
+      expect.objectContaining({
+        id: 'shared:Abc_123-xYz9',
+        shareId: 'Abc_123-xYz9',
+      }),
+    ])
+  })
+
+  it('disables Save and Share when the editor has no pattern', async () => {
+    render(<PurpleStudio />)
+    const editor = await screen.findByLabelText('Pattern code')
+
+    await userEvent.clear(editor)
+
+    expect(screen.getByRole('button', { name: 'SAVE' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'SHARE' })).toBeDisabled()
+  })
+
+  it('adds the public identity to a locally saved pattern after sharing', async () => {
+    const saved = {
+      id: 'local-pattern',
+      title: 'Saved Pattern',
+      code: FIRST_PATTERN,
+      prompt: 'Original prompt',
+      createdAt: 1_700_000_000_000,
+      updatedAt: 1_700_000_000_123,
+    }
+    studio.restoredPattern = {
+      code: FIRST_PATTERN,
+      customTitle: saved.title,
+      sourcePrompt: saved.prompt,
+    }
+    studio.savedPatterns = [saved]
+    render(<PurpleStudio />)
+
+    expect(await screen.findByRole('button', { name: 'SAVED' })).toBeVisible()
+    await userEvent.click(screen.getByRole('button', { name: 'SHARE' }))
+    await userEvent.click(await screen.findByRole('button', {
+      name: 'PUBLISH TEST PATTERN',
+    }))
+
+    expect(studio.upsertedPatterns.at(-1)).toEqual({
+      ...saved,
+      title: 'Published Pattern',
+      shareId: 'New_123-xYz9',
+    })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'SAVED' })).toBeVisible())
+    expect(studio.savedSessionPatterns.at(-1)).toMatchObject({
+      shareId: 'New_123-xYz9',
+    })
+  })
+
+  it('starts a shared pattern with fresh matching chat context', async () => {
+    studio.restoredChat = {
+      messages: [
+        { role: 'user', content: 'Old unrelated request' },
+        { role: 'assistant', content: `\`\`\`strudel\n${HAND_EDITED_PATTERN}\n\`\`\`` },
+      ],
+      artifact: null,
+      coveredCount: 0,
+    }
+    studio.generations.push(SECOND_PATTERN)
+    render(<PurpleStudio sharedPattern={{
+      id: 'Abc_123-xYz9',
+      title: 'Shared pattern',
+      code: FIRST_PATTERN,
+      createdAt: 1_700_000_000_000,
+      likes: 4,
+      dislikes: 1,
+      score: 3,
+      viewerVote: 0,
+    }} />)
+
+    expect(await screen.findByLabelText('Pattern code')).toHaveValue(FIRST_PATTERN)
+    expect(screen.queryByText('Old unrelated request')).toBeNull()
+    await waitFor(() => expect(studio.clearChatCalls).toBe(1))
+
+    await sendPrompt('Change the shared rhythm')
+    await screen.findByRole('button', { name: 'Drift to dub' })
+    const request = studio.streamMessages[0] as Array<{ content: string }>
+    expect(request.some(({ content }) => content.includes(FIRST_PATTERN))).toBe(true)
+    expect(JSON.stringify(request)).not.toContain('Old unrelated request')
+    expect(JSON.stringify(request)).not.toContain(HAND_EDITED_PATTERN)
+  })
+
+  it('puts the equalizer first and keeps feedback beside library and key', async () => {
+    const { container } = await renderPlayingStudio()
+
+    const actions = container.querySelector('.topbar-actions')
+    const feedback = screen.getByRole('button', { name: 'FEEDBACK' })
+    const library = screen.getByRole('button', { name: 'LIBRARY' })
+    const key = screen.getByRole('button', { name: 'KEY ✓' })
+
+    expect(actions?.firstElementChild).toHaveClass('eq-bars')
+    expect(feedback.nextElementSibling).toBe(library)
+    expect(library.nextElementSibling).toBe(key)
+  })
+
   it('opens a fresh session on a titled showcase without autoplaying it', async () => {
     render(<PurpleStudio />)
 
@@ -482,7 +721,7 @@ describe('Purple studio browser flow', () => {
     expect(screen.getByLabelText('Pattern title')).toHaveValue('Saved Session')
   })
 
-  it('previews the pattern and repairs it while turn metadata is still streaming', async () => {
+  it('keeps the current pattern visible while checking and repairing a revision', async () => {
     const patternCompletion = deferred()
     const metadata = deferred()
     const repair = deferred()
@@ -497,44 +736,53 @@ describe('Purple studio browser flow', () => {
     studio.validationResults.set(FIXED_PATTERN, [[]])
     render(<PurpleStudio />)
 
+    const editor = await screen.findByLabelText('Pattern code') as HTMLTextAreaElement
+    const originalPattern = editor.value
     await sendPrompt('Start a broken beat')
 
-    await waitFor(() =>
-      expect(screen.getByLabelText('Pattern code')).toHaveValue(FIRST_PATTERN),
-    )
-    expect(screen.getByLabelText('Pattern code')).toHaveAttribute('readonly')
+    expect(await screen.findByText('REVISING…')).toBeVisible()
+    expect(editor).toHaveValue(originalPattern)
+    expect(editor).toHaveAttribute('readonly')
     expect(screen.getByLabelText('Pattern title')).toBeDisabled()
-    expect(screen.getByRole('button', { name: /LIKE/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /SAVE/ })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'EXPORT' })).toBeDisabled()
     expect(studio.validationCalls).toEqual([])
 
     patternCompletion.resolve()
     await waitFor(() => expect(studio.repairMessages).toHaveLength(1))
-    expect(screen.getByLabelText('Pattern code')).toHaveAttribute('readonly')
+    expect(screen.getByText('CHECKING…')).toBeVisible()
+    expect(editor).toHaveValue(originalPattern)
+    expect(editor).toHaveAttribute('readonly')
     expect(screen.getByRole('button', { name: /PLAY/ })).toBeDisabled()
 
     repair.resolve()
     await waitFor(() =>
-      expect(screen.getByLabelText('Pattern code')).toHaveValue(FIXED_PATTERN),
+      expect(editor).toHaveValue(FIXED_PATTERN),
     )
-    expect(screen.getByLabelText('Pattern code')).not.toHaveAttribute('readonly')
-    expect(screen.getByLabelText('Pattern title')).not.toBeDisabled()
-    expect(screen.getByRole('button', { name: /LIKE/ })).not.toBeDisabled()
-    expect(screen.getByRole('button', { name: 'EXPORT' })).not.toBeDisabled()
+    expect(screen.queryByText('CHECKING…')).toBeNull()
+    expect(screen.getByText('FINISHING…')).toBeVisible()
+    expect(editor).not.toHaveAttribute('readonly')
+    expect(screen.getByLabelText('Pattern title')).toBeDisabled()
+    expect(screen.getByRole('button', { name: /SAVE/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'SHARE' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'EXPORT' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /PLAY/ })).toBeDisabled()
     expect(studio.playCalls).toEqual([])
 
     metadata.resolve()
-    await waitFor(() =>
-      expect(screen.getByLabelText('Pattern code')).toHaveValue(FIXED_PATTERN),
-    )
+    await screen.findByRole('button', { name: 'Drift to dub' })
+    expect(screen.queryByText('FINISHING…')).toBeNull()
+    expect(screen.getByLabelText('Pattern title')).not.toBeDisabled()
+    expect(screen.getByRole('button', { name: /SAVE/ })).not.toBeDisabled()
+    expect(screen.getByRole('button', { name: 'SHARE' })).not.toBeDisabled()
+    expect(screen.getByRole('button', { name: 'EXPORT' })).not.toBeDisabled()
     expect(studio.activeCode).toBe('')
     expect(studio.playCalls).toEqual([])
-    expect(screen.getByRole('button', { name: 'Drift to dub' })).toBeVisible()
     expect(studio.streamMessages).toHaveLength(1)
     expect(studio.repairMessages).toHaveLength(1)
   })
 
-  it('discards a partial preview when the composer unmounts', async () => {
+  it('keeps the durable pattern when a streaming revision is unmounted', async () => {
     const patternCompletion = deferred()
     studio.generations.push(FIRST_PATTERN)
     studio.patternCompletionGates.push(patternCompletion.promise)
@@ -544,11 +792,13 @@ describe('Purple studio browser flow', () => {
     const originalPattern = editor.value
     const originalTitle = (screen.getByLabelText('Pattern title') as HTMLInputElement).value
     await sendPrompt('Start a beat')
-    await waitFor(() => expect(editor).toHaveValue(FIRST_PATTERN))
+    expect(await screen.findByText('REVISING…')).toBeVisible()
+    expect(editor).toHaveValue(originalPattern)
     expect(editor).toHaveAttribute('readonly')
 
     await unmountComposerAndExpectPattern(editor, originalPattern)
     expect(screen.getByLabelText('Pattern title')).toHaveValue(originalTitle)
+    expect(studio.savedChatStates.at(-1)?.messages).toEqual([])
   })
 
   it('disables library pattern selection while generation owns the editor', async () => {
@@ -564,10 +814,11 @@ describe('Purple studio browser flow', () => {
     })
     render(<PurpleStudio />)
 
+    const editor = await screen.findByLabelText('Pattern code') as HTMLTextAreaElement
+    const originalPattern = editor.value
     await sendPrompt('Start a beat')
-    await waitFor(() =>
-      expect(screen.getByLabelText('Pattern code')).toHaveValue(FIRST_PATTERN),
-    )
+    expect(await screen.findByText('REVISING…')).toBeVisible()
+    expect(editor).toHaveValue(originalPattern)
     await userEvent.click(screen.getByRole('button', { name: 'LIBRARY' }))
 
     expect(screen.getByRole('button', { name: 'Saved Pattern' })).toBeDisabled()
@@ -583,6 +834,33 @@ describe('Purple studio browser flow', () => {
     expect(studio.savedSessionPatterns.at(-1)?.code).toBe(originalPattern)
   })
 
+  it('restores shared-pattern identity when a revision is cancelled', async () => {
+    const metadata = deferred()
+    studio.restoredPattern = {
+      code: FIRST_PATTERN,
+      customTitle: 'Shared original',
+      sourcePrompt: 'Original prompt',
+      shareId: 'shared-original',
+    }
+    studio.generations.push(SECOND_PATTERN)
+    studio.metadataGates.push(metadata.promise)
+    render(<PurpleStudio />)
+
+    const editor = await screen.findByLabelText('Pattern code')
+    await sendPrompt('Change the rhythm')
+    await waitFor(() => expect(editor).toHaveValue(SECOND_PATTERN))
+    await unmountComposerAndExpectPattern(editor, FIRST_PATTERN)
+
+    const restored = studio.savedSessionPatterns.at(-1)
+    expect(restored).toMatchObject({
+      code: FIRST_PATTERN,
+      customTitle: 'Shared original',
+      sourcePrompt: 'Original prompt',
+      shareId: 'shared-original',
+    })
+    metadata.resolve()
+  })
+
   it('preserves a hand edit when metadata-tail generation is cancelled', async () => {
     const { editor } = await startMetadataTailGeneration()
 
@@ -593,6 +871,24 @@ describe('Purple studio browser flow', () => {
     await waitFor(() =>
       expect(studio.savedSessionPatterns.at(-1)?.code).toBe(HAND_EDITED_PATTERN),
     )
+  })
+
+  it('does not append cancelled generated metadata after a hand edit', async () => {
+    const { editor, metadata } = await startMetadataTailGeneration()
+
+    await userEvent.clear(editor)
+    await userEvent.type(editor, HAND_EDITED_PATTERN)
+    await act(async () => metadata.resolve())
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Clear session and start over' }))
+        .toBeEnabled(),
+    )
+    expect(editor).toHaveValue(HAND_EDITED_PATTERN)
+    expect(studio.savedChatStates.at(-1)?.messages).toEqual([
+      { role: 'user', content: 'Start a beat' },
+    ])
+    expect(studio.savedSessionPatterns.at(-1)?.code).toBe(HAND_EDITED_PATTERN)
   })
 
   it('preserves a library selection when metadata-tail generation is cancelled', async () => {
@@ -625,7 +921,8 @@ describe('Purple studio browser flow', () => {
     const originalPattern = editor.value
     await waitFor(() => expect(studio.savedSessionPatterns.length).toBeGreaterThan(0))
     await sendPrompt('Start a beat')
-    await waitFor(() => expect(editor).toHaveValue(FIRST_PATTERN))
+    expect(await screen.findByText('CHECKING…')).toBeVisible()
+    expect(editor).toHaveValue(originalPattern)
     expect(editor).toHaveAttribute('readonly')
 
     await unmountComposerAndExpectPattern(editor, originalPattern)
@@ -633,7 +930,30 @@ describe('Purple studio browser flow', () => {
     validation.resolve()
   })
 
-  it('preserves a title edited while metadata is still streaming', async () => {
+  it('does not publish a generated turn when validation rejects its pattern', async () => {
+    studio.generations.push(FIRST_PATTERN)
+    studio.validationResults.set(FIRST_PATTERN, [[{
+      kind: 'evaluation',
+      error: 'invalid generated pattern',
+    }]])
+    render(<PurpleStudio />)
+
+    const editor = await screen.findByLabelText('Pattern code') as HTMLTextAreaElement
+    const originalPattern = editor.value
+    await sendPrompt('Start a beat')
+
+    await screen.findByText(
+      'Purple could not produce a playable pattern. Try describing the change another way.',
+    )
+    expect(editor).toHaveValue(originalPattern)
+    expect(editor).not.toHaveAttribute('readonly')
+    expect(studio.savedChatStates.at(-1)?.messages).toEqual([
+      { role: 'user', content: 'Start a beat' },
+    ])
+    expect(studio.savedSessionPatterns.at(-1)?.code).toBe(originalPattern)
+  })
+
+  it('unlocks title editing only after generated metadata settles', async () => {
     const metadata = deferred()
     studio.generations.push(FIRST_PATTERN)
     studio.metadataGates.push(metadata.promise)
@@ -644,16 +964,22 @@ describe('Purple studio browser flow', () => {
     await waitFor(() => expect(editor).not.toHaveAttribute('readonly'))
 
     const title = screen.getByLabelText('Pattern title')
-    await userEvent.clear(title)
-    await userEvent.type(title, 'My hand title')
+    expect(title).toBeDisabled()
+    expect(screen.getByText('FINISHING…')).toBeVisible()
     metadata.resolve()
 
     await screen.findByRole('button', { name: 'Drift to dub' })
+    expect(title).not.toBeDisabled()
+    await userEvent.clear(title)
+    await userEvent.type(title, 'My hand title')
+
     expect(title).toHaveValue('My hand title')
   })
 
   it('clears the session and brings it back through UNDO', async () => {
     await renderGeneratedPattern()
+    expect(screen.getByRole('button', { name: 'Drift to dub' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'START RUN' })).toBeVisible()
 
     await userEvent.click(
       screen.getByRole('button', { name: 'Clear session and start over' }),
@@ -661,6 +987,8 @@ describe('Purple studio browser flow', () => {
     await screen.findByText('What do you want to hear?')
 
     expect(screen.queryByText('Start a beat')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Drift to dub' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'START RUN' })).toBeNull()
     expect(studio.clearChatCalls).toBe(1)
     expect(screen.getByLabelText('Pattern code')).toHaveValue(FIRST_PATTERN)
 
@@ -668,24 +996,90 @@ describe('Purple studio browser flow', () => {
     await userEvent.click(screen.getByRole('button', { name: 'UNDO' }))
 
     await screen.findByText('Start a beat')
+    expect(screen.getByRole('button', { name: 'Drift to dub' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'START RUN' })).toBeVisible()
     expect(screen.queryByText('What do you want to hear?')).toBeNull()
     expect(screen.queryByRole('button', { name: 'UNDO' })).toBeNull()
     expect(studio.saveChatCalls).toBeGreaterThan(savesBeforeUndo)
   })
 
-  it('waits for PLAY and exposes an explicit XFADE for a revision', async () => {
+  it('schedules a revision crossfade and lets the listener take it now', async () => {
     await startAndStageRevision()
 
     expect(studio.prepareValidationCalls).toBe(2)
     expect(studio.playCalls).toEqual([FIRST_PATTERN])
     expect(studio.validationCalls).toContain(FIRST_PATTERN)
     expect(studio.validationCalls).toContain(SECOND_PATTERN)
+    expect(studio.validationCalls.filter((code) => code === SECOND_PATTERN)).toHaveLength(1)
     expect(studio.transitionCalls).toEqual([])
+    const countdown = screen.getByText('XFADE IN 5s')
+    expect(countdown).toBeVisible()
+    expect(countdown.closest('[aria-live]:not([aria-live="off"])')).toBeNull()
+    expect(screen.getByRole('group', { name: 'Crossfade duration' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '32 cycle crossfade' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '8 cycle crossfade' }))
+      .toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByRole('button', {
+      name: 'Apply editor changes to playback (Ctrl+Enter)',
+    })).toBeNull()
+    const editor = screen.getByLabelText('Pattern code')
+    act(() => {
+      editor.dispatchEvent(new KeyboardEvent('keydown', {
+        bubbles: true,
+        ctrlKey: true,
+        key: 'Enter',
+      }))
+    })
+    expect(studio.playCalls).toEqual([FIRST_PATTERN])
 
-    await userEvent.click(screen.getByRole('button', { name: 'XFADE' }))
-
-    await waitFor(() => expect(studio.activeCode).toBe(SECOND_PATTERN))
+    await xfadeNow(SECOND_PATTERN)
     expect(studio.transitionCalls).toEqual([SECOND_PATTERN])
+    expect(studio.transitionCycleCalls).toEqual([8])
+  })
+
+  it('starts only one crossfade when immediate actions overlap', async () => {
+    const transition = deferredResult<TestPlaybackResult>()
+    studio.transitionResults.push(transition.promise)
+    await startAndStageRevision()
+
+    const xfadeNow = screen.getByRole('button', { name: 'XFADE NOW' })
+    act(() => {
+      xfadeNow.click()
+      xfadeNow.click()
+    })
+
+    expect(studio.transitionCalls).toEqual([SECOND_PATTERN])
+    expect(screen.queryByLabelText('Generating')).toBeNull()
+    await act(async () => transition.resolve({ ok: true }))
+    await waitFor(() => expect(studio.activeCode).toBe(SECOND_PATTERN))
+  })
+
+  it('crossfades a user-directed revision after five seconds', async () => {
+    studio.generations.push(FIRST_PATTERN, SECOND_PATTERN)
+    render(<PurpleStudio />)
+    await sendPrompt('Start a beat')
+    await playGeneratedPattern(FIRST_PATTERN)
+
+    await sendPrompt('Make the hats faster')
+    expect(await screen.findByText('XFADE IN 5s')).toBeVisible()
+
+    await waitFor(() => expect(studio.activeCode).toBe(SECOND_PATTERN), {
+      timeout: 7_000,
+    })
+    expect(studio.transitionCalls).toEqual([SECOND_PATTERN])
+    expect(studio.transitionCycleCalls).toEqual([8])
+  })
+
+  it('cancels a scheduled crossfade without discarding the revision', async () => {
+    await startAndStageRevision()
+
+    await userEvent.click(screen.getByRole('button', { name: 'CANCEL' }))
+
+    expect(screen.queryByText(/XFADE IN/)).toBeNull()
+    expect(screen.getByRole('button', { name: 'XFADE' })).toBeVisible()
+    expect(screen.getByLabelText('Pattern code')).toHaveValue(SECOND_PATTERN)
+    expect(studio.activeCode).toBe(FIRST_PATTERN)
+    expect(studio.transitionCalls).toEqual([])
   })
 
   it('keeps autonomous playback opt-in with bounded duration presets', async () => {
@@ -705,6 +1099,7 @@ describe('Purple studio browser flow', () => {
       '3 HR',
       '4 HR',
       '5 HR',
+      '10 HR',
     ])
     expect(studio.playCalls).toEqual([])
 
@@ -715,13 +1110,14 @@ describe('Purple studio browser flow', () => {
 
   it('runs the model-planned action after its musical wait and crossfades it', async () => {
     const musicalWake = await startModelPlannedRun()
-    expect(studio.progressionWaitCalls).toEqual([16])
+    expect(studio.progressionWaitCalls).toEqual([PLANNED_CYCLES])
     expect(studio.streamMessages).toHaveLength(1)
 
     musicalWake.resolve()
 
     await waitFor(() => expect(studio.activeCode).toBe(SECOND_PATTERN))
     expect(studio.transitionCalls).toEqual([SECOND_PATTERN])
+    expect(studio.transitionCycleCalls).toEqual([16])
     expect(studio.streamMessages).toHaveLength(2)
     const automaticRequest = studio.streamMessages[1] as Array<{
       role: string
@@ -729,8 +1125,144 @@ describe('Purple studio browser flow', () => {
     }>
     expect(automaticRequest.at(-1)).toMatchObject({
       role: 'user',
-      content: 'Strip back to bass and filtered drums',
+      content: NEXT_ACTION,
     })
+  })
+
+  it('steers one run turn and resumes from the returned progression', async () => {
+    const firstWake = await startModelPlannedRun()
+    const secondWake = deferred()
+    studio.progressionWaitGates.push(secondWake.promise)
+    const override = 'Keep the groove but dissolve the bells into dub echoes'
+
+    await userEvent.type(screen.getByLabelText('Steer the next transition'), override)
+    await userEvent.click(screen.getByRole('button', { name: 'STEER NEXT' }))
+
+    expect(screen.getByText('YOUR NEXT')).toBeVisible()
+    expect(screen.getByText(override)).toBeVisible()
+    firstWake.resolve()
+
+    await waitFor(() => expect(studio.activeCode).toBe(SECOND_PATTERN))
+    await waitForProgressionWaits(2)
+    const automaticRequest = studio.streamMessages[1] as Array<{
+      role: string
+      content: string
+    }>
+    expect(automaticRequest.at(-1)).toMatchObject({
+      role: 'user',
+      content: override,
+    })
+    expect(screen.queryByText('YOUR NEXT')).toBeNull()
+    expect(screen.getByText(NEXT_ACTION)).toBeVisible()
+
+    await userEvent.click(screen.getByRole('button', { name: 'STOP RUN' }))
+  })
+
+  it('restores the latest autoplay pattern when a later generation is stopped', async () => {
+    const firstWake = await startModelPlannedRun()
+    const secondWake = deferred()
+    const metadata = deferred()
+    studio.progressionWaitGates.push(secondWake.promise)
+
+    firstWake.resolve()
+    await waitFor(() => expect(studio.activeCode).toBe(SECOND_PATTERN))
+    await waitForProgressionWaits(2)
+
+    studio.generations.push(FIXED_PATTERN)
+    studio.metadataGates.push(metadata.promise)
+    secondWake.resolve()
+    await waitFor(() =>
+      expect(screen.getByLabelText('Pattern code')).toHaveValue(FIXED_PATTERN),
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'STOP RUN' }))
+    await act(async () => metadata.resolve())
+
+    await waitFor(() =>
+      expect(screen.getByLabelText('Pattern code')).toHaveValue(SECOND_PATTERN),
+    )
+    expect(studio.activeCode).toBe(SECOND_PATTERN)
+  })
+
+  it('cancels autoplay generation when the main transport stops audio', async () => {
+    const musicalWake = await startModelPlannedRun()
+    const patternCompletion = deferred()
+    studio.patternCompletionGates.push(patternCompletion.promise)
+
+    musicalWake.resolve()
+    await screen.findByText('GENERATING NEXT')
+    await waitFor(() => expect(studio.streamMessages).toHaveLength(2))
+    await userEvent.click(screen.getByRole('button', { name: '■ STOP' }))
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Pattern code')).toHaveValue(FIRST_PATTERN)
+      expect(studio.activeCode).toBe('')
+    })
+    const cancelledChat = studio.savedChatStates.at(-1)?.messages
+    expect(cancelledChat?.some(({ content }) => content.includes(NEXT_ACTION))).toBe(false)
+
+    await act(async () => patternCompletion.resolve())
+    expect(screen.getByLabelText('Pattern code')).toHaveValue(FIRST_PATTERN)
+    expect(studio.savedChatStates.at(-1)?.messages).toEqual(cancelledChat)
+  })
+
+  it('ignores validation failures from a stopped autoplay generation', async () => {
+    const musicalWake = await startModelPlannedRun()
+    const validation = deferred()
+    studio.validationGates.push(validation.promise)
+    studio.validationResults.set(SECOND_PATTERN, [[{
+      kind: 'evaluation',
+      error: 'cancelled validation detail',
+    }]])
+
+    musicalWake.resolve()
+    await screen.findByText('CHECKING…')
+    await userEvent.click(screen.getByRole('button', { name: 'STOP RUN' }))
+    await act(async () => validation.resolve())
+
+    await waitFor(() =>
+      expect(screen.getByLabelText('Pattern code')).toHaveValue(FIRST_PATTERN),
+    )
+    expect(document.body.textContent).not.toContain(
+      'Purple could not produce a playable pattern',
+    )
+    expect(document.body.textContent).not.toContain('cancelled validation detail')
+  })
+
+  it('focuses the composer on the active run and shows its countdown', async () => {
+    await startModelPlannedRun()
+
+    expect(await screen.findByText('NEXT IN 1:01:52')).toBeVisible()
+    const action = screen.getByText(NEXT_ACTION)
+    const actionStyle = getComputedStyle(action)
+    expect(action).toBeVisible()
+    expect(actionStyle.whiteSpace).toBe('normal')
+    expect(action.getBoundingClientRect().height)
+      .toBeGreaterThan(Number.parseFloat(actionStyle.lineHeight))
+
+    const xfadeNow = screen.getByRole('button', { name: 'XFADE NOW' })
+    const stopRun = screen.getByRole('button', { name: 'STOP RUN' })
+    expect(xfadeNow).toBeVisible()
+    expect(stopRun.getBoundingClientRect().left - xfadeNow.getBoundingClientRect().right)
+      .toBeGreaterThanOrEqual(24)
+    expect(screen.queryByText('EFFECT')).toBeNull()
+    expect(screen.queryByText('NEXT')).toBeNull()
+    expect(screen.queryByLabelText('Describe the music')).toBeNull()
+    expect(screen.getByLabelText('Steer the next transition')).toBeVisible()
+
+    await userEvent.click(stopRun)
+
+    expect(screen.getByText('EFFECT')).toBeVisible()
+    expect(screen.getByText('NEXT')).toBeVisible()
+    expect(screen.getByLabelText('Describe the music')).toBeVisible()
+  })
+
+  it('skips the musical wait and crossfades the planned revision now', async () => {
+    await startModelPlannedRun()
+
+    await xfadeNow(SECOND_PATTERN)
+    expect(studio.transitionCalls).toEqual([SECOND_PATTERN])
+    expect(studio.streamMessages).toHaveLength(2)
   })
 
   it('ends a run at its duration limit without stopping the current music', async () => {
@@ -745,7 +1277,7 @@ describe('Purple studio browser flow', () => {
       screen.getByRole('button', { name: 'START RUN' }).click()
       await Promise.resolve()
     })
-    expect(studio.progressionWaitCalls).toEqual([16])
+    expect(studio.progressionWaitCalls).toEqual([PLANNED_CYCLES])
     expect(studio.activeCode).toBe(FIRST_PATTERN)
 
     await act(async () => {
@@ -753,15 +1285,17 @@ describe('Purple studio browser flow', () => {
     })
 
     expect(screen.getByRole('button', { name: 'START RUN' })).toBeEnabled()
-    expect(screen.getByText('30 MIN COMPLETE')).toBeInTheDocument()
+    expect(screen.getByText('30 MIN COMPLETE', { selector: 'strong' }))
+      .toBeInTheDocument()
     expect(studio.activeCode).toBe(FIRST_PATTERN)
     expect(studio.stopCalls).toBe(0)
     expect(studio.streamMessages).toHaveLength(1)
   })
 
-  it('cancels a musical wait when the visitor sends a new direction', async () => {
+  it('cancels a musical wait before accepting a new direction', async () => {
     await startModelPlannedRun()
 
+    await userEvent.click(screen.getByRole('button', { name: 'STOP RUN' }))
     await sendPrompt('Take it toward weightless ambient')
 
     await waitFor(() => expect(studio.streamMessages).toHaveLength(2))
@@ -796,7 +1330,7 @@ describe('Purple studio browser flow', () => {
     expect(studio.repairMessages[0]).toContain('play-time-evaluation-detail')
   })
 
-  it('commits a PLAY repair that finishes before streamed metadata', async () => {
+  it('commits a PLAY repair after streamed metadata settles', async () => {
     const metadata = deferred()
     studio.generations.push(FIRST_PATTERN)
     studio.metadataGates.push(metadata.promise)
@@ -814,11 +1348,12 @@ describe('Purple studio browser flow', () => {
     await sendPrompt('Start a beat')
     const editor = await screen.findByLabelText('Pattern code')
     await waitFor(() => expect(editor).not.toHaveAttribute('readonly'))
-    await userEvent.click(screen.getByRole('button', { name: /PLAY/ }))
-    await waitFor(() => expect(studio.activeCode).toBe(FIXED_PATTERN))
+    expect(screen.getByRole('button', { name: /PLAY/ })).toBeDisabled()
 
     metadata.resolve()
     await screen.findByRole('button', { name: 'Drift to dub' })
+    await userEvent.click(screen.getByRole('button', { name: /PLAY/ }))
+    await waitFor(() => expect(studio.activeCode).toBe(FIXED_PATTERN))
     const assistant = studio.savedChatStates.at(-1)?.messages.at(-1)
     expect(assistant?.content).toContain(FIXED_PATTERN)
     expect(assistant?.content).not.toContain(FIRST_PATTERN)
@@ -838,6 +1373,9 @@ describe('Purple studio browser flow', () => {
 
     await waitFor(() => expect(editor).toHaveValue(HAND_EDITED_PATTERN))
     expect(studio.playCalls).toEqual([FIRST_PATTERN])
+    expect(document.body.textContent).not.toContain(
+      'Purple could not produce a playable pattern',
+    )
   })
 
   it('does not apply a delayed PLAY repair after the composer unmounts', async () => {
@@ -864,7 +1402,7 @@ describe('Purple studio browser flow', () => {
     studio.repairs.push(FIXED_PATTERN)
     await startAndStageRevision()
 
-    await userEvent.click(screen.getByRole('button', { name: 'XFADE' }))
+    await userEvent.click(screen.getByRole('button', { name: 'XFADE NOW' }))
 
     await waitFor(() => expect(studio.activeCode).toBe(FIXED_PATTERN))
     expect(studio.transitionCalls).toEqual([SECOND_PATTERN, FIXED_PATTERN])
@@ -882,13 +1420,39 @@ describe('Purple studio browser flow', () => {
     })
     await startAndStageRevision()
 
-    await userEvent.click(screen.getByRole('button', { name: 'XFADE' }))
+    await userEvent.click(screen.getByRole('button', { name: 'XFADE NOW' }))
 
     await screen.findByText(
       'The crossfade could not complete. Use PLAY to resume if playback stopped.',
     )
     expect(studio.repairMessages).toEqual([])
     expect(document.body.textContent).not.toContain('internal-transition-wrapper-detail')
+    expect(screen.getByLabelText('Pattern code')).toHaveValue(SECOND_PATTERN)
+    expect(screen.getByRole('button', { name: 'XFADE' })).toBeVisible()
+  })
+
+  it('does not restage a failed transition after a hand edit', async () => {
+    const transition = deferredResult<TestPlaybackResult>()
+    studio.transitionResults.push(transition.promise)
+    await startAndStageRevision()
+
+    await userEvent.click(screen.getByRole('button', { name: 'XFADE NOW' }))
+    const editor = screen.getByLabelText('Pattern code')
+    await userEvent.clear(editor)
+    await userEvent.type(editor, HAND_EDITED_PATTERN)
+    await act(async () => transition.resolve({
+      ok: false,
+      kind: 'evaluation',
+      error: 'overtaken transition failure',
+      source: 'candidate',
+    }))
+
+    await waitFor(() => expect(editor).toHaveValue(HAND_EDITED_PATTERN))
+    expect(studio.repairMessages).toEqual([])
+    expect(screen.queryByRole('button', { name: 'XFADE' })).toBeNull()
+    expect(document.body.textContent).not.toContain(
+      'Purple could not produce a playable pattern',
+    )
   })
 })
 
@@ -923,5 +1487,82 @@ describe('generated revision hot swap', () => {
     expect(requestFix).toHaveBeenCalledOnce()
     expect(replace).toHaveBeenCalledExactlyOnceWith(FIXED_PATTERN)
     expect(onCodeChange).toHaveBeenLastCalledWith(FIXED_PATTERN)
+  })
+
+  it('does not commit an older validation after identical code is adopted again', async () => {
+    const validation = deferred()
+    const onCodeChange = vi.fn()
+    const hook = renderHook(() =>
+      useGeneratedPattern({
+        validatePattern: async () => {
+          await validation.promise
+          return []
+        },
+        requestFix: async () => null,
+        onCodeChange,
+        getStopToken: () => 0,
+      }),
+    )
+
+    act(() => hook.result.current.adopt(FIRST_PATTERN, { commit: false }))
+    const oldValidation = hook.result.current.validate(FIRST_PATTERN)
+    act(() => {
+      hook.result.current.invalidate()
+      hook.result.current.adopt(FIRST_PATTERN, { commit: false })
+    })
+    await act(async () => validation.resolve())
+    const outcome = await oldValidation
+
+    expect(hook.result.current.isValidationCurrent(outcome)).toBe(false)
+    expect(hook.result.current.commitCurrent(outcome)).toBe(false)
+    expect(onCodeChange).not.toHaveBeenCalled()
+  })
+
+  it('does not publish an attempt from an older identical-code adoption', async () => {
+    const operation = deferredResult<EvalResult>()
+    const hook = renderHook(() =>
+      useGeneratedPattern({
+        validatePattern: async () => [],
+        requestFix: async () => null,
+        onCodeChange: vi.fn(),
+        getStopToken: () => 0,
+      }),
+    )
+
+    act(() => hook.result.current.adopt(FIRST_PATTERN, { commit: false }))
+    const oldAttempt = hook.result.current.attempt(FIRST_PATTERN, () => operation.promise)
+    act(() => {
+      hook.result.current.invalidate()
+      hook.result.current.adopt(FIRST_PATTERN, { commit: false })
+    })
+    await act(async () => operation.resolve({ ok: true }))
+    const outcome = await oldAttempt
+
+    expect(hook.result.current.isAttemptCurrent(outcome)).toBe(false)
+  })
+
+  it('does not publish an attempt after the listener stops', async () => {
+    const operation = deferredResult<EvalResult>()
+    let stopToken = 0
+    const hook = renderHook(() =>
+      useGeneratedPattern({
+        validatePattern: async () => [],
+        requestFix: async () => null,
+        onCodeChange: vi.fn(),
+        getStopToken: () => stopToken,
+      }),
+    )
+
+    act(() => hook.result.current.adopt(FIRST_PATTERN, { commit: false }))
+    const pendingAttempt = hook.result.current.attempt(
+      FIRST_PATTERN,
+      () => operation.promise,
+    )
+    stopToken++
+    await act(async () => operation.resolve({ ok: true }))
+    const outcome = await pendingAttempt
+
+    expect(outcome.stopped).toBe(true)
+    expect(hook.result.current.isAttemptCurrent(outcome)).toBe(false)
   })
 })

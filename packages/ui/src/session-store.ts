@@ -287,8 +287,12 @@ export function createChatStore(key = "purple.chat"): ChatStore {
 
 export function createPatternStore(key = "purple.session-pattern.v1"): PatternStore {
   let pendingSave: ReturnType<typeof setTimeout> | undefined;
+  let pendingPattern: { value: SessionPattern | null } | undefined;
   return {
     load() {
+      if (pendingPattern) {
+        return pendingPattern.value ? { ...pendingPattern.value } : null;
+      }
       try {
         const raw = window.localStorage.getItem(key);
         if (raw === null) return null;
@@ -299,19 +303,28 @@ export function createPatternStore(key = "purple.session-pattern.v1"): PatternSt
     },
     save(pattern) {
       clearTimeout(pendingSave);
+      const empty = !pattern.code.trim();
+      const valid = empty ? null : normalizeSessionPattern(pattern);
+      if (!empty && !valid) {
+        pendingPattern = undefined;
+        pendingSave = undefined;
+        return;
+      }
+      pendingPattern = { value: valid };
       pendingSave = setTimeout(() => {
+        const queued = pendingPattern;
+        pendingPattern = undefined;
+        pendingSave = undefined;
+        if (!queued) return;
         try {
           // An emptied editor forgets the stored pattern rather than
           // resurrecting the previous one on the next launch; an out-of-bounds
           // one keeps the last good copy.
-          if (!pattern.code.trim()) {
+          if (!queued.value) {
             window.localStorage.removeItem(key);
             return;
           }
-          const valid = normalizeSessionPattern(pattern);
-          if (valid) {
-            window.localStorage.setItem(key, JSON.stringify(valid));
-          }
+          window.localStorage.setItem(key, JSON.stringify(queued.value));
         } catch {
           // Storage unavailable (private mode); the session lives only in this tab.
         }

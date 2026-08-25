@@ -95,9 +95,20 @@ Return the structured turn requested by the response schema. The "pattern" field
 must come first and contain the unfenced Strudel expression. Create a memorable
 2 to 6 word title with no ending punctuation. Choose how many complete Strudel
 cycles the pattern should play before it progresses, using musical form, tempo,
-and density rather than a fixed default. Prefer 32 cycles for a typical section,
-using ${MIN_PROGRESSION_CYCLES} for quicker development and up to
-${MAX_PROGRESSION_CYCLES} for patient long-form music.
+and density rather than a fixed default. First identify the longest meaningful
+macro-phrase or modulation period in the generated code, including alternations,
+.slow() movement, and arranged sections. Prefer the longest duration that
+remains musically interesting, biasing toward the upper end because the listener
+can always crossfade early. A complete layered or evolving track should usually
+play for 30 to 60 minutes. Slow generative or ambient music may play for 1 to 2
+hours. Use 15 to 30 minutes for a simple repetitive groove. Use only a few
+minutes for an intentionally incomplete bridge, build, or user-requested rapid
+progression. "afterCycles" counts Purple's fixed scheduler cycles at exactly 30
+cycles per minute, regardless of the pattern's .cpm() value. Convert the chosen
+wall time by multiplying minutes by 30, not by the pattern tempo. When possible,
+choose a nearby whole scheduler cycle whose wall time lands at the end of the
+pattern's macro-phrase. Do not treat the minimum ${MIN_PROGRESSION_CYCLES} as a
+suggested value. The safety ceiling is ${MAX_PROGRESSION_CYCLES} scheduler cycles.
 Write one specific plain-English next action that can be sent back verbatim as
 a standalone music-generation request and evolves this pattern without abruptly
 replacing its identity. Then propose exactly three compatible but meaningfully
@@ -180,7 +191,7 @@ export const GENERATED_TURN_SCHEMA = {
           minimum: MIN_PROGRESSION_CYCLES,
           maximum: MAX_PROGRESSION_CYCLES,
           description:
-            "Complete cycles to play before generating the next progression",
+            "Whole fixed-scheduler cycles at exactly 30 cycles per minute, independent of pattern .cpm(), biased toward the longest musically sensible hold and a nearby macro-phrase ending",
         },
         nextAction: {
           type: "string",

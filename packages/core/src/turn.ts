@@ -3,6 +3,7 @@ import {
   validateTransitionSuggestions,
   validateGeneratedPatternTitle,
   validatePatternCode,
+  visibleTextWithoutCodeBlocks,
   type TransitionSuggestion,
 } from "./pattern";
 import {
@@ -55,17 +56,23 @@ function validateExplanation(value: string | null): string {
   return explanation;
 }
 
-/** Rebuild the established transcript format used by history and compaction. */
+/** Keep the pattern in model history while exposing only its description in chat. */
 export function formatGeneratedTurn(turn: GeneratedTurn): string {
   const block = `\`\`\`strudel\n${turn.pattern}\n\`\`\``;
-  const metadata = [
-    turn.title ? `Title: ${turn.title}` : "",
-    turn.explanation,
-    turn.progression
-      ? `Next after ${turn.progression.afterCycles} cycles: ${turn.progression.nextAction}`
-      : "",
-  ].filter(Boolean);
-  return metadata.length > 0 ? `${block}\n${metadata.join("\n")}` : block;
+  return turn.explanation ? `${block}\n${turn.explanation}` : block;
+}
+
+/** Hide structured fields embedded by older Purple sessions from chat prose. */
+export function visibleGeneratedTurnExplanation(content: string): string {
+  return visibleTextWithoutCodeBlocks(content)
+    .split("\n")
+    .filter(
+      (line) =>
+        !/^Title:\s/.test(line) &&
+        !/^Next after \d+ cycles:\s/.test(line),
+    )
+    .join("\n")
+    .trim();
 }
 
 interface DecodedPattern {

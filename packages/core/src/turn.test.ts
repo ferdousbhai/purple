@@ -3,6 +3,7 @@ import {
   createPatternStreamDecoder,
   formatGeneratedTurn,
   parseGeneratedTurn,
+  visibleGeneratedTurnExplanation,
 } from "./turn";
 
 const suggestions = [
@@ -12,11 +13,11 @@ const suggestions = [
 ];
 
 describe("structured studio turns", () => {
-  it("parses metadata and rebuilds the established transcript envelope", () => {
+  it("parses metadata but keeps only the pattern and explanation in history", () => {
     const turn = parseGeneratedTurn(JSON.stringify({
       pattern: 's("bd*4")',
       progression: {
-        afterCycles: 16,
+        afterCycles: 1_856,
         nextAction: "Strip back to bass and filtered drums",
       },
       title: "Night Transit",
@@ -27,7 +28,7 @@ describe("structured studio turns", () => {
     expect(turn).toEqual({
       pattern: 's("bd*4")',
       progression: {
-        afterCycles: 16,
+        afterCycles: 1_856,
         nextAction: "Strip back to bass and filtered drums",
       },
       title: "Night Transit",
@@ -35,7 +36,22 @@ describe("structured studio turns", () => {
       explanation: "A driving late-night groove.",
     });
     expect(formatGeneratedTurn(turn!)).toBe(
-      '```strudel\ns("bd*4")\n```\nTitle: Night Transit\nA driving late-night groove.\nNext after 16 cycles: Strip back to bass and filtered drums',
+      '```strudel\ns("bd*4")\n```\nA driving late-night groove.',
+    );
+  });
+
+  it("shows only the explanation from legacy structured transcripts", () => {
+    const legacy = [
+      '```strudel',
+      's("bd*4")',
+      '```',
+      'Title: Night Transit',
+      'A driving late-night groove.',
+      'Next after 1856 cycles: Strip back to bass and filtered drums',
+    ].join("\n");
+
+    expect(visibleGeneratedTurnExplanation(legacy)).toBe(
+      "A driving late-night groove.",
     );
   });
 

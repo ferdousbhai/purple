@@ -8,16 +8,12 @@ import type {
   StrudelRepl,
 } from "@strudel/web/web.mjs";
 import type { EvalResult, SourceRange } from "@purple/core/types";
-import {
-  auditHapSounds,
-  closestSoundNames,
-  type ValidationProblem,
-} from "@purple/core/validation";
-import { loadPinnedSamples } from "./pinned-samples";
+import type { ValidationProblem } from "@purple/core/validation";
 import type { SafeStrudelScope } from "./safe-strudel";
 
 type StrudelModule = typeof import("@strudel/web/web.mjs");
 type SafeStrudelModule = typeof import("./safe-strudel");
+type ValidationModule = typeof import("@purple/core/validation");
 
 /** How many cycles of events the validation audit inspects. Four covers every
  * `<a b c d>` alternation the prompt examples use while staying instant. */
@@ -70,6 +66,7 @@ export async function defaultEnsureRunningContext(context: AudioContext): Promis
 export function useStrudel(options: StrudelAudioOptions = {}) {
   const strudelRef = useRef<StrudelModule | null>(null);
   const safeStrudelRef = useRef<SafeStrudelModule | null>(null);
+  const validationRef = useRef<ValidationModule | null>(null);
   const replRef = useRef<StrudelRepl | null>(null);
   const expressionScopeRef = useRef<SafeStrudelScope | null>(null);
   const initPromiseRef = useRef<Promise<void> | null>(null);
@@ -90,6 +87,7 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
     if (audioCtxRef.current?.state === "closed") {
       strudelRef.current = null;
       safeStrudelRef.current = null;
+      validationRef.current = null;
       replRef.current = null;
       expressionScopeRef.current = null;
       initPromiseRef.current = null;
@@ -110,9 +108,11 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
       const promise = (async () => {
         // activate() has already created and resumed ctx synchronously from the
         // user gesture. Keep parser and engine downloads behind that boundary.
-        const [strudel, safeStrudel] = await Promise.all([
+        const [strudel, safeStrudel, pinnedSamples, validation] = await Promise.all([
           import("@strudel/web/web.mjs"),
           import("./safe-strudel"),
+          import("./pinned-samples"),
+          import("@purple/core/validation"),
         ]);
 
         const repl = await strudel.initStrudel({
@@ -126,7 +126,7 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
             // z_* chiptune synths (no network involved).
             strudel.registerZZFXSounds();
             try {
-              await loadPinnedSamples(strudel);
+              await pinnedSamples.loadPinnedSamples(strudel);
             } catch (error) {
               console.warn(
                 "[Strudel] Pinned samples unavailable; synths remain available.",
@@ -165,6 +165,7 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
 
         strudelRef.current = strudel;
         safeStrudelRef.current = safeStrudel;
+        validationRef.current = validation;
         replRef.current = repl;
         expressionScopeRef.current = safeStrudel.createSafeStrudelScope(strudel);
       })();
@@ -266,8 +267,15 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
     }
     const strudel = strudelRef.current;
     const safeStrudel = safeStrudelRef.current;
+    const validation = validationRef.current;
     const expressionScope = expressionScopeRef.current;
-    if (!strudel || !safeStrudel || !replRef.current || !expressionScope) {
+    if (
+      !strudel ||
+      !safeStrudel ||
+      !validation ||
+      !replRef.current ||
+      !expressionScope
+    ) {
       return null;
     }
 
@@ -286,7 +294,7 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
       const haps = pattern.queryArc(0, VALIDATION_CYCLES);
       if (haps.length === 0) return [{ kind: "empty" }];
 
-      const unknown = auditHapSounds(
+      const unknown = validation.auditHapSounds(
         haps,
         (name) => strudel.getSound(name) != null,
       );
@@ -298,7 +306,7 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
           kind: "unknown-sounds",
           sounds: unknown.map((name) => ({
             name,
-            suggestions: closestSoundNames(name, available),
+            suggestions: validation.closestSoundNames(name, available),
           })),
         },
       ];

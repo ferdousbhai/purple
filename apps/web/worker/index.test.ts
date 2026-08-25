@@ -1,10 +1,155 @@
 import { describe, expect, it } from 'vitest'
-import { handleFeedbackRequest } from './index'
+import {
+  handleAssetRequest,
+  handleFeedbackRequest,
+  redirectToCanonicalOrigin,
+  routeMetadata,
+} from './index'
 
 interface EmailHarness {
   env: Pick<Env, 'FEEDBACK_EMAIL' | 'TURNSTILE_SECRET'>
   sent: EmailMessageBuilder[]
 }
+
+describe('canonical origin redirect', () => {
+  it('redirects HTTP and www requests to the HTTPS apex with path and query intact', () => {
+    const response = redirectToCanonicalOrigin(
+      new Request('http://www.soundspurple.com/patterns?sort=hot'),
+    )
+
+    expect(response?.status).toBe(308)
+    expect(response?.headers.get('Location')).toBe(
+      'https://soundspurple.com/patterns?sort=hot',
+    )
+  })
+
+  it('leaves the canonical origin and local development hosts unchanged', () => {
+    expect(
+      redirectToCanonicalOrigin(new Request('https://soundspurple.com/patterns')),
+    ).toBeNull()
+    expect(
+      redirectToCanonicalOrigin(new Request('http://localhost:8787/patterns')),
+    ).toBeNull()
+  })
+})
+
+describe('route shell delivery', () => {
+  it('defines distinct canonical metadata for the public gallery', () => {
+    expect(routeMetadata('/patterns')).toEqual({
+      title: 'Public Patterns - Purple',
+      description:
+        'Browse, play, save, and remix public Strudel patterns made with Purple.',
+      url: 'https://soundspurple.com/patterns',
+    })
+    expect(routeMetadata('/')).toBeNull()
+  })
+
+  it('preserves the HTML fallback for client-side routes', async () => {
+    let removedStudioPreload = false
+    const response = await handleAssetRequest(
+      documentRequest('https://soundspurple.com/patterns'),
+      spaAssets(),
+      (html, pathname) => {
+        removedStudioPreload = true
+        expect(pathname).toBe('/patterns')
+        return html
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('Content-Type')).toBe('text/html')
+    expect(removedStudioPreload).toBe(true)
+  })
+
+  it('serves the known patterns route without requiring an HTML Accept header', async () => {
+    const response = await handleAssetRequest(
+      new Request('https://soundspurple.com/patterns'),
+      spaAssets(),
+      (html) => html,
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('Content-Type')).toBe('text/html')
+    expect(response.headers.get('Cache-Control')).toBe('no-store')
+  })
+
+  it('serves an uncached HEAD response for the known patterns route', async () => {
+    let rewrites = 0
+    const response = await handleAssetRequest(
+      new Request('https://soundspurple.com/patterns', { method: 'HEAD' }),
+      spaAssets(),
+      (html) => {
+        rewrites++
+        return html
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('Cache-Control')).toBe('no-store')
+    expect(response.headers.get('Content-Length')).toBeNull()
+    expect(rewrites).toBe(0)
+  })
+
+  it('keeps the editor preload on the studio route', async () => {
+    let removedStudioPreload = false
+    const response = await handleAssetRequest(
+      new Request('https://soundspurple.com/'),
+      spaAssets(),
+      (html) => {
+        removedStudioPreload = true
+        return html
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(removedStudioPreload).toBe(false)
+  })
+
+  it('does not reuse root validators or ranges for transformed route HTML', async () => {
+    const fetched: Request[] = []
+    const assets: Pick<Fetcher, 'fetch'> = {
+      fetch: async (input) => {
+        const request = new Request(input)
+        fetched.push(request)
+        if (new URL(request.url).pathname !== '/') {
+          return new Response('Not found.', { status: 404 })
+        }
+        return new Response('<!doctype html><title>Purple</title>', {
+          headers: {
+            'Content-Type': 'text/html',
+            ETag: '"root-build"',
+            'Last-Modified': 'Tue, 25 Aug 2026 12:00:00 GMT',
+          },
+        })
+      },
+    }
+    const request = new Request('https://soundspurple.com/patterns', {
+      headers: {
+        Accept: 'text/html',
+        'If-None-Match': '"root-build"',
+        'If-Modified-Since': 'Tue, 25 Aug 2026 12:00:00 GMT',
+        'If-Range': '"root-build"',
+        Range: 'bytes=0-99',
+      },
+    })
+
+    const response = await handleAssetRequest(request, assets, (html) => html)
+
+    expect(fetched).toHaveLength(1)
+    for (const name of [
+      'If-None-Match',
+      'If-Modified-Since',
+      'If-Range',
+      'Range',
+    ]) {
+      expect(fetched[0]?.headers.get(name)).toBeNull()
+    }
+    expect(response.status).toBe(200)
+    expect(response.headers.get('Cache-Control')).toBe('no-store')
+    expect(response.headers.get('ETag')).toBeNull()
+    expect(response.headers.get('Last-Modified')).toBeNull()
+  })
+})
 
 describe('feedback Worker', () => {
   it('verifies Turnstile and sends the submitted fields as plain text', async () => {
@@ -134,4 +279,25 @@ function validSiteverify(): typeof fetch {
     action: 'purple_feedback',
     hostname: 'soundspurple.com',
   })
+}
+
+function documentRequest(url: string): Request {
+  return new Request(url, { headers: { Accept: 'text/html' } })
+}
+
+function spaAssets(): Pick<Fetcher, 'fetch'> {
+  return {
+    fetch: async (input) => {
+      const request = new Request(input)
+      if (new URL(request.url).pathname !== '/') {
+        return new Response('Not found.', { status: 404 })
+      }
+      return new Response('<!doctype html><title>Purple</title>', {
+        headers: {
+          'Cache-Control': 'public, max-age=31536000, immutable',
+          'Content-Type': 'text/html',
+        },
+      })
+    },
+  }
 }

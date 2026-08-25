@@ -1,5 +1,6 @@
-export const DEFAULT_TRANSITION_CYCLES = 8;
-export const TRANSITION_CYCLE_OPTIONS = [4, 8, 16] as const;
+export const DEFAULT_MANUAL_TRANSITION_CYCLES = 8;
+export const DEFAULT_AUTOPLAY_TRANSITION_CYCLES = 16;
+export const TRANSITION_CYCLE_OPTIONS = [4, 8, 16, 32] as const;
 
 const MIN_TRANSITION_LEAD_CYCLES = 0.25;
 

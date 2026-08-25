@@ -57,6 +57,7 @@ export async function attemptWithRepair(
 
   let retriesLeft = deps.maxRetries ?? MAX_RETRIES;
   while (!result.ok && result.kind === "evaluation" && retriesLeft > 0) {
+    if (deps.isStale()) break;
     retriesLeft--;
     const fixed = await deps.requestFix(
       buildRetryMessage(currentCode, result.error),

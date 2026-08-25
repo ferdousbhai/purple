@@ -11,5 +11,6 @@ describe("hosted app security headers", () => {
     expect(headers).toContain("X-Content-Type-Options: nosniff");
     expect(headers).not.toContain("unsafe-eval");
     expect(headers).not.toContain("fonts.googleapis.com");
+    expect(headers).not.toContain("/assets/*");
   });
 });

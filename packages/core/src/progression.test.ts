@@ -12,7 +12,7 @@ import {
 } from "./progression";
 
 describe("progression run duration", () => {
-  it("defaults to 30 minutes and offers hourly presets through five hours", () => {
+  it("defaults to 30 minutes and extends hourly presets with ten hours", () => {
     expect(DEFAULT_PROGRESSION_RUN_DURATION_MS).toBe(30 * 60_000);
     expect(PROGRESSION_RUN_DURATION_PRESETS_MS).toEqual([
       30 * 60_000,
@@ -21,10 +21,11 @@ describe("progression run duration", () => {
       3 * 60 * 60_000,
       4 * 60 * 60_000,
       5 * 60 * 60_000,
+      10 * 60 * 60_000,
     ]);
   });
 
-  it("caps custom durations at five hours", () => {
+  it("caps custom durations at ten hours", () => {
     expect(boundedProgressionRunDurationMs(3 * 60 * 60_000)).toBe(
       3 * 60 * 60_000,
     );
@@ -42,36 +43,36 @@ describe("progression run duration", () => {
 
 const FIRST_STEP: ProgressionStep = {
   pattern: 's("bd*4")',
-  afterCycles: 16,
+  afterCycles: 512,
   nextAction: "Open the hats and introduce a warm bass response",
 };
 
 describe("pattern progression metadata", () => {
   it("accepts bounded musical timing and a plain English action", () => {
     expect(validatePatternProgression({
-      afterCycles: 16,
+      afterCycles: 512,
       nextAction: "  Open the filter gradually  ",
     })).toEqual({
-      afterCycles: 16,
+      afterCycles: 512,
       nextAction: "Open the filter gradually",
     });
   });
 
   it("rejects unsafe or unreasonable plans", () => {
     expect(validatePatternProgression({
-      afterCycles: 15,
+      afterCycles: 31,
       nextAction: "Move early",
     })).toBeNull();
     expect(validatePatternProgression({
-      afterCycles: 129,
+      afterCycles: 4_097,
       nextAction: "Wait too long",
     })).toBeNull();
     expect(validatePatternProgression({
-      afterCycles: 16.5,
+      afterCycles: 512.5,
       nextAction: "Move between cycles",
     })).toBeNull();
     expect(validatePatternProgression({
-      afterCycles: 16,
+      afterCycles: 512,
       nextAction: "```strudel\nsilence\n```",
     })).toBeNull();
   });
@@ -124,7 +125,7 @@ describe("progression run", () => {
 
     current = false;
     expect(events).toEqual([
-      "wait:16",
+      "wait:512",
       `generate:${FIRST_STEP.nextAction}`,
       'xfade:s("hh*8")',
       "wait:32",

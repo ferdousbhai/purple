@@ -67,7 +67,7 @@ function generatedTurn(pattern: string): string {
   return JSON.stringify({
     pattern,
     progression: {
-      afterCycles: 16,
+      afterCycles: 1_856,
       nextAction: 'Strip back to bass and filtered drums',
     },
     title: 'Test pattern',
@@ -194,7 +194,7 @@ describe('BYOK streaming backend', () => {
       turn: {
         pattern: 'drum✨',
         progression: {
-          afterCycles: 16,
+          afterCycles: 1_856,
           nextAction: 'Strip back to bass and filtered drums',
         },
         title: 'Test pattern',
@@ -218,7 +218,7 @@ describe('BYOK streaming backend', () => {
       turn: {
         pattern: 's("bd")',
         progression: {
-          afterCycles: 16,
+          afterCycles: 1_856,
           nextAction: 'Strip back to bass and filtered drums',
         },
         title: 'Test pattern',

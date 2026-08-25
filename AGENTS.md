@@ -83,8 +83,17 @@ Repository workflows do not deploy the site.
 - `use-studio-chat` compacts into a rolling artifact only after Gemini reports
   more than `COMPACTION_TRIGGER_TOKENS` prompt tokens. Uncovered history remains
   uncapped, and late folding preserves Gemini prefix-cache efficiency.
-- A generated pattern lands in the editor and waits for an explicit play or
-  crossfade action. Browser audio must begin within a user gesture.
+- A first generated pattern lands in the editor and waits for explicit play.
+  During active playback, a user-directed revision schedules a cancellable
+  crossfade after five seconds. Browser audio must begin within a user gesture.
+- Keep the current editor revision visible while a replacement streams and is
+  validated. Publish the replacement atomically only after it passes validation.
+- The browser playback owner outlives studio and public-pattern route changes.
+  Keep internal navigation client-side so browsing or opening a pattern does
+  not interrupt audio.
+- Progression runs plan conservative, phrase-aligned holds and always retain
+  manual early crossfade. A queued user direction replaces one automatic turn;
+  the structured progression returned by that turn resumes the run.
 - `safe-strudel.ts` interprets one allowlisted expression without `eval` or
   `Function`. Statements, browser globals, computed properties, loaders, and
   custom worklets are rejected.

@@ -1,6 +1,7 @@
 import {
+  DEFAULT_AUTOPLAY_TRANSITION_CYCLES,
+  DEFAULT_MANUAL_TRANSITION_CYCLES,
   DEFAULT_PROGRESSION_RUN_DURATION_MS,
-  DEFAULT_TRANSITION_CYCLES,
   EXPLANATORY_STYLE_INSTRUCTION,
   PROGRESSION_RUN_DURATION_PRESETS_MS,
   PROMPT_MODIFIERS,
@@ -10,6 +11,7 @@ import {
   continueProgressionRun,
   generateRandomPrompt,
   progressionStepFromTurn,
+  visibleGeneratedTurnExplanation,
   visibleTextWithoutCodeBlocks,
   withExplanatoryStyle,
   type GeneratedTurn,
@@ -42,11 +44,14 @@ import type { usePlayback } from '@purple/ui/use-playback'
 import { useStudioChat } from '@purple/ui/use-studio-chat'
 
 const UNDO_CLEAR_WINDOW_MS = 10_000
+const MANUAL_XFADE_DELAY_MS = 5_000
 type Playback = ReturnType<typeof usePlayback>
 export interface GeneratedPatternController {
   play(code: string): Promise<boolean>
   invalidate(): void
 }
+
+export type RevisionPhase = 'idle' | 'revising' | 'checking'
 
 /**
  * Pattern acceptance: validate and repair generated code, stage revisions,
@@ -63,6 +68,11 @@ interface PreparedPattern {
   valid: boolean
 }
 
+interface TransitionPatternOptions {
+  expectedStopToken?: number
+  validateCandidate?: boolean
+}
+
 type ActiveProgressionRunPhase =
   | 'starting'
   | 'waiting'
@@ -75,11 +85,13 @@ type ProgressionRunView =
       phase: ActiveProgressionRunPhase
       nextAction: string
       afterCycles: number
+      remainingSeconds?: number
     }
 
 interface ActiveProgressionRun {
   controller: AbortController
   deadlineTimer?: ReturnType<typeof setTimeout>
+  skipWait?: () => void
 }
 
 const IDLE_PROGRESSION_RUN: ProgressionRunView = {
@@ -94,7 +106,17 @@ interface StopProgressionRunOptions {
 
 function cancelActiveProgressionRun(run: ActiveProgressionRun | null): void {
   if (run?.deadlineTimer !== undefined) clearTimeout(run.deadlineTimer)
+  if (run) run.skipWait = undefined
   run?.controller.abort()
+}
+
+function progressionCountdownLabel(seconds: number): string {
+  const wholeSeconds = Math.max(0, Math.ceil(seconds))
+  const totalMinutes = Math.floor(wholeSeconds / 60)
+  const clock = `${String(totalMinutes % 60).padStart(2, '0')}:${String(wholeSeconds % 60).padStart(2, '0')}`
+  return totalMinutes < 60
+    ? `${totalMinutes}:${String(wholeSeconds % 60).padStart(2, '0')}`
+    : `${Math.floor(totalMinutes / 60)}:${clock}`
 }
 
 function progressionRunDurationLabel(durationMs: number): string {
@@ -104,6 +126,7 @@ function progressionRunDurationLabel(durationMs: number): string {
 
 function usePatternFlow(deps: PatternStateBindings & {
   abortRepair: () => void
+  setRevisionStaged: (staged: boolean) => void
   /** Send the prepared repair message; the fixed pattern, or null on failure. */
   requestFix: (message: string) => Promise<string | null>
   /** A repair replaced `broken` with `fixed`: propagate it into the stored
@@ -113,10 +136,14 @@ function usePatternFlow(deps: PatternStateBindings & {
 }) {
   const [uiError, setUiError] = useState<string | null>(null)
   const [stagedCode, setStagedCode] = useState<string | null>(null)
+  const [stagedTransitionScheduled, setStagedTransitionScheduled] =
+    useState(false)
   const [isTransitionPending, setIsTransitionPending] = useState(false)
   const [isPlaybackRepairPending, setIsPlaybackRepairPending] = useState(false)
   const [suggestions, setSuggestions] = useState<TransitionSuggestion[]>([])
   const playbackRepairRef = useRef(false)
+  const transitionInFlightRef = useRef(false)
+  const stagedStopTokenRef = useRef<number | null>(null)
   const lastPromptRef = useRef('')
   const playbackRef = useRef(deps.playback)
   playbackRef.current = deps.playback
@@ -140,30 +167,58 @@ function usePatternFlow(deps: PatternStateBindings & {
   /** Adopt and validate as soon as the leading structured field is complete. */
   const preparePattern = async (pattern: string): Promise<PreparedPattern> => {
     const sourcePrompt = lastPromptRef.current
-    generatedPattern.adopt(pattern)
-    deps.setSourcePrompt(sourcePrompt)
+    generatedPattern.adopt(pattern, { commit: false })
 
     // Audit the pattern against the live engine before it plays or stages:
     // evaluation failures, empty patterns, and sound names that would play
     // silence go back to Gemini as hidden messages. Sends are disabled while
     // a generation (validation repairs included) is in flight.
     const validated = await generatedPattern.validate(pattern)
+    if (!generatedPattern.isValidationCurrent(validated)) {
+      return { code: validated.code, valid: false }
+    }
     if (!isValidatedGeneratedPattern(validated)) {
       setStagedCode(null)
       setUiError(validationFailureMessage(validated))
       return { code: validated.code, valid: false }
     }
+    if (!generatedPattern.commitCurrent(validated)) {
+      return { code: validated.code, valid: false }
+    }
+    deps.setSourcePrompt(sourcePrompt)
     setUiError(null)
     return { code: validated.code, valid: true }
   }
 
   /** Land validated code without starting audio; revisions can be crossfaded. */
-  const landPattern = (pattern: string): void => {
-    setStagedCode(
-      playbackRef.current.playbackState === 'playing' ? pattern : null,
-    )
+  const landPattern = (
+    pattern: string,
+    scheduleTransition: boolean,
+  ): void => {
+    const staged = playbackRef.current.playbackState === 'playing'
+      ? pattern
+      : null
+    setStagedCode(staged)
+    deps.setRevisionStaged(staged !== null)
+    stagedStopTokenRef.current = staged === null
+      ? null
+      : playbackRef.current.getStopToken()
+    setStagedTransitionScheduled(staged !== null && scheduleTransition)
     setUiError(null)
   }
+
+  const updateStagedCode = useCallback((code: string | null): void => {
+    setStagedCode(code)
+    deps.setRevisionStaged(code !== null)
+    if (code === null) {
+      stagedStopTokenRef.current = null
+      setStagedTransitionScheduled(false)
+    }
+  }, [deps.setRevisionStaged])
+
+  const cancelStagedTransition = useCallback((): void => {
+    setStagedTransitionScheduled(false)
+  }, [])
 
   const showSuggestions = (
     nextSuggestions: TransitionSuggestion[],
@@ -185,6 +240,7 @@ function usePatternFlow(deps: PatternStateBindings & {
         (candidate) =>
           playbackRef.current.play(candidate, { reportEvaluationError: false }),
       )
+      if (!generatedPattern.isAttemptCurrent(outcome)) return false
       setUiError(
         outcome.result.ok
           ? null
@@ -195,36 +251,56 @@ function usePatternFlow(deps: PatternStateBindings & {
       playbackRepairRef.current = false
       setIsPlaybackRepairPending(false)
     }
-  }, [generatedPattern.attempt, generatedPattern.isCurrent])
+  }, [
+    generatedPattern.attempt,
+    generatedPattern.isAttemptCurrent,
+    generatedPattern.isCurrent,
+  ])
 
   const transitionPattern = async (
     candidate: string,
     durationCycles: number,
+    options: TransitionPatternOptions = {},
   ): Promise<boolean> => {
-    // Consume the one-shot control immediately. Candidate evaluation failures
-    // use the remaining repair budget; errors in Purple's generated transition
-    // wrapper are kept out of the model conversation.
-    setStagedCode(null)
+    if (transitionInFlightRef.current) return false
+    transitionInFlightRef.current = true
+    // Candidate evaluation failures use the remaining repair budget; errors in
+    // Purple's generated transition wrapper stay out of model conversation.
+    setStagedTransitionScheduled(false)
     setUiError(null)
     setIsTransitionPending(true)
-    const playingBeforeValidation =
-      playbackRef.current.playbackState === 'playing'
-        ? playbackRef.current.activeCode
-        : null
     try {
-      const validated = await generatedPattern.validate(candidate)
-      if (!isValidatedGeneratedPattern(validated)) {
-        setUiError(validationFailureMessage(validated))
+      const playback = playbackRef.current
+      const playingBeforeValidation = playback.playbackState === 'playing'
+        ? playback.activeCode
+        : null
+      if (
+        playingBeforeValidation === null ||
+        (options.expectedStopToken !== undefined &&
+          playback.getStopToken() !== options.expectedStopToken)
+      ) {
         return false
       }
+
+      let validatedCode = candidate
+      if (options.validateCandidate !== false) {
+        const validated = await generatedPattern.validate(candidate)
+        if (!generatedPattern.isValidationCurrent(validated)) return false
+        if (!isValidatedGeneratedPattern(validated)) {
+          setUiError(validationFailureMessage(validated))
+          return false
+        }
+        validatedCode = validated.code
+      }
       if (
-        playingBeforeValidation !== null &&
-        (playbackRef.current.playbackState !== 'playing' ||
-          playbackRef.current.activeCode !== playingBeforeValidation)
+        playbackRef.current.playbackState !== 'playing' ||
+        playbackRef.current.activeCode !== playingBeforeValidation ||
+        (options.expectedStopToken !== undefined &&
+          playbackRef.current.getStopToken() !== options.expectedStopToken)
       ) return false
 
       let transitionFailed = false
-      const outcome = await generatedPattern.attempt(validated.code, async (revision) => {
+      const outcome = await generatedPattern.attempt(validatedCode, async (revision) => {
         const result = await playbackRef.current.transition(revision, durationCycles, {
           reportEvaluationError: false,
         })
@@ -234,30 +310,47 @@ function usePatternFlow(deps: PatternStateBindings & {
         }
         return result
       })
+      if (!generatedPattern.isAttemptCurrent(outcome)) return false
 
-      if (outcome.result.ok) return true
+      if (outcome.result.ok) {
+        updateStagedCode(null)
+        return true
+      }
       if (outcome.result.kind === 'cancelled' && !transitionFailed) return false
       if (transitionFailed) {
         setUiError(TRANSITION_ERROR)
       } else {
         setUiError(generatedPlaybackFailureMessage(outcome.result))
       }
+      if (playbackRef.current.playbackState === 'playing') {
+        updateStagedCode(outcome.code)
+        stagedStopTokenRef.current = playbackRef.current.getStopToken()
+      }
       return false
     } finally {
+      transitionInFlightRef.current = false
       setIsTransitionPending(false)
     }
   }
 
   const transitionStaged = async (durationCycles: number): Promise<void> => {
     const candidate = stagedCode
-    if (candidate) await transitionPattern(candidate, durationCycles)
+    const expectedStopToken = stagedStopTokenRef.current
+    if (candidate && expectedStopToken !== null) {
+      await transitionPattern(candidate, durationCycles, {
+        expectedStopToken,
+        validateCandidate: false,
+      })
+    }
   }
 
   return {
     uiError,
     setUiError,
     stagedCode,
-    setStagedCode,
+    setStagedCode: updateStagedCode,
+    stagedTransitionScheduled,
+    cancelStagedTransition,
     isTransitionPending,
     isPlaybackRepairPending,
     suggestions,
@@ -279,10 +372,13 @@ export function Composer(props: PatternStateBindings & {
   byokKey: string
   code: string
   customTitle: string | null
+  shareId: string | null
+  restorePersistedChat?: boolean
   sourcePrompt: string | undefined
   setCustomTitle: (title: string | null) => void
-  setPatternPreview: (code: string | null) => void
-  setPatternPending: (pending: boolean) => void
+  setShareId: (shareId: string | null) => void
+  setRevisionPhase: (phase: RevisionPhase) => void
+  setRevisionStaged: (staged: boolean) => void
   setPatternProvisional: (provisional: boolean) => void
   getCodeRevision: () => number
   getTitleRevision: () => number
@@ -292,7 +388,9 @@ export function Composer(props: PatternStateBindings & {
 }) {
   const [input, setInput] = useState('')
   const [initialChat] = useState(
-    () => loadByokChat() ?? { messages: [], artifact: null, coveredCount: 0 },
+    () => props.restorePersistedChat === false
+      ? { messages: [], artifact: null, coveredCount: 0 }
+      : loadByokChat() ?? { messages: [], artifact: null, coveredCount: 0 },
   )
   const [isAcceptingPattern, setIsAcceptingPattern] = useState(false)
   const [explanatoryStyle, setExplanatoryStyle] = useState(false)
@@ -310,9 +408,27 @@ export function Composer(props: PatternStateBindings & {
     useState<string | null>(null)
   const progressionRunViewRef = useRef<ProgressionRunView>(IDLE_PROGRESSION_RUN)
   const activeProgressionRunRef = useRef<ActiveProgressionRun | null>(null)
+  const [queuedRunPrompt, setQueuedRunPromptState] = useState<string | null>(null)
+  const queuedRunPromptRef = useRef<string | null>(null)
   const patternExplanatoryStyleRef = useRef(false)
+  const currentPatternRef = useRef({
+    code: props.code,
+    customTitle: props.customTitle,
+    shareId: props.shareId,
+    sourcePrompt: props.sourcePrompt,
+  })
+  currentPatternRef.current = {
+    code: props.code,
+    customTitle: props.customTitle,
+    shareId: props.shareId,
+    sourcePrompt: props.sourcePrompt,
+  }
   const turnRequestRef = useRef(0)
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const undoSessionUiRef = useRef<{
+    progressionStep: ProgressionStep | null
+    suggestions: TransitionSuggestion[]
+  } | null>(null)
   const backend = useMemo(() => createByokBackend(props.byokKey), [props.byokKey])
   const setProgressionStep = useCallback((step: ProgressionStep | null) => {
     progressionStepRef.current = step
@@ -321,6 +437,10 @@ export function Composer(props: PatternStateBindings & {
   const setProgressionRun = useCallback((view: ProgressionRunView) => {
     progressionRunViewRef.current = view
     setProgressionRunState(view)
+  }, [])
+  const setQueuedRunPrompt = useCallback((prompt: string | null) => {
+    queuedRunPromptRef.current = prompt
+    setQueuedRunPromptState(prompt)
   }, [])
   const chat = useStudioChat(backend, {
     initialState: initialChat,
@@ -344,6 +464,7 @@ export function Composer(props: PatternStateBindings & {
   const flow = usePatternFlow({
     playback: props.playback,
     abortRepair: backend.abortRepair,
+    setRevisionStaged: props.setRevisionStaged,
     setCode: props.setCode,
     setSourcePrompt: props.setSourcePrompt,
     requestFix: async (message) => {
@@ -378,17 +499,21 @@ export function Composer(props: PatternStateBindings & {
       options.abortGeneration &&
       progressionRunViewRef.current.phase === 'generating'
     ) {
-      chat.abortStream()
+      chat.abortStream(true)
     }
     setProgressionRun(IDLE_PROGRESSION_RUN)
+    setQueuedRunPrompt(null)
     setProgressionRunNotice(options.notice ?? null)
     if (options.clearPlan) setProgressionStep(null)
-  }, [chat.abortStream, setProgressionRun, setProgressionStep])
+  }, [chat.abortStream, setProgressionRun, setProgressionStep, setQueuedRunPrompt])
 
   useEffect(() => {
     props.registerGeneratedPatternController({
       play: flow.playPattern,
-      invalidate: flow.invalidate,
+      invalidate: () => {
+        flow.invalidate()
+        chat.abortStream()
+      },
     })
     return () => {
       flow.invalidate()
@@ -397,18 +522,21 @@ export function Composer(props: PatternStateBindings & {
   }, [
     flow.invalidate,
     flow.playPattern,
+    chat.abortStream,
     props.registerGeneratedPatternController,
   ])
+
+  useEffect(() => () => props.setRevisionStaged(false), [props.setRevisionStaged])
 
   useEffect(() => () => {
     const activeRun = activeProgressionRunRef.current
     cancelActiveProgressionRun(activeRun)
     activeProgressionRunRef.current = null
     turnRequestRef.current++
-    props.setPatternPending(false)
+    props.setRevisionPhase('idle')
     props.setPatternProvisional(false)
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
-  }, [props.setPatternPending, props.setPatternProvisional])
+  }, [props.setPatternProvisional, props.setRevisionPhase])
 
   useEffect(() => {
     const stagedCode = flow.stagedCode
@@ -417,7 +545,12 @@ export function Composer(props: PatternStateBindings & {
     const stagedPatternIsPlaying =
       props.playback.playbackState === 'playing' &&
       props.playback.activeCode === stagedCode
-    if (stagedPatternWasEdited || stagedPatternIsPlaying) flow.setStagedCode(null)
+    const playbackEnded =
+      props.playback.playbackState === 'stopped' ||
+      props.playback.playbackState === 'error'
+    if (stagedPatternWasEdited || stagedPatternIsPlaying || playbackEnded) {
+      flow.setStagedCode(null)
+    }
   }, [
     flow.setStagedCode,
     flow.stagedCode,
@@ -445,6 +578,7 @@ export function Composer(props: PatternStateBindings & {
     flow.isTransitionPending ||
     props.playback.playbackState === 'loading' ||
     props.playback.playbackState === 'transitioning'
+  const generating = chat.isStreaming || isAcceptingPattern
 
   useEffect(() => {
     if (
@@ -469,7 +603,7 @@ export function Composer(props: PatternStateBindings & {
       props.playback.playbackState === 'stopped' ||
       props.playback.playbackState === 'error'
     ) {
-      stopProgressionRun()
+      stopProgressionRun({ abortGeneration: true })
     }
   }, [props.playback.playbackState, stopProgressionRun])
 
@@ -478,12 +612,16 @@ export function Composer(props: PatternStateBindings & {
       clearTimeout(undoTimerRef.current)
       undoTimerRef.current = null
     }
+    undoSessionUiRef.current = null
     setShowUndo(false)
   }
 
   const generateTurn = (
     text: string,
-    options: { clearInput?: boolean } = {},
+    options: {
+      clearInput?: boolean
+      scheduleTransition?: boolean
+    } = {},
   ): Promise<GeneratedTurn | null> => {
     const prompt = text.trim()
     if (!prompt || busy) return Promise.resolve(null)
@@ -493,11 +631,7 @@ export function Composer(props: PatternStateBindings & {
     const turnRequest = ++turnRequestRef.current
     const codeRevision = props.getCodeRevision()
     const titleRevision = props.getTitleRevision()
-    const previousPattern = {
-      code: props.code,
-      customTitle: props.customTitle,
-      sourcePrompt: props.sourcePrompt,
-    }
+    const previousPattern = { ...currentPatternRef.current }
     // The staged transition belongs to the preceding assistant turn. Once a
     // new turn begins, its one-shot controls are no longer actionable.
     flow.setStagedCode(null)
@@ -509,7 +643,7 @@ export function Composer(props: PatternStateBindings & {
     let patternRestored = false
     const finishPatternPreparation = () => {
       if (turnRequestRef.current === turnRequest) {
-        props.setPatternPending(false)
+        props.setRevisionPhase('idle')
       }
     }
     const restorePreviousPattern = () => {
@@ -521,12 +655,13 @@ export function Composer(props: PatternStateBindings & {
       props.setSourcePrompt(previousPattern.sourcePrompt)
       if (props.getTitleRevision() === titleRevision) {
         props.setCustomTitle(previousPattern.customTitle)
+        props.setShareId(previousPattern.shareId)
       }
     }
     const beginPatternPreparation = (pattern: string) => {
       patternAdopted = true
-      if (props.getTitleRevision() === titleRevision) {
-        props.setCustomTitle(null)
+      if (turnRequestRef.current === turnRequest) {
+        props.setRevisionPhase('checking')
       }
       const preparation = flow.preparePattern(pattern)
       preparedPattern = preparation
@@ -537,16 +672,15 @@ export function Composer(props: PatternStateBindings & {
       return preparation
     }
     setIsAcceptingPattern(true)
-    props.setPatternPending(true)
+    props.setRevisionPhase('revising')
     props.setPatternProvisional(true)
     void props.playback.prepareValidation()
     const turnPromise = chat.sendMessage(prompt, {
+      currentPattern: previousPattern.code,
       requestInstruction: explanatoryStyle
         ? EXPLANATORY_STYLE_INSTRUCTION
         : undefined,
-      onPatternPreview: props.setPatternPreview,
       onPatternPreviewDiscarded: () => {
-        props.setPatternPreview(null)
         restorePreviousPattern()
         finishPatternPreparation()
         if (turnRequestRef.current === turnRequest) {
@@ -554,8 +688,9 @@ export function Composer(props: PatternStateBindings & {
         }
       },
       resolvePattern: (pattern) => {
-        props.setPatternPreview(null)
-        return beginPatternPreparation(pattern).then((prepared) => prepared.code)
+        return beginPatternPreparation(pattern).then((prepared) =>
+          prepared.valid ? prepared.code : null,
+        )
       },
     })
     if (options.clearInput) setInput('')
@@ -572,9 +707,8 @@ export function Composer(props: PatternStateBindings & {
         // Metadata belongs to the original turn. Pattern repairs carry its
         // suggestions and title forward with the corrected code.
         flow.showSuggestions(turn.suggestions)
-        flow.landPattern(turn.pattern)
+        flow.landPattern(turn.pattern, options.scheduleTransition !== false)
         if (
-          turn.title &&
           turnRequestRef.current === turnRequest &&
           props.getTitleRevision() === titleRevision
         ) {
@@ -600,6 +734,17 @@ export function Composer(props: PatternStateBindings & {
     })
   }
 
+  const steerRun = (text: string) => {
+    const prompt = text.trim()
+    if (!prompt || busy || activeProgressionRunRef.current === null) return
+    setQueuedRunPrompt(prompt)
+    const current = progressionRunViewRef.current
+    if (current.phase === 'starting' || current.phase === 'waiting') {
+      setProgressionRun({ ...current, nextAction: prompt })
+    }
+    setInput('')
+  }
+
   const startProgressionRun = (): void => {
     const initialStep = progressionStepRef.current
     if (!initialStep || busy || activeProgressionRunRef.current) return
@@ -611,6 +756,7 @@ export function Composer(props: PatternStateBindings & {
       controller: new AbortController(),
     }
     activeProgressionRunRef.current = activeRun
+    setQueuedRunPrompt(null)
     activeRun.deadlineTimer = setTimeout(() => {
       if (activeProgressionRunRef.current !== activeRun) return
       stopProgressionRun({
@@ -633,6 +779,22 @@ export function Composer(props: PatternStateBindings & {
         afterCycles: step.afterCycles,
       })
     }
+    const showWaitCountdown = (
+      remainingCycles: number,
+      cyclesPerSecond: number,
+    ) => {
+      if (!isCurrent() || !Number.isFinite(cyclesPerSecond) || cyclesPerSecond <= 0) {
+        return
+      }
+      const current = progressionRunViewRef.current
+      if (current.phase !== 'waiting') return
+      const remainingSeconds = Math.max(
+        0,
+        Math.ceil(remainingCycles / cyclesPerSecond),
+      )
+      if (current.remainingSeconds === remainingSeconds) return
+      setProgressionRun({ ...current, remainingSeconds })
+    }
 
     showPhase('starting', initialStep)
     flow.setStagedCode(null)
@@ -645,7 +807,8 @@ export function Composer(props: PatternStateBindings & {
         : props.playback.playbackState === 'playing'
           ? await flow.transitionPattern(
               initialStep.pattern,
-              DEFAULT_TRANSITION_CYCLES,
+              DEFAULT_AUTOPLAY_TRANSITION_CYCLES,
+              { validateCandidate: false },
             )
           : await flow.playPattern(initialStep.pattern)
       if (!isCurrent()) return
@@ -656,20 +819,43 @@ export function Composer(props: PatternStateBindings & {
 
       await continueProgressionRun(initialStep, {
         isCurrent,
-        wait: async (step) => {
-          showPhase('waiting', step)
-          const result = await props.playback.waitForCycles(
+        wait: (step) => {
+          showPhase('waiting', {
+            ...step,
+            nextAction: queuedRunPromptRef.current ?? step.nextAction,
+          })
+          const waitController = new AbortController()
+          const abortWait = () => waitController.abort()
+          activeRun.controller.signal.addEventListener('abort', abortWait, { once: true })
+          let skipWait = (): void => {}
+          const skipped = new Promise<boolean>((resolve) => {
+            skipWait = () => {
+              resolve(true)
+              waitController.abort()
+            }
+            activeRun.skipWait = skipWait
+          })
+          const musicalWait = props.playback.waitForCycles(
             step.afterCycles,
-            activeRun.controller.signal,
-          )
-          if (!result.ok && result.kind !== 'cancelled' && isCurrent()) {
-            flow.setUiError(result.error)
-          }
-          return result.ok
+            waitController.signal,
+            showWaitCountdown,
+          ).then((result) => {
+            if (!result.ok && result.kind !== 'cancelled' && isCurrent()) {
+              flow.setUiError(result.error)
+            }
+            return result.ok
+          })
+          return Promise.race([musicalWait, skipped]).finally(() => {
+            activeRun.controller.signal.removeEventListener('abort', abortWait)
+            if (activeRun.skipWait === skipWait) activeRun.skipWait = undefined
+          })
         },
         generate: async (step) => {
-          showPhase('generating', step)
-          return generateTurn(step.nextAction)
+          const override = queuedRunPromptRef.current
+          const prompt = override ?? step.nextAction
+          if (override !== null) setQueuedRunPrompt(null)
+          showPhase('generating', { ...step, nextAction: prompt })
+          return generateTurn(prompt, { scheduleTransition: false })
         },
         transition: async (turn) => {
           setProgressionStep(progressionStepFromTurn(turn))
@@ -680,7 +866,8 @@ export function Composer(props: PatternStateBindings & {
           })
           return flow.transitionPattern(
             turn.pattern,
-            DEFAULT_TRANSITION_CYCLES,
+            DEFAULT_AUTOPLAY_TRANSITION_CYCLES,
+            { validateCandidate: false },
           )
         },
       })
@@ -692,30 +879,43 @@ export function Composer(props: PatternStateBindings & {
 
   const clearSession = () => {
     const hadConversation = chat.messages.length > 0
+    const previousSessionUi = {
+      progressionStep: progressionStepRef.current,
+      suggestions: flow.suggestions,
+    }
     stopProgressionRun({ clearPlan: true })
     turnRequestRef.current++
     chat.clearChat()
     flow.setUiError(null)
     flow.setStagedCode(null)
+    flow.showSuggestions([])
     setInput('')
     hideUndo()
     if (!hadConversation) return
+    undoSessionUiRef.current = previousSessionUi
     setShowUndo(true)
     undoTimerRef.current = setTimeout(() => {
       undoTimerRef.current = null
+      undoSessionUiRef.current = null
       setShowUndo(false)
     }, UNDO_CLEAR_WINDOW_MS)
   }
 
   const undoClearSession = () => {
+    const previousSessionUi = undoSessionUiRef.current
+    if (chat.undoClearChat()) {
+      flow.showSuggestions(previousSessionUi?.suggestions ?? [])
+      setProgressionStep(previousSessionUi?.progressionStep ?? null)
+    }
     hideUndo()
-    chat.undoClearChat()
   }
 
   const onInputKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
+      if (event.nativeEvent.isComposing) return
       event.preventDefault()
-      send(input)
+      if (progressionRunViewRef.current.phase === 'idle') send(input)
+      else steerRun(input)
     }
   }
 
@@ -726,11 +926,14 @@ export function Composer(props: PatternStateBindings & {
       chat.messages.map((message) => ({
         key: message.id,
         role: message.role,
-        prose: visibleTextWithoutCodeBlocks(message.content),
+        prose: message.role === 'assistant'
+          ? visibleGeneratedTurnExplanation(message.content)
+          : visibleTextWithoutCodeBlocks(message.content),
       })),
     [chat.messages],
   )
   const sessionError = flow.uiError ?? chat.error ?? chatStorageError
+  const progressionRunning = progressionRun.phase !== 'idle'
 
   return (
     <section className="composer">
@@ -779,19 +982,28 @@ export function Composer(props: PatternStateBindings & {
           </button>
         </div>
       ) : (
-        <div className="transcript" aria-live="polite" ref={transcriptRef}>
-          {transcript.map((message) =>
-            message.prose ? (
-              <p key={message.key} className={message.role}>{message.prose}</p>
-            ) : null,
-          )}
-          {busy ? (
-            <span className="stream-dots" aria-label="Generating">
-              <span>.</span><span>.</span><span>.</span>
-            </span>
-          ) : null}
+        <div className="transcript" ref={transcriptRef}>
+          <div className="transcript-log" role="log" aria-live="polite">
+            {transcript.map((message) =>
+              message.prose ? (
+                <p key={message.key} className={message.role}>{message.prose}</p>
+              ) : null,
+            )}
+            {generating ? (
+              <span className="stream-dots" aria-label="Generating">
+                <span>.</span><span>.</span><span>.</span>
+              </span>
+            ) : null}
+          </div>
           {flow.stagedCode ? (
-            <MixRow flow={flow} playback={props.playback} />
+            <>
+              <span className="sr-only" role="status">
+                {flow.stagedTransitionScheduled
+                  ? 'Revision ready. Crossfade scheduled in five seconds.'
+                  : 'Revision ready to crossfade.'}
+              </span>
+              <MixRow flow={flow} playback={props.playback} />
+            </>
           ) : null}
         </div>
       )}
@@ -809,7 +1021,7 @@ export function Composer(props: PatternStateBindings & {
         </div>
       ) : null}
 
-      {!isEmpty ? (
+      {!progressionRunning && !isEmpty ? (
         <div className="chip-row">
           <span className="chip-label">EFFECT</span>
           {PROMPT_MODIFIERS.map((modifier) => (
@@ -826,7 +1038,7 @@ export function Composer(props: PatternStateBindings & {
         </div>
       ) : null}
 
-      {flow.suggestions.length > 0 ? (
+      {!progressionRunning && flow.suggestions.length > 0 ? (
         <div className="chip-row next">
           <span className="chip-label">NEXT</span>
           {flow.suggestions.map((suggestion) => (
@@ -849,6 +1061,7 @@ export function Composer(props: PatternStateBindings & {
           durationMs={progressionRunDurationMs}
           notice={progressionRunNotice}
           run={progressionRun}
+          overrideQueued={queuedRunPrompt !== null}
           step={progressionStep}
           onDurationChange={(durationMs) => {
             setProgressionRunDurationMs(
@@ -858,41 +1071,49 @@ export function Composer(props: PatternStateBindings & {
           }}
           onStart={startProgressionRun}
           onStop={() => stopProgressionRun({ abortGeneration: true })}
+          onXfadeNow={() => activeProgressionRunRef.current?.skipWait?.()}
         />
       ) : null}
 
       {sessionError ? <p className="error" role="alert">{sessionError}</p> : null}
 
       <form
-        className="prompt-form"
+        className={`prompt-form ${progressionRunning ? 'run-steer' : ''}`}
         onSubmit={(event) => {
           event.preventDefault()
-          send(input)
+          if (progressionRunning) steerRun(input)
+          else send(input)
         }}
       >
-        <label className="explanatory-toggle">
-          <input
-            type="checkbox"
-            checked={explanatoryStyle}
-            disabled={busy}
-            onChange={(event) => setExplanatoryStyle(event.target.checked)}
-          />
-          <strong>Explanatory</strong>
-          <span>comment every line</span>
-        </label>
+        {!progressionRunning ? (
+          <label className="explanatory-toggle">
+            <input
+              type="checkbox"
+              checked={explanatoryStyle}
+              disabled={busy}
+              onChange={(event) => setExplanatoryStyle(event.target.checked)}
+            />
+            <strong>Explanatory</strong>
+            <span>comment every line</span>
+          </label>
+        ) : null}
         <textarea
-          aria-label="Describe the music"
+          aria-label={progressionRunning ? 'Steer the next transition' : 'Describe the music'}
           value={input}
           onChange={(event) => {
             hideUndo()
             setInput(event.target.value)
           }}
           onKeyDown={onInputKeyDown}
-          placeholder={busy ? 'generating…' : 'describe your sound…'}
-          rows={2}
+          placeholder={progressionRunning
+            ? busy ? 'finishing this transition…' : 'steer the next transition…'
+            : busy ? 'generating…' : 'describe your sound…'}
+          rows={progressionRunning ? 1 : 2}
           maxLength={4000}
         />
-        <button className="primary" disabled={busy || !input.trim()}>SEND</button>
+        <button className="primary" disabled={busy || !input.trim()}>
+          {progressionRunning ? 'STEER NEXT' : 'SEND'}
+        </button>
       </form>
     </section>
   )
@@ -902,11 +1123,13 @@ function ProgressionRow(props: {
   busy: boolean
   durationMs: number
   notice: string | null
+  overrideQueued: boolean
   run: ProgressionRunView
   step: ProgressionStep | null
   onDurationChange(durationMs: number): void
   onStart(): void
   onStop(): void
+  onXfadeNow(): void
 }) {
   const running = props.run.phase !== 'idle'
   const afterCycles = props.run.phase === 'idle'
@@ -918,34 +1141,78 @@ function ProgressionRow(props: {
   const status = progressionRunStatus(props.run, afterCycles, props.notice)
 
   return (
-    <div className="progression-row" aria-live="polite">
-      <span className="chip-label">RUN</span>
-      <span className="progression-copy" title={action ?? undefined}>
-        <strong>{status}</strong>
-        <span>{action}</span>
+    <div
+      className={`progression-row ${running ? 'running' : ''}`}
+    >
+      <span className="sr-only" role="status">
+        {progressionRunAnnouncement(props.run, action, props.notice)}
       </span>
-      <select
-        aria-label="Run duration"
-        className="run-duration"
-        disabled={running || props.busy}
-        value={props.durationMs}
-        onChange={(event) => props.onDurationChange(Number(event.target.value))}
-      >
-        {PROGRESSION_RUN_DURATION_PRESETS_MS.map((durationMs) => (
-          <option key={durationMs} value={durationMs}>
-            {progressionRunDurationLabel(durationMs)}
-          </option>
-        ))}
-      </select>
-      <button
-        className={`primary ${running ? 'stop' : ''}`}
-        disabled={!running && props.busy}
-        onClick={running ? props.onStop : props.onStart}
-      >
-        {running ? 'STOP RUN' : 'START RUN'}
-      </button>
+      <span className="chip-label">RUN</span>
+      <div className="progression-body">
+        <div className="progression-copy">
+          <strong role={props.run.phase === 'waiting' ? 'timer' : undefined}>
+            {status}
+          </strong>
+          {action ? (
+            <span>
+              {props.overrideQueued ? <em>YOUR NEXT</em> : null}
+              {action}
+            </span>
+          ) : null}
+        </div>
+        <div className={`progression-controls ${running ? 'running' : ''}`}>
+          {!running ? (
+            <select
+              aria-label="Run duration"
+              className="run-duration"
+              disabled={props.busy}
+              value={props.durationMs}
+              onChange={(event) => props.onDurationChange(Number(event.target.value))}
+            >
+              {PROGRESSION_RUN_DURATION_PRESETS_MS.map((durationMs) => (
+                <option key={durationMs} value={durationMs}>
+                  {progressionRunDurationLabel(durationMs)}
+                </option>
+              ))}
+            </select>
+          ) : null}
+          {props.run.phase === 'waiting' ? (
+            <button className="chrome run-now" onClick={props.onXfadeNow}>
+              XFADE NOW
+            </button>
+          ) : null}
+          <button
+            className={`primary ${running ? 'stop' : ''}`}
+            disabled={!running && props.busy}
+            onClick={running ? props.onStop : props.onStart}
+          >
+            {running ? 'STOP RUN' : 'START RUN'}
+          </button>
+        </div>
+      </div>
     </div>
   )
+}
+
+function progressionRunAnnouncement(
+  run: ProgressionRunView,
+  nextAction: string | undefined,
+  notice: string | null,
+): string {
+  switch (run.phase) {
+    case 'idle':
+      return notice ?? 'Autoplay is ready.'
+    case 'starting':
+      return 'Starting autoplay.'
+    case 'waiting':
+      return nextAction
+        ? `Waiting for the next transition: ${nextAction}`
+        : 'Waiting for the next transition.'
+    case 'generating':
+      return 'Generating the next transition.'
+    case 'transitioning':
+      return 'Crossfading to the next pattern.'
+  }
 }
 
 function progressionRunStatus(
@@ -959,7 +1226,9 @@ function progressionRunStatus(
     case 'starting':
       return 'STARTING'
     case 'waiting':
-      return `PLAYING ${run.afterCycles} CYCLES`
+      return run.remainingSeconds === undefined
+        ? `NEXT IN ${run.afterCycles} CYCLES`
+        : `NEXT IN ${progressionCountdownLabel(run.remainingSeconds)}`
     case 'generating':
       return 'GENERATING NEXT'
     case 'transitioning':
@@ -972,30 +1241,74 @@ function MixRow(props: {
   playback: Playback
 }) {
   const { flow, playback } = props
-  const [transitionCycles, setTransitionCycles] = useState(DEFAULT_TRANSITION_CYCLES)
+  const [transitionCycles, setTransitionCycles] = useState(
+    DEFAULT_MANUAL_TRANSITION_CYCLES,
+  )
+  const [remainingSeconds, setRemainingSeconds] = useState(
+    MANUAL_XFADE_DELAY_MS / 1_000,
+  )
+  const transitionCyclesRef = useRef(transitionCycles)
+  const transitionStagedRef = useRef(flow.transitionStaged)
+  transitionCyclesRef.current = transitionCycles
+  transitionStagedRef.current = flow.transitionStaged
   const mixing = playback.playbackState === 'transitioning'
+  const scheduled = flow.stagedTransitionScheduled
+
+  useEffect(() => {
+    if (!scheduled) return
+    const deadline = Date.now() + MANUAL_XFADE_DELAY_MS
+    const updateCountdown = () => {
+      setRemainingSeconds(Math.max(1, Math.ceil((deadline - Date.now()) / 1_000)))
+    }
+    updateCountdown()
+    const countdownTimer = setInterval(updateCountdown, 250)
+    const transitionTimer = setTimeout(() => {
+      void transitionStagedRef.current(transitionCyclesRef.current)
+    }, MANUAL_XFADE_DELAY_MS)
+    return () => {
+      clearInterval(countdownTimer)
+      clearTimeout(transitionTimer)
+    }
+  }, [scheduled])
 
   return (
-    <div className="mix-row">
-      <span className="chip-label">READY</span>
-      {TRANSITION_CYCLE_OPTIONS.map((cycles) => (
+    <div className="mix-row" aria-live="off">
+      <span className="chip-label" role={scheduled ? 'timer' : undefined}>
+        {scheduled ? `XFADE IN ${remainingSeconds}s` : 'READY'}
+      </span>
+      <div className="mix-duration" role="group" aria-label="Crossfade duration">
+        {TRANSITION_CYCLE_OPTIONS.map((cycles) => (
+          <button
+            key={cycles}
+            aria-label={`${cycles} cycle crossfade`}
+            aria-pressed={transitionCycles === cycles}
+            className={`chip ${transitionCycles === cycles ? 'selected' : ''}`}
+            disabled={mixing}
+            title={`Crossfade over ${cycles} cycles`}
+            onClick={() => setTransitionCycles(cycles)}
+          >
+            {cycles}
+          </button>
+        ))}
+      </div>
+      <div className="mix-actions">
+        {scheduled ? (
+          <button
+            className="chrome"
+            disabled={mixing}
+            onClick={flow.cancelStagedTransition}
+          >
+            CANCEL
+          </button>
+        ) : null}
         <button
-          key={cycles}
-          className={`chip ${transitionCycles === cycles ? 'selected' : ''}`}
+          className="primary"
           disabled={mixing}
-          title={`Crossfade over ${cycles} cycles`}
-          onClick={() => setTransitionCycles(cycles)}
+          onClick={() => void flow.transitionStaged(transitionCycles)}
         >
-          {cycles}
+          {mixing ? 'XFADING…' : scheduled ? 'XFADE NOW' : 'XFADE'}
         </button>
-      ))}
-      <button
-        className="primary"
-        disabled={mixing}
-        onClick={() => void flow.transitionStaged(transitionCycles)}
-      >
-        {mixing ? 'XFADING…' : 'XFADE'}
-      </button>
+      </div>
     </div>
   )
 }

@@ -29,6 +29,6 @@ describe("progression scheduler wait", () => {
 
   it("allows longer pattern plans without waiting forever on a stall", () => {
     expect(progressionWaitTimeoutMs(64, 0.1)).toBe(1_290_000);
-    expect(progressionWaitTimeoutMs(64, 0.01)).toBe(1_800_000);
+    expect(progressionWaitTimeoutMs(64, 0.01)).toBe(12_810_000);
   });
 });

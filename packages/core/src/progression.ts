@@ -1,21 +1,25 @@
 import { isJsonNumber, jsonMembers, jsonText, type JsonValue } from "./json";
+import { MAX_PROGRESSION_RUN_DURATION_MS } from "./progression-limits";
+
+export { MAX_PROGRESSION_RUN_DURATION_MS } from "./progression-limits";
 
 /** Musical time bounds for a model-planned progression. */
-export const MIN_PROGRESSION_CYCLES = 16;
-export const MAX_PROGRESSION_CYCLES = 128;
+export const MIN_PROGRESSION_CYCLES = 32;
+/** A safety ceiling, not a creative target. Long-form plans may need thousands. */
+export const MAX_PROGRESSION_CYCLES = 4_096;
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
 
 /** Runs are deliberately finite even when a tab is left open. */
 export const DEFAULT_PROGRESSION_RUN_DURATION_MS = 30 * MINUTE_MS;
-export const MAX_PROGRESSION_RUN_DURATION_MS = 5 * HOUR_MS;
 export const PROGRESSION_RUN_DURATION_PRESETS_MS = [
   DEFAULT_PROGRESSION_RUN_DURATION_MS,
   HOUR_MS,
   2 * HOUR_MS,
   3 * HOUR_MS,
   4 * HOUR_MS,
+  5 * HOUR_MS,
   MAX_PROGRESSION_RUN_DURATION_MS,
 ] as const;
 

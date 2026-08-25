@@ -27,15 +27,7 @@ describe('public pattern Worker', () => {
 
   it('lists public patterns, returns a short link target and records one vote per browser', async () => {
     const db = new PatternDatabase()
-    db.patterns.set('Abc_123-xYz9', {
-      id: 'Abc_123-xYz9',
-      title: 'Acid rain',
-      code: 's("bd*4")',
-      createdAt: 123,
-      likes: 0,
-      dislikes: 0,
-      score: 0,
-    })
+    seedAcidRain(db)
     const env = patternEnv(db)
 
     const list = await handlePatternRequest(
@@ -103,6 +95,39 @@ describe('public pattern Worker', () => {
       validSiteverify(),
     )).status).toBe(429)
   })
+
+  it('does not create a vote for a missing pattern', async () => {
+    const db = new PatternDatabase()
+    const response = await handlePatternRequest(
+      jsonRequest('/api/patterns/Abc_123-xYz9/vote', 'PUT', { value: 1 }),
+      patternEnv(db),
+    )
+
+    expect(response.status).toBe(404)
+    expect(db.votes.size).toBe(0)
+  })
+
+  it('rate limits rotated voter cookies by their Cloudflare client IP', async () => {
+    const db = new PatternDatabase()
+    seedAcidRain(db)
+    const rateLimitKeys: string[] = []
+    const env = patternEnv(db, true, rateLimitKeys)
+    for (const voterId of [
+      '11111111111111111111111111111111',
+      '22222222222222222222222222222222',
+    ]) {
+      const request = jsonRequest(
+        '/api/patterns/Abc_123-xYz9/vote',
+        'PUT',
+        { value: 1 },
+        `purple_voter=${voterId}`,
+      )
+      request.headers.set('CF-Connecting-IP', '203.0.113.7')
+      expect((await handlePatternRequest(request, env)).status).toBe(200)
+    }
+
+    expect(rateLimitKeys).toEqual(['ip:203.0.113.7', 'ip:203.0.113.7'])
+  })
 })
 
 interface StoredPattern {
@@ -113,6 +138,18 @@ interface StoredPattern {
   likes: number
   dislikes: number
   score: number
+}
+
+function seedAcidRain(db: PatternDatabase): void {
+  db.patterns.set('Abc_123-xYz9', {
+    id: 'Abc_123-xYz9',
+    title: 'Acid rain',
+    code: 's("bd*4")',
+    createdAt: 123,
+    likes: 0,
+    dislikes: 0,
+    score: 0,
+  })
 }
 
 class PatternDatabase {
@@ -158,22 +195,18 @@ class PatternStatement {
       })
     } else if (this.query.includes('INSERT INTO pattern_votes')) {
       const [id, voterHash, value] = this.values as [string, string, number]
-      this.db.votes.set(`${id}:${voterHash}`, value)
+      if (this.db.patterns.has(id)) this.db.votes.set(`${id}:${voterHash}`, value)
     } else if (this.query.includes('DELETE FROM pattern_votes')) {
       const [id, voterHash] = this.values as [string, string]
-      this.db.votes.delete(`${id}:${voterHash}`)
+      if (this.db.patterns.has(id)) this.db.votes.delete(`${id}:${voterHash}`)
     } else if (this.query.includes('UPDATE shared_patterns SET')) {
-      const id = this.values[3] as string
+      const id = this.values.at(-1) as string
       this.updateCounts(id)
     }
     return d1Result([])
   }
 
   async first<T>(): Promise<T | null> {
-    if (this.query.startsWith('SELECT id FROM shared_patterns')) {
-      const pattern = this.db.patterns.get(this.values[0] as string)
-      return (pattern ? { id: pattern.id } : null) as T | null
-    }
     const voterHash = this.values[0] as string
     const id = this.values[1] as string
     const pattern = this.db.patterns.get(id)
@@ -225,8 +258,17 @@ class PatternStatement {
   }
 }
 
-function patternEnv(db: PatternDatabase, allowed = true): Env {
-  const limiter = { async limit() { return { success: allowed } } }
+function patternEnv(
+  db: PatternDatabase,
+  allowed = true,
+  rateLimitKeys?: string[],
+): Env {
+  const limiter = {
+    async limit({ key }: { key: string }) {
+      rateLimitKeys?.push(key)
+      return { success: allowed }
+    },
+  }
   return {
     PATTERNS_DB: db,
     SHARE_RATE_LIMITER: limiter,

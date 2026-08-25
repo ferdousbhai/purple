@@ -5,6 +5,7 @@ export function ModalDialog(props: {
   className: string
   closeLabel: string
   descriptionId: string
+  dismissible?: boolean
   eyebrow: string
   onClose: () => void
   title: string
@@ -18,6 +19,7 @@ export function ModalDialog(props: {
   }, [])
 
   const close = () => {
+    if (props.dismissible === false) return
     const dialog = dialogRef.current
     if (dialog?.open) dialog.close()
     else props.onClose()
@@ -43,7 +45,14 @@ export function ModalDialog(props: {
           <span>{props.eyebrow}</span>
           <h2 id={props.titleId}>{props.title}</h2>
         </div>
-        <button type="button" aria-label={props.closeLabel} onClick={close}>×</button>
+        <button
+          type="button"
+          aria-label={props.closeLabel}
+          disabled={props.dismissible === false}
+          onClick={close}
+        >
+          ×
+        </button>
       </header>
       {props.children(close)}
     </dialog>
@@ -59,7 +68,14 @@ export function DialogSubmitActions(props: {
 }) {
   return (
     <>
-      <button type="button" className="chrome" onClick={props.onCancel}>CANCEL</button>
+      <button
+        type="button"
+        className="chrome"
+        disabled={props.pending}
+        onClick={props.onCancel}
+      >
+        CANCEL
+      </button>
       <button className="primary" disabled={props.disabled}>
         {props.pending ? props.pendingLabel : props.idleLabel}
       </button>

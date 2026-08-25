@@ -108,8 +108,27 @@ describe("attemptWithRepair", () => {
     const outcome = await attemptWithRepair("broken()", deps);
 
     expect(deps.applyFix).not.toHaveBeenCalled();
+    expect(deps.requestFix).not.toHaveBeenCalled();
     expect(attempt).toHaveBeenCalledOnce();
     expect(outcome.code).toBe("broken()");
+  });
+
+  it("does not request a fix when an edit overtakes the first attempt", async () => {
+    let stale = false;
+    const attempt = vi.fn(async () => {
+      stale = true;
+      return evaluationError("overtaken failure");
+    });
+    const deps = createDeps({ attempt, isStale: () => stale });
+
+    const outcome = await attemptWithRepair("broken()", deps);
+
+    expect(outcome).toEqual({
+      result: evaluationError("overtaken failure"),
+      code: "broken()",
+    });
+    expect(deps.requestFix).not.toHaveBeenCalled();
+    expect(deps.applyFix).not.toHaveBeenCalled();
   });
 
   it("keeps the fix in the editor but does not replay after a stop", async () => {

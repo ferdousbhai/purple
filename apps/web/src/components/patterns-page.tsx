@@ -6,7 +6,8 @@ import type {
 } from '@purple/core/shared-pattern'
 import { PurpleMark } from '@purple/ui/purple-mark'
 import { usePlayback } from '@purple/ui/use-playback'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { InternalLink, type NavigateInApp } from './internal-link'
 import { unlockMediaChannel } from '#/lib/media-channel'
 import {
   removePattern,
@@ -14,7 +15,7 @@ import {
   upsertPattern,
   usePatterns,
 } from '#/lib/patterns'
-import { WEB_AUDIO_OPTIONS } from '#/lib/playback'
+import { WEB_AUDIO_OPTIONS, type WebPlayback } from '#/lib/playback'
 import { fetchPatternPage, voteForPattern } from '#/lib/public-patterns'
 
 const PATTERN_DATE_FORMAT = new Intl.DateTimeFormat(undefined, {
@@ -22,7 +23,27 @@ const PATTERN_DATE_FORMAT = new Intl.DateTimeFormat(undefined, {
   month: 'short',
 })
 
-export function PatternsPage() {
+interface PatternsPageProps {
+  focusOnMount?: boolean
+  navigate?: NavigateInApp
+}
+
+export function PatternsPage(props: PatternsPageProps) {
+  const playback = usePlayback(WEB_AUDIO_OPTIONS)
+  return <PatternsPageView {...props} playback={playback} />
+}
+
+export function PersistentPatternsPage(
+  props: PatternsPageProps & { playback: WebPlayback },
+) {
+  return <PatternsPageView {...props} />
+}
+
+function PatternsPageView({
+  focusOnMount,
+  navigate,
+  playback,
+}: PatternsPageProps & { playback: WebPlayback }) {
   const [sort, setSort] = useState<PatternSort>('fresh')
   const [patterns, setPatterns] = useState<SharedPattern[]>([])
   const [nextCursor, setNextCursor] = useState<string | null>(null)
@@ -30,14 +51,25 @@ export function PatternsPage() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [votePending, setVotePending] = useState<Set<string>>(() => new Set())
-  const [activeId, setActiveId] = useState<string | null>(null)
   const loadMoreControllerRef = useRef<AbortController | null>(null)
-  const playback = usePlayback(WEB_AUDIO_OPTIONS)
+  const mainRef = useRef<HTMLElement | null>(null)
   const library = usePatterns()
+  const savedPatternsByShareId = useMemo(
+    () => new Map(
+      library.flatMap((pattern) =>
+        pattern.shareId ? [[pattern.shareId, pattern] as const] : [],
+      ),
+    ),
+    [library],
+  )
   const playbackActive =
     playback.playbackState === 'playing' ||
     playback.playbackState === 'loading' ||
     playback.playbackState === 'transitioning'
+
+  useEffect(() => {
+    if (focusOnMount) mainRef.current?.focus({ preventScroll: true })
+  }, [focusOnMount])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -45,6 +77,8 @@ export function PatternsPage() {
     loadMoreControllerRef.current = null
     setLoading(true)
     setLoadingMore(false)
+    setPatterns([])
+    setNextCursor(null)
     setError(null)
     void fetchPatternPage(sort, null, controller.signal)
       .then((page) => {
@@ -75,15 +109,17 @@ export function PatternsPage() {
     ))
   }, [])
 
-  const vote = async (pattern: SharedPattern, value: PatternVote) => {
-    if (votePending.has(pattern.id)) return
+  const vote = async (pattern: SharedPattern, value: PatternVote): Promise<boolean> => {
+    if (votePending.has(pattern.id)) return false
     setVotePending((current) => new Set(current).add(pattern.id))
     setError(null)
     try {
       const result = await voteForPattern(pattern.id, value)
       updatePattern(pattern.id, result)
+      return true
     } catch {
       setError('Purple could not record that vote. Please try again.')
+      return false
     } finally {
       setVotePending((current) => {
         const next = new Set(current)
@@ -94,48 +130,61 @@ export function PatternsPage() {
   }
 
   const toggleLike = async (pattern: SharedPattern) => {
-    const saved = library.find((candidate) => candidate.shareId === pattern.id)
-    const liked = pattern.viewerVote === 1 || saved !== undefined
+    if (votePending.has(pattern.id)) return
+    const saved = savedPatternsByShareId.get(pattern.id)
+    const liked = pattern.viewerVote === 1
     let persisted = true
+    let rollbackLibrary: (() => boolean) | null = null
     if (liked) {
-      if (saved) persisted = removePattern(saved.id)
-    } else {
+      if (saved) {
+        persisted = removePattern(saved.id)
+        rollbackLibrary = () => upsertPattern(saved)
+      }
+    } else if (!saved) {
       const now = Date.now()
-      persisted = upsertPattern({
+      const nextPattern = {
         id: sharedLibraryId(pattern.id),
         title: pattern.title,
         code: pattern.code,
         shareId: pattern.id,
         createdAt: now,
         updatedAt: now,
-      })
+      }
+      persisted = upsertPattern(nextPattern)
+      rollbackLibrary = () => removePattern(nextPattern.id)
     }
     if (!persisted) {
       setError('This browser could not update your library. Allow site data and try again.')
       return
     }
-    await vote(pattern, liked ? 0 : 1)
+    if (!(await vote(pattern, liked ? 0 : 1)) && rollbackLibrary && !rollbackLibrary()) {
+      setError('Purple could not record that vote or restore your library. Please try again.')
+    }
   }
 
   const toggleDislike = async (pattern: SharedPattern) => {
-    const saved = library.find((candidate) => candidate.shareId === pattern.id)
-    if (saved && !removePattern(saved.id)) {
+    if (votePending.has(pattern.id)) return
+    const saved = savedPatternsByShareId.get(pattern.id)
+    const disliked = pattern.viewerVote === -1
+    if (!disliked && saved && !removePattern(saved.id)) {
       setError('This browser could not update your library. Allow site data and try again.')
       return
     }
-    await vote(pattern, pattern.viewerVote === -1 ? 0 : -1)
+    if (!(await vote(pattern, disliked ? 0 : -1)) && !disliked && saved) {
+      if (!upsertPattern(saved)) {
+        setError('Purple could not record that vote or restore your library. Please try again.')
+      }
+    }
   }
 
   const togglePlayback = (pattern: SharedPattern) => {
     // Start the hidden media channel in the click itself for iOS WebKit.
     unlockMediaChannel()
-    const active = activeId === pattern.id && playbackActive
+    const active = playback.activeCode === pattern.code && playbackActive
     if (active) {
       playback.stop()
-      setActiveId(null)
       return
     }
-    setActiveId(pattern.id)
     void playback.play(pattern.code)
   }
 
@@ -148,7 +197,17 @@ export function PatternsPage() {
     try {
       const page = await fetchPatternPage(sort, nextCursor, controller.signal)
       if (controller.signal.aborted) return
-      setPatterns((current) => [...current, ...page.patterns])
+      setPatterns((current) => {
+        const seen = new Set(current.map(({ id }) => id))
+        return [
+          ...current,
+          ...page.patterns.filter(({ id }) => {
+            if (seen.has(id)) return false
+            seen.add(id)
+            return true
+          }),
+        ]
+      })
       setNextCursor(page.nextCursor)
     } catch (reason) {
       if (reason instanceof Error && reason.name === 'AbortError') return
@@ -162,15 +221,26 @@ export function PatternsPage() {
   }
 
   return (
-    <main className="patterns-shell">
+    <main
+      className="patterns-shell"
+      ref={mainRef}
+      tabIndex={focusOnMount ? -1 : undefined}
+    >
       <header className="topbar patterns-topbar">
-        <a className="brand" href="/" aria-label="Purple studio">
+        <InternalLink className="brand" href="/" navigate={navigate} aria-label="Purple studio">
           <PurpleMark className="brand-mark" />
           <span className="brand-name">PURPLE</span>
-        </a>
+        </InternalLink>
         <nav className="topbar-actions" aria-label="Primary">
           <span className="chrome open" aria-current="page">PATTERNS</span>
-          <a className="chrome" href="/">OPEN STUDIO</a>
+          {playbackActive ? (
+            <button className="chrome pattern-gallery-stop" onClick={playback.stop}>
+              STOP AUDIO
+            </button>
+          ) : null}
+          <InternalLink className="chrome" href="/" navigate={navigate}>
+            OPEN STUDIO
+          </InternalLink>
         </nav>
       </header>
 
@@ -179,7 +249,7 @@ export function PatternsPage() {
           <div>
             <p>PUBLIC PATTERNS</p>
             <h1>Press play. Keep what you like.</h1>
-            <span>Playback works without a Gemini key. Open a card to edit it in Purple.</span>
+            <span>Playback works without a Gemini key. Preview freely, then open a pattern when you want to edit it.</span>
           </div>
           <div className="pattern-sort" role="group" aria-label="Sort patterns">
             <button
@@ -209,21 +279,18 @@ export function PatternsPage() {
         ) : patterns.length === 0 ? (
           <section className="patterns-empty">
             <p>No public patterns yet.</p>
-            <a className="primary" href="/">MAKE THE FIRST ONE</a>
+            <InternalLink className="primary" href="/" navigate={navigate}>
+              MAKE THE FIRST ONE
+            </InternalLink>
           </section>
         ) : (
           <section className="pattern-card-grid" aria-label="Public patterns">
             {patterns.map((pattern) => {
-              const playing = activeId === pattern.id && playbackActive
-              const saved = library.some((candidate) => candidate.shareId === pattern.id)
-              const liked = pattern.viewerVote === 1 || saved
+              const playing = playback.activeCode === pattern.code && playbackActive
+              const liked = pattern.viewerVote === 1
               return (
                 <article className={`pattern-card ${playing ? 'playing' : ''}`} key={pattern.id}>
-                  <a
-                    className="pattern-card-open"
-                    href={`/?s=${pattern.id}`}
-                    aria-label={`Open ${pattern.title} in studio`}
-                  >
+                  <div className="pattern-card-preview">
                     <header>
                       <h2>{pattern.title}</h2>
                       <time dateTime={new Date(pattern.createdAt).toISOString()}>
@@ -231,16 +298,25 @@ export function PatternsPage() {
                       </time>
                     </header>
                     <pre>{pattern.code}</pre>
-                    <span className="open-hint">OPEN IN STUDIO ↗</span>
-                  </a>
+                  </div>
                   <footer>
-                    <button
-                      className={`card-play ${playing ? 'stop' : ''}`}
-                      aria-label={`${playing ? 'Stop' : 'Play'} ${pattern.title}`}
-                      onClick={() => togglePlayback(pattern)}
-                    >
-                      {playing ? '■ STOP' : '▶ PLAY'}
-                    </button>
+                    <div className="pattern-card-actions">
+                      <button
+                        className={`card-play ${playing ? 'stop' : ''}`}
+                        aria-label={`${playing ? 'Stop' : 'Play'} ${pattern.title}`}
+                        onClick={() => togglePlayback(pattern)}
+                      >
+                        {playing ? '■ STOP' : '▶ PLAY'}
+                      </button>
+                      <InternalLink
+                        className="card-open"
+                        href={`/?s=${pattern.id}`}
+                        navigate={navigate}
+                        aria-label={`Open ${pattern.title} in studio`}
+                      >
+                        OPEN IN STUDIO
+                      </InternalLink>
+                    </div>
                     <div className="pattern-votes">
                       <button
                         className={liked ? 'active like' : 'like'}

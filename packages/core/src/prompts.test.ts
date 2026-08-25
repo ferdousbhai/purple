@@ -15,9 +15,11 @@ describe("generation and repair context", () => {
     expect(REPAIR_SYSTEM_PROMPT).not.toContain("Aim for song-like arrangements");
     expect(REPAIR_SYSTEM_PROMPT).toContain("changing only what the reported");
     expect(SYSTEM_PROMPT).toContain("how many complete Strudel");
+    expect(SYSTEM_PROMPT).toContain("fixed scheduler cycles at exactly 30");
+    expect(SYSTEM_PROMPT).toContain("not by the pattern tempo");
     expect(GENERATED_TURN_SCHEMA.properties.progression).toMatchObject({
       properties: {
-        afterCycles: { type: "integer", minimum: 16, maximum: 128 },
+        afterCycles: { type: "integer", minimum: 32, maximum: 4_096 },
         nextAction: { type: "string" },
       },
       required: ["afterCycles", "nextAction"],

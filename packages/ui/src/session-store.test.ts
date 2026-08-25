@@ -210,6 +210,22 @@ describe("session pattern storage", () => {
     expect(store.load()).toEqual(pattern);
   });
 
+  it("loads the newest normalized pattern before its debounce settles", () => {
+    const { store } = storeWithSavedPattern();
+    const edited = { ...pattern, code: 's("bd sd")' };
+
+    store.save(edited);
+    const restored = store.load();
+    expect(restored).toEqual(edited);
+
+    // A client-side route remount saves the value it just restored. That must
+    // not cancel the pending edit and resurrect the older stored pattern.
+    expect(restored).not.toBeNull();
+    if (restored) store.save(restored);
+    flushPatternSave();
+    expect(store.load()).toEqual(edited);
+  });
+
   it("round-trips a valid public share reference", () => {
     vi.useFakeTimers();
     stubStorage();
@@ -247,6 +263,7 @@ describe("session pattern storage", () => {
     const { store, values } = storeWithSavedPattern();
 
     store.save({ ...pattern, code: "  " });
+    expect(store.load()).toBeNull();
     flushPatternSave();
     expect(values.size).toBe(0);
   });

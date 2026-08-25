@@ -7,6 +7,8 @@ import {
 } from './turnstile'
 
 const FEEDBACK_PATH = '/api/feedback'
+const CANONICAL_HOST = 'soundspurple.com'
+const WWW_HOST = `www.${CANONICAL_HOST}`
 const FEEDBACK_SENDER = 'feedback@soundspurple.com'
 const FEEDBACK_RECIPIENT = 'ferdous@hey.com'
 const TURNSTILE_ACTION = 'purple_feedback'
@@ -14,6 +16,13 @@ const MAX_REQUEST_BYTES = 12_000
 const MAX_MESSAGE_LENGTH = 5_000
 const MAX_EMAIL_LENGTH = 254
 const MAX_TURNSTILE_TOKEN_LENGTH = 2_048
+const STUDIO_PATH = '/'
+const PATTERNS_PATH = '/patterns'
+const STUDIO_PRELOAD_SELECTOR = 'link[data-purple-studio-preload]'
+const PATTERNS_PRELOAD_ATTRIBUTE = 'data-purple-patterns-preload'
+const PATTERNS_PRELOAD_SELECTOR = `template[${PATTERNS_PRELOAD_ATTRIBUTE}]`
+const PATTERNS_DESCRIPTION =
+  'Browse, play, save, and remix public Strudel patterns made with Purple.'
 
 const CATEGORY_LABELS = {
   bug: 'Something is broken',
@@ -24,8 +33,13 @@ const CATEGORY_LABELS = {
 
 type FeedbackCategory = keyof typeof CATEGORY_LABELS
 type FeedbackEnv = Pick<Env, 'FEEDBACK_EMAIL' | 'TURNSTILE_SECRET'>
+type AssetFetcher = Pick<Fetcher, 'fetch'>
+type HtmlTransformer = (response: Response, pathname: string) => Response
 export default {
   async fetch(request, env): Promise<Response> {
+    const redirect = redirectToCanonicalOrigin(request)
+    if (redirect) return redirect
+
     const url = new URL(request.url)
     if (url.pathname === FEEDBACK_PATH) {
       return handleFeedbackRequest(request, env)
@@ -33,9 +47,143 @@ export default {
     if (url.pathname.startsWith('/api/')) {
       return handlePatternRequest(request, env)
     }
-    return env.ASSETS.fetch(request)
+    return handleAssetRequest(request, env.ASSETS)
   },
 } satisfies ExportedHandler<Env>
+
+export async function handleAssetRequest(
+  request: Request,
+  assets: AssetFetcher,
+  rewriteRouteHtml: HtmlTransformer = rewriteRoutePreloads,
+): Promise<Response> {
+  const pathname = new URL(request.url).pathname
+  if (
+    pathname === PATTERNS_PATH &&
+    (request.method === 'GET' || request.method === 'HEAD')
+  ) {
+    const entryUrl = new URL(STUDIO_PATH, request.url)
+    const response = await assets.fetch(spaEntryRequest(request, entryUrl))
+    const routeHtml = uncacheableRouteHtml(response)
+    return request.method === 'GET' &&
+      (response.headers.get('Content-Type') ?? '').toLowerCase().startsWith('text/html')
+      ? rewriteRouteHtml(routeHtml, pathname)
+      : routeHtml
+  }
+  return assets.fetch(request)
+}
+
+function spaEntryRequest(request: Request, entryUrl: URL): Request {
+  const headers = new Headers(request.headers)
+  for (const name of [
+    'If-Match',
+    'If-None-Match',
+    'If-Modified-Since',
+    'If-Unmodified-Since',
+    'If-Range',
+    'Range',
+  ]) {
+    headers.delete(name)
+  }
+  return new Request(entryUrl, { headers, method: request.method })
+}
+
+function uncacheableRouteHtml(response: Response): Response {
+  const headers = new Headers(response.headers)
+  for (const name of [
+    'Accept-Ranges',
+    'Content-Length',
+    'Content-Range',
+    'ETag',
+    'Last-Modified',
+  ]) {
+    headers.delete(name)
+  }
+  headers.set('Cache-Control', 'no-store')
+  return new Response(response.body, {
+    headers,
+    status: response.status,
+    statusText: response.statusText,
+  })
+}
+
+function rewriteRoutePreloads(response: Response, pathname: string): Response {
+  const rewriter = new HTMLRewriter()
+    .on(STUDIO_PRELOAD_SELECTOR, {
+      element(element) {
+        element.remove()
+      },
+    })
+    .on(PATTERNS_PRELOAD_SELECTOR, {
+      element(element) {
+        const href = element.getAttribute(PATTERNS_PRELOAD_ATTRIBUTE) ?? ''
+        if (pathname !== PATTERNS_PATH || !isScriptAssetPath(href)) {
+          element.remove()
+          return
+        }
+        element.replace(
+          `<link rel="modulepreload" crossorigin href="${href}" data-purple-patterns-preload>`,
+          { html: true },
+        )
+      },
+    })
+  const metadata = routeMetadata(pathname)
+  if (metadata) {
+    rewriter
+      .on('title', {
+        element(element) {
+          element.setInnerContent(metadata.title)
+        },
+      })
+      .on('link[rel="canonical"]', {
+        element(element) {
+          element.setAttribute('href', metadata.url)
+        },
+      })
+    for (const [selector, value] of [
+      ['meta[name="description"]', metadata.description],
+      ['meta[property="og:description"]', metadata.description],
+      ['meta[property="og:title"]', metadata.title],
+      ['meta[property="og:url"]', metadata.url],
+    ] as const) {
+      rewriter.on(selector, {
+        element(element) {
+          element.setAttribute('content', value)
+        },
+      })
+    }
+  }
+  return rewriter.transform(response)
+}
+
+export function routeMetadata(pathname: string): {
+  title: string
+  description: string
+  url: string
+} | null {
+  if (pathname !== PATTERNS_PATH) return null
+  return {
+    title: 'Public Patterns - Purple',
+    description: PATTERNS_DESCRIPTION,
+    url: `https://${CANONICAL_HOST}${PATTERNS_PATH}`,
+  }
+}
+
+function isScriptAssetPath(value: string): boolean {
+  return /^\/assets\/[A-Za-z0-9_.-]+\.js$/.test(value)
+}
+
+export function redirectToCanonicalOrigin(request: Request): Response | null {
+  const url = new URL(request.url)
+  if (url.hostname !== CANONICAL_HOST && url.hostname !== WWW_HOST) return null
+  if (url.protocol === 'https:' && url.hostname === CANONICAL_HOST) return null
+
+  url.protocol = 'https:'
+  url.hostname = CANONICAL_HOST
+  url.port = ''
+  // A permanent method-preserving redirect also keeps API requests safe while
+  // collapsing HTTP and www traffic to the same origin in one round trip.
+  return Response.redirect(url.toString(), 308)
+}
 
 export async function handleFeedbackRequest(
   request: Request,

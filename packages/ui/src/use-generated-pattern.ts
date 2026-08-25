@@ -10,8 +10,16 @@ import type { EvalResult } from "@purple/core/types";
 import type { ValidationProblem } from "@purple/core/validation";
 
 export interface GeneratedPatternContext {
+  adoptionId: number;
   code: string;
   repairsUsed: number;
+  /** False while a new revision is being checked off-editor. */
+  commitsToEditor: boolean;
+}
+
+export interface AdoptGeneratedPatternOptions {
+  /** Keep the preceding editor revision visible until validation succeeds. */
+  commit?: boolean;
 }
 
 interface ValidationRequest {
@@ -21,8 +29,17 @@ interface ValidationRequest {
 }
 
 export interface GeneratedValidationOutcome extends ValidationOutcome {
+  /** Identifies the exact adoption that initiated this validation. */
+  adoptionId: number | null;
   /** True when the audio engine could not audit the final candidate. */
   validationSkipped: boolean;
+}
+
+export interface GeneratedAttemptOutcome extends RepairOutcome {
+  /** Identifies the exact adoption that initiated this playback attempt. */
+  adoptionId: number | null;
+  /** True when the listener explicitly stopped playback during the attempt. */
+  stopped: boolean;
 }
 
 export interface PlayingRevisionOptions {
@@ -69,6 +86,7 @@ export function useGeneratedPattern(options: GeneratedPatternOptions) {
   const optionsRef = useRef(options);
   optionsRef.current = options;
   const contextRef = useRef<GeneratedPatternContext | null>(null);
+  const nextAdoptionIdRef = useRef(0);
   const validationRequestRef = useRef<ValidationRequest | null>(null);
 
   const commitRepair = useCallback(
@@ -79,20 +97,61 @@ export function useGeneratedPattern(options: GeneratedPatternOptions) {
     ): GeneratedPatternContext => {
       optionsRef.current.onPatternFixed?.(current?.code ?? originalCode, fixedCode);
       const repaired = {
+        adoptionId: current?.adoptionId ?? ++nextAdoptionIdRef.current,
         code: fixedCode,
         repairsUsed: (current?.repairsUsed ?? 0) + 1,
+        commitsToEditor: current?.commitsToEditor ?? true,
       };
       contextRef.current = repaired;
-      optionsRef.current.onCodeChange(fixedCode);
+      if (repaired.commitsToEditor) {
+        optionsRef.current.onCodeChange(fixedCode);
+      }
       return repaired;
     },
     [],
   );
 
-  const adopt = useCallback((code: string): void => {
-    contextRef.current = { code, repairsUsed: 0 };
-    optionsRef.current.onCodeChange(code);
+  const adopt = useCallback((
+    code: string,
+    adoptOptions: AdoptGeneratedPatternOptions = {},
+  ): void => {
+    const commitsToEditor = adoptOptions.commit !== false;
+    contextRef.current = {
+      adoptionId: ++nextAdoptionIdRef.current,
+      code,
+      repairsUsed: 0,
+      commitsToEditor,
+    };
+    if (commitsToEditor) optionsRef.current.onCodeChange(code);
   }, []);
+
+  /** Publish an off-editor candidate only if it still owns the generation. */
+  const commitCurrent = useCallback((outcome: GeneratedValidationOutcome): boolean => {
+    const current = contextRef.current;
+    if (
+      current?.adoptionId !== outcome.adoptionId ||
+      current.code !== outcome.code
+    ) {
+      return false;
+    }
+    if (!current.commitsToEditor) {
+      contextRef.current = { ...current, commitsToEditor: true };
+      optionsRef.current.onCodeChange(outcome.code);
+    }
+    return true;
+  }, []);
+
+  const isValidationCurrent = useCallback(
+    (outcome: GeneratedValidationOutcome): boolean => {
+      const current = contextRef.current;
+      return (
+        current !== null &&
+        current.adoptionId === outcome.adoptionId &&
+        current.code === outcome.code
+      );
+    },
+    [],
+  );
 
   /** Stop pending model work from mutating code after a hand edit or unmount. */
   const invalidate = useCallback((): void => {
@@ -122,6 +181,7 @@ export function useGeneratedPattern(options: GeneratedPatternOptions) {
         let context = startingContext;
         if (context?.code !== code) {
           return {
+            adoptionId: null,
             code,
             problems: [],
             retriesUsed: 0,
@@ -151,19 +211,25 @@ export function useGeneratedPattern(options: GeneratedPatternOptions) {
           maxRetries: Math.max(0, MAX_RETRIES - (context?.repairsUsed ?? 0)),
         });
 
-        if (outcome.problems.length > 0) {
-          optionsRef.current.onValidationProblems?.(outcome.problems);
-        } else if (
-          supersededCodes.length > 0 &&
-          optionsRef.current.playingRevision
-        ) {
-          await replacePlayingRevision(
-            supersededCodes,
-            outcome.code,
-            optionsRef.current.playingRevision,
-          );
+        if (contextRef.current === context) {
+          if (outcome.problems.length > 0) {
+            optionsRef.current.onValidationProblems?.(outcome.problems);
+          } else if (
+            supersededCodes.length > 0 &&
+            optionsRef.current.playingRevision
+          ) {
+            await replacePlayingRevision(
+              supersededCodes,
+              outcome.code,
+              optionsRef.current.playingRevision,
+            );
+          }
         }
-        return { ...outcome, validationSkipped };
+        return {
+          ...outcome,
+          adoptionId: context?.adoptionId ?? null,
+          validationSkipped,
+        };
       })();
 
       request = {
@@ -193,7 +259,7 @@ export function useGeneratedPattern(options: GeneratedPatternOptions) {
     async (
       code: string,
       operation: (candidate: string) => Promise<EvalResult>,
-    ): Promise<RepairOutcome> => {
+    ): Promise<GeneratedAttemptOutcome> => {
       let context = contextRef.current;
       const stopToken = optionsRef.current.getStopToken();
       const outcome = await attemptWithRepair(code, {
@@ -208,10 +274,36 @@ export function useGeneratedPattern(options: GeneratedPatternOptions) {
         isStopped: () => optionsRef.current.getStopToken() !== stopToken,
       });
 
-      return outcome;
+      return {
+        ...outcome,
+        adoptionId: context?.adoptionId ?? null,
+        stopped: optionsRef.current.getStopToken() !== stopToken,
+      };
     },
     [commitRepair],
   );
 
-  return { adopt, invalidate, isCurrent, validate, attempt };
+  const isAttemptCurrent = useCallback(
+    (outcome: GeneratedAttemptOutcome): boolean => {
+      const current = contextRef.current;
+      return (
+        !outcome.stopped &&
+        current !== null &&
+        current.adoptionId === outcome.adoptionId &&
+        current.code === outcome.code
+      );
+    },
+    [],
+  );
+
+  return {
+    adopt,
+    commitCurrent,
+    invalidate,
+    isCurrent,
+    isAttemptCurrent,
+    isValidationCurrent,
+    validate,
+    attempt,
+  };
 }

@@ -3,9 +3,10 @@ import { useStrudel, type StrudelAudioOptions } from "./use-strudel";
 import type { PlaybackState, EvalResult } from "@purple/core/types";
 import {
   buildTransitionCode,
-  DEFAULT_TRANSITION_CYCLES,
+  DEFAULT_MANUAL_TRANSITION_CYCLES,
   getTransitionStartCycle,
 } from "@purple/core/transitions";
+import { MAX_PROGRESSION_RUN_DURATION_MS } from "@purple/core/progression-limits";
 
 type AudioActivationResult =
   | { ok: true }
@@ -33,9 +34,11 @@ const MIN_TRANSITION_WAIT_TIMEOUT_MS = 30_000;
 const MAX_TRANSITION_WAIT_TIMEOUT_MS = 10 * 60_000;
 const TRANSITION_POLL_MS = 50;
 const DEFAULT_PROGRESSION_POLL_MS = 1_000;
+const PROGRESSION_COUNTDOWN_POLL_MS = 1_000;
 const MIN_PROGRESSION_POLL_MS = 100;
 const MAX_PROGRESSION_POLL_MS = 30_000;
-const MAX_PROGRESSION_WAIT_TIMEOUT_MS = 30 * 60_000;
+const MAX_PROGRESSION_WAIT_TIMEOUT_MS =
+  MAX_PROGRESSION_RUN_DURATION_MS + 5 * 60_000;
 
 function cycleDurationMs(
   remainingCycles: number,
@@ -126,6 +129,7 @@ interface PlaybackQueue {
 interface CycleWaitOptions {
   signal?: AbortSignal;
   pollMs?: (remainingCycles: number, cyclesPerSecond: number) => number;
+  onProgress?: (remainingCycles: number, cyclesPerSecond: number) => void;
   timeoutMs?: (remainingCycles: number, cyclesPerSecond: number) => number;
   timeoutError?: string;
 }
@@ -314,6 +318,7 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
           try {
             const position = getSchedulerPosition();
             const remainingCycles = targetCycle - position.cycle;
+            waitOptions.onProgress?.(Math.max(0, remainingCycles), position.cps);
             if (remainingCycles <= 0) {
               finish({ ok: true });
               return;
@@ -365,7 +370,11 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
   );
 
   const waitForCycles = useCallback(
-    (cycles: number, signal?: AbortSignal): Promise<EvalResult> => {
+    (
+      cycles: number,
+      signal?: AbortSignal,
+      onProgress?: (remainingCycles: number, cyclesPerSecond: number) => void,
+    ): Promise<EvalResult> => {
       if (!Number.isInteger(cycles) || cycles <= 0) {
         return Promise.resolve({
           ok: false,
@@ -390,7 +399,16 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
 
       return waitForCycle(startCycle + cycles, operationRef.current, {
         signal,
-        pollMs: progressionWaitPollMs,
+        onProgress,
+        pollMs: (remainingCycles, cyclesPerSecond) => {
+          const musicalPollMs = progressionWaitPollMs(
+            remainingCycles,
+            cyclesPerSecond,
+          );
+          return onProgress
+            ? Math.min(musicalPollMs, PROGRESSION_COUNTDOWN_POLL_MS)
+            : musicalPollMs;
+        },
         timeoutMs: progressionWaitTimeoutMs,
         timeoutError:
           "The progression wait did not finish before its timing deadline.",
@@ -402,7 +420,7 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
   const transition = useCallback(
     async (
       nextCode: string,
-      durationCycles = DEFAULT_TRANSITION_CYCLES,
+      durationCycles = DEFAULT_MANUAL_TRANSITION_CYCLES,
       attemptOptions: PlaybackAttemptOptions = {},
     ): Promise<TransitionResult> => {
       const current = stateRef.current;

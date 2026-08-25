@@ -4,12 +4,14 @@ import {
   createSharedPattern,
   sharedPatternUrl,
 } from '#/lib/public-patterns'
+import { InternalLink, type NavigateInApp } from './internal-link'
 import { DialogSubmitActions, ModalDialog } from './modal-dialog'
 import { TurnstileFormEnd } from './turnstile-widget'
 
 export function ShareDialog(props: {
   code: string
   existingId: string | null
+  navigate?: NavigateInApp
   onClose: () => void
   onShared: (id: string, title: string) => void
   title: string
@@ -66,6 +68,7 @@ export function ShareDialog(props: {
   return (
     <ModalDialog
       className="feedback-dialog"
+      dismissible={!submitting}
       titleId="share-title"
       descriptionId="share-privacy"
       eyebrow="PUBLIC LINK"
@@ -87,7 +90,9 @@ export function ShareDialog(props: {
           </div>
           {error ? <p className="error" role="alert">{error}</p> : null}
           <div className="feedback-actions">
-            <a className="chrome" href="/patterns">BROWSE PATTERNS</a>
+            <InternalLink className="chrome" href="/patterns" navigate={props.navigate}>
+              BROWSE PATTERNS
+            </InternalLink>
             <button type="button" className="primary" onClick={close}>DONE</button>
           </div>
         </section>

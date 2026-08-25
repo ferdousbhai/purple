@@ -15,6 +15,16 @@ const chromiumArgs = [
   ...(process.env.CI ? ['--disable-dev-shm-usage'] : []),
 ]
 
+const chromiumEnvironment = process.platform === 'linux'
+  ? {
+      ...definedEnvironment(),
+      // Headless Chromium does not need desktop power/session services. Some
+      // Linux buses abort the process instead of timing out cleanly here.
+      DBUS_SESSION_BUS_ADDRESS: 'unix:path=/dev/null',
+      DBUS_SYSTEM_BUS_ADDRESS: 'unix:path=/dev/null',
+    }
+  : undefined
+
 export default defineConfig({
   server: { host: '127.0.0.1' },
   resolve: { tsconfigPaths: true },
@@ -30,6 +40,7 @@ export default defineConfig({
       provider: playwright({
         launchOptions: {
           executablePath: process.env.CHROMIUM_PATH ?? '/usr/bin/chromium',
+          env: chromiumEnvironment,
           // Arch Chromium can reject Playwright's revision-specific defaults.
           // These are the minimum flags needed to control the installed browser.
           ignoreDefaultArgs: true,
@@ -40,3 +51,10 @@ export default defineConfig({
     },
   },
 })
+
+function definedEnvironment(): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(process.env).flatMap(([name, value]) =>
+      value === undefined ? [] : [[name, value]]),
+  )
+}

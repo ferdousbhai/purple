@@ -2,7 +2,11 @@ import { MAX_PATTERN_LENGTH, patternFilename } from '@purple/core/pattern'
 import { SHOWCASE_PATTERNS, type ShowcasePattern } from '@purple/core/recipes'
 import type { SharedPattern } from '@purple/core/shared-pattern'
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
-import type { GeneratedPatternController } from './composer'
+import type {
+  GeneratedPatternController,
+  RevisionPhase,
+} from './composer'
+import { InternalLink, type NavigateInApp } from './internal-link'
 import {
   clearByokChat,
   getByokKey,
@@ -22,8 +26,7 @@ import { PurpleMark } from '@purple/ui/purple-mark'
 import { SpectrumBars } from '@purple/ui/spectrum-bars'
 import { usePlayback } from '@purple/ui/use-playback'
 import type { PatternEditorProps } from '@purple/ui/pattern-editor'
-import { WEB_AUDIO_OPTIONS } from '#/lib/playback'
-import { voteForPattern } from '#/lib/public-patterns'
+import { WEB_AUDIO_OPTIONS, type WebPlayback } from '#/lib/playback'
 
 const PatternEditor = lazy(async () => {
   const editor = await import('@purple/ui/pattern-editor')
@@ -64,9 +67,31 @@ function DeferredPatternEditor(props: PatternEditorProps) {
   )
 }
 
-type Playback = ReturnType<typeof usePlayback>
+type Playback = WebPlayback
 
-export function PurpleStudio({ sharedPattern }: { sharedPattern?: SharedPattern }) {
+interface PurpleStudioProps {
+  focusOnMount?: boolean
+  navigate?: NavigateInApp
+  sharedPattern?: SharedPattern
+}
+
+export function PurpleStudio(props: PurpleStudioProps) {
+  const playback = usePlayback(WEB_AUDIO_OPTIONS)
+  return <PurpleStudioView {...props} playback={playback} />
+}
+
+export function PersistentPurpleStudio(
+  props: PurpleStudioProps & { playback: WebPlayback },
+) {
+  return <PurpleStudioView {...props} />
+}
+
+function PurpleStudioView({
+  focusOnMount,
+  navigate,
+  playback,
+  sharedPattern,
+}: PurpleStudioProps & { playback: WebPlayback }) {
   const [byokKey, setByokKeyState] = useState<string | null>(() => getByokKey())
   const [keyPanelOpen, setKeyPanelOpen] = useState(false)
   const [libraryOpen, setLibraryOpen] = useState(false)
@@ -78,19 +103,15 @@ export function PurpleStudio({ sharedPattern }: { sharedPattern?: SharedPattern 
   // produced must too - restoring one without the other desyncs the session.
   const [initialPattern] = useState(() => loadInitialPattern(sharedPattern))
   const [code, setCode] = useState(initialPattern.code)
-  const [patternPreview, setPatternPreview] = useState<string | null>(null)
-  const [patternPending, setPatternPending] = useState(false)
+  const [revisionPhase, setRevisionPhase] = useState<RevisionPhase>('idle')
+  const [revisionStaged, setRevisionStaged] = useState(false)
   const [patternProvisional, setPatternProvisional] = useState(false)
   const [customTitle, setCustomTitle] = useState(initialPattern.customTitle)
   const [sourcePrompt, setSourcePrompt] = useState(initialPattern.sourcePrompt)
   const [shareId, setShareId] = useState<string | null>(initialPattern.shareId)
-  const [viewerVote, setViewerVote] = useState(initialPattern.viewerVote)
-  const [likePending, setLikePending] = useState(false)
-  const shareIdRef = useRef(shareId)
-  shareIdRef.current = shareId
-  const playback = usePlayback(WEB_AUDIO_OPTIONS)
   const isPhoneWidth = usePhoneWidth()
   const savedPatterns = usePatterns()
+  const mainRef = useRef<HTMLElement | null>(null)
   const libraryRef = useRef<HTMLElement | null>(null)
   const libraryButtonRef = useRef<HTMLButtonElement | null>(null)
   const generatedPatternControllerRef = useRef<GeneratedPatternController | null>(null)
@@ -104,20 +125,20 @@ export function PurpleStudio({ sharedPattern }: { sharedPattern?: SharedPattern 
   )
   const getCodeRevision = useCallback(() => codeRevisionRef.current, [])
   const getTitleRevision = useCallback(() => titleRevisionRef.current, [])
-  const patternLocked = patternPreview !== null || patternPending
+  const patternLocked = revisionPhase !== 'idle'
+  const patternActionLocked = patternLocked || patternProvisional
   const editorHasUnappliedChanges = hasUnappliedEditorChanges(
     playback.playbackState,
     code,
     playback.activeCode,
   )
   const commitGeneratedCode = useCallback((nextCode: string) => {
-    setPatternPreview(null)
     setCode(nextCode)
     setShareId(null)
-    setViewerVote(0)
   }, [])
   const commitCode = useCallback((nextCode: string) => {
     codeRevisionRef.current++
+    setRevisionStaged(false)
     generatedPatternControllerRef.current?.invalidate()
     commitGeneratedCode(nextCode)
   }, [commitGeneratedCode])
@@ -125,13 +146,16 @@ export function PurpleStudio({ sharedPattern }: { sharedPattern?: SharedPattern 
     titleRevisionRef.current++
     setCustomTitle(nextTitle)
     setShareId(null)
-    setViewerVote(0)
   }, [])
 
   useEffect(() => {
     if (patternProvisional) return
     saveSessionPattern({ code, customTitle, sourcePrompt, shareId: shareId ?? undefined })
   }, [code, customTitle, patternProvisional, shareId, sourcePrompt])
+
+  useEffect(() => {
+    if (sharedPattern) clearByokChat()
+  }, [sharedPattern?.id])
 
   /** False when the browser blocks localStorage, so the key cannot outlive this render. */
   const updateByokKey = (key: string | null): boolean => {
@@ -150,62 +174,56 @@ export function PurpleStudio({ sharedPattern }: { sharedPattern?: SharedPattern 
       (shareId !== null && pattern.shareId === shareId) ||
       (pattern.title === patternName && pattern.code === code),
   )
-  const currentPatternLiked = libraryPattern !== undefined || viewerVote === 1
+  const currentPatternSaved = libraryPattern !== undefined
 
-  const toggleLike = async () => {
+  const toggleSavedPattern = () => {
     // Mirror the pattern schema's bounds; an out-of-range upsert throws.
     if (!code.trim() || code.length > MAX_PATTERN_LENGTH) return
-    if (likePending) return
-    setLikePending(true)
     const targetShareId = shareId
-    try {
-      let persisted = true
-      if (currentPatternLiked) {
-        if (libraryPattern) persisted = removePattern(libraryPattern.id)
-      } else {
-        const now = Date.now()
-        const savedTitle = uniquePatternTitle(patternName, savedPatterns)
-        persisted = upsertPattern({
-          id: targetShareId ? sharedLibraryId(targetShareId) : crypto.randomUUID(),
-          title: savedTitle,
-          code,
-          prompt: sourcePrompt,
-          shareId: targetShareId ?? undefined,
-          createdAt: now,
-          updatedAt: now,
-        })
-        if (!targetShareId && savedTitle !== patternName) {
-          commitCustomTitle(savedTitle)
-        }
+    let persisted = true
+    if (libraryPattern) {
+      persisted = removePattern(libraryPattern.id)
+    } else {
+      const now = Date.now()
+      const savedTitle = uniquePatternTitle(patternName, savedPatterns)
+      persisted = upsertPattern({
+        id: targetShareId ? sharedLibraryId(targetShareId) : crypto.randomUUID(),
+        title: savedTitle,
+        code,
+        prompt: sourcePrompt,
+        shareId: targetShareId ?? undefined,
+        createdAt: now,
+        updatedAt: now,
+      })
+      if (!targetShareId && savedTitle !== patternName) {
+        commitCustomTitle(savedTitle)
       }
-      if (!persisted) {
-        setPatternStorageError(
-          'This browser could not update the library. Allow site data and try again.',
-        )
-        return
-      }
-      setPatternStorageError(null)
-      setLibraryWasCleared(false)
-      if (targetShareId) {
-        try {
-          const vote = await voteForPattern(
-            targetShareId,
-            currentPatternLiked ? 0 : 1,
-          )
-          if (shareIdRef.current === targetShareId) {
-            setViewerVote(vote.viewerVote)
-          }
-        } catch {
-          setPatternStorageError(
-            currentPatternLiked
-              ? 'Removed from this library, but the public like could not be removed.'
-              : 'Added to this library, but the public like could not be recorded.',
-          )
-        }
-      }
-    } finally {
-      setLikePending(false)
     }
+    if (!persisted) {
+      setPatternStorageError(
+        'This browser could not update the library. Allow site data and try again.',
+      )
+      return
+    }
+    setPatternStorageError(null)
+    setLibraryWasCleared(false)
+  }
+
+  const acceptSharedPattern = (id: string, sharedTitle: string) => {
+    const libraryUpdated = !libraryPattern || upsertPattern({
+      ...libraryPattern,
+      title: sharedTitle,
+      shareId: id,
+    })
+    commitCustomTitle(sharedTitle)
+    setShareId(id)
+    if (!libraryUpdated) {
+      setPatternStorageError(
+        'The pattern was published, but this browser could not update its library copy.',
+      )
+      return
+    }
+    setPatternStorageError(null)
   }
 
   const exportPattern = () => {
@@ -221,6 +239,7 @@ export function PurpleStudio({ sharedPattern }: { sharedPattern?: SharedPattern 
   }
 
   const playCurrentPattern = () => {
+    if (patternActionLocked || revisionStaged) return
     const generatedController = generatedPatternControllerRef.current
     if (generatedController) void generatedController.play(code)
     else void playback.play(code)
@@ -274,20 +293,33 @@ export function PurpleStudio({ sharedPattern }: { sharedPattern?: SharedPattern 
   const ledState =
     audible ? 'active' : playback.playbackState === 'loading' ? 'busy' : 'idle'
 
+  useEffect(() => {
+    if (focusOnMount) mainRef.current?.focus({ preventScroll: true })
+  }, [focusOnMount])
+
   return (
-    <main className="studio-shell">
+    <main
+      className="studio-shell"
+      ref={mainRef}
+      tabIndex={focusOnMount ? -1 : undefined}
+    >
       <header className="topbar">
         <div className="brand">
           <PurpleMark className="brand-mark" />
           <span className="brand-name">PURPLE</span>
         </div>
         <div className="topbar-actions">
-          <a
+          {audible ? (
+            <SpectrumBars className="eq-bars" getAnalyser={playback.getOutputAnalyser} />
+          ) : null}
+          <StatusLed state={ledState} />
+          <InternalLink
             className="chrome patterns-link"
             href="/patterns"
+            navigate={navigate}
           >
             PATTERNS
-          </a>
+          </InternalLink>
           <a
             className="chrome source-link"
             href="https://github.com/ferdousbhai/purple"
@@ -315,10 +347,6 @@ export function PurpleStudio({ sharedPattern }: { sharedPattern?: SharedPattern 
           >
             FEEDBACK
           </button>
-          {audible ? (
-            <SpectrumBars className="eq-bars" getAnalyser={playback.getOutputAnalyser} />
-          ) : null}
-          <StatusLed state={ledState} />
           <button
             ref={libraryButtonRef}
             className={`chrome ${libraryOpen ? 'open' : ''}`}
@@ -348,13 +376,10 @@ export function PurpleStudio({ sharedPattern }: { sharedPattern?: SharedPattern 
           <ShareDialog
             code={code}
             existingId={shareId}
+            navigate={navigate}
             title={patternName}
             onClose={() => setShareOpen(false)}
-            onShared={(id, sharedTitle) => {
-              commitCustomTitle(sharedTitle)
-              setShareId(id)
-              setViewerVote(0)
-            }}
+            onShared={acceptSharedPattern}
           />
         </Suspense>
       ) : null}
@@ -370,8 +395,8 @@ export function PurpleStudio({ sharedPattern }: { sharedPattern?: SharedPattern 
           {savedPatterns.length === 0 ? (
             <p className="muted" role={libraryWasCleared ? 'status' : undefined}>
               {libraryWasCleared
-                ? 'Library is clean. No liked patterns.'
-                : 'Nothing liked yet. LIKE keeps a pattern in this browser.'}
+                ? 'Library is clean. No saved patterns.'
+                : 'Nothing saved yet. SAVE keeps a pattern in this browser.'}
             </p>
           ) : (
             [...savedPatterns]
@@ -385,7 +410,6 @@ export function PurpleStudio({ sharedPattern }: { sharedPattern?: SharedPattern 
                       commitCustomTitle(pattern.title)
                       setSourcePrompt(pattern.prompt)
                       setShareId(pattern.shareId ?? null)
-                      setViewerVote(0)
                       setPatternStorageError(null)
                       setLibraryOpen(false)
                     }}
@@ -404,19 +428,6 @@ export function PurpleStudio({ sharedPattern }: { sharedPattern?: SharedPattern 
                         return
                       }
                       setPatternStorageError(null)
-                      if (pattern.shareId) {
-                        void voteForPattern(pattern.shareId, 0)
-                          .then((vote) => {
-                            if (shareIdRef.current === pattern.shareId) {
-                              setViewerVote(vote.viewerVote)
-                            }
-                          })
-                          .catch(() => {
-                            setPatternStorageError(
-                              'Removed from this library, but the public like could not be removed.',
-                            )
-                          })
-                      }
                       if (savedPatterns.length === 1) setLibraryWasCleared(true)
                     }}
                   >
@@ -434,43 +445,55 @@ export function PurpleStudio({ sharedPattern }: { sharedPattern?: SharedPattern 
             <input
               className="title-input"
               aria-label="Pattern title"
+              name="pattern-title"
               value={title}
-              disabled={patternLocked}
+              disabled={patternActionLocked}
               onChange={(event) => commitCustomTitle(event.target.value)}
               maxLength={60}
             />
+            {revisionPhase !== 'idle' || patternProvisional ? (
+              <span className="editor-revision-status" role="status">
+                {revisionPhase === 'revising'
+                  ? 'REVISING…'
+                  : revisionPhase === 'checking'
+                    ? 'CHECKING…'
+                    : 'FINISHING…'}
+              </span>
+            ) : null}
             <button
-              className={`chrome ${currentPatternLiked ? 'liked' : ''}`}
-              disabled={patternLocked || likePending}
-              onClick={() => void toggleLike()}
+              className={`chrome ${currentPatternSaved ? 'saved' : ''}`}
+              disabled={
+                patternActionLocked || !code.trim() || code.length > MAX_PATTERN_LENGTH
+              }
+              onClick={toggleSavedPattern}
               title={
-                currentPatternLiked
+                currentPatternSaved
                   ? 'Remove from this browser’s library'
-                  : 'Like and add to this browser’s library'
+                  : 'Save to this browser’s library'
               }
             >
-              <span aria-live="polite">{currentPatternLiked ? '♥ LIKED' : '♡ LIKE'}</span>
+              <span aria-live="polite">{currentPatternSaved ? 'SAVED' : 'SAVE'}</span>
             </button>
             <button
               className="chrome"
-              disabled={patternLocked || !code.trim() || code.length > MAX_PATTERN_LENGTH}
+              disabled={patternActionLocked || !code.trim() || code.length > MAX_PATTERN_LENGTH}
               onClick={() => setShareOpen(true)}
             >
               SHARE
             </button>
             <button
               className="chrome export"
-              disabled={patternLocked}
+              disabled={patternActionLocked}
               onClick={exportPattern}
             >
               EXPORT
             </button>
-            {editorHasUnappliedChanges ? (
+            {editorHasUnappliedChanges && !revisionStaged ? (
               <button
                 className="chrome apply-changes"
                 aria-label="Apply editor changes to playback (Ctrl+Enter)"
                 title="Apply editor changes (Ctrl+Enter)"
-                disabled={patternLocked}
+                disabled={patternActionLocked}
                 onClick={playCurrentPattern}
               >
                 APPLY
@@ -478,7 +501,7 @@ export function PurpleStudio({ sharedPattern }: { sharedPattern?: SharedPattern 
             ) : null}
             <button
               className={`transport ${audible || playback.playbackState === 'loading' ? 'stop' : 'start'}`}
-              disabled={patternLocked && !audible}
+              disabled={patternActionLocked && !audible}
               onClick={togglePlayback}
             >
               {transportLabel(playback.playbackState)}
@@ -487,10 +510,9 @@ export function PurpleStudio({ sharedPattern }: { sharedPattern?: SharedPattern 
 
           <div className="editor-surface">
             <DeferredPatternEditor
-              code={patternPreview ?? code}
+              code={code}
               playbackHighlightActive={
                 playback.playbackState === 'playing' &&
-                patternPreview === null &&
                 code === playback.activeCode
               }
               getActiveSourceRanges={playback.getActiveSourceRanges}
@@ -526,16 +548,19 @@ export function PurpleStudio({ sharedPattern }: { sharedPattern?: SharedPattern 
                 byokKey={byokKey}
                 code={code}
                 customTitle={customTitle}
+                shareId={shareId}
                 sourcePrompt={sourcePrompt}
                 playback={playback}
+                restorePersistedChat={!sharedPattern}
                 setCode={commitGeneratedCode}
-                setPatternPreview={setPatternPreview}
-                setPatternPending={setPatternPending}
+                setRevisionPhase={setRevisionPhase}
+                setRevisionStaged={setRevisionStaged}
                 setPatternProvisional={setPatternProvisional}
                 getCodeRevision={getCodeRevision}
                 getTitleRevision={getTitleRevision}
                 registerGeneratedPatternController={registerGeneratedPatternController}
                 setCustomTitle={setCustomTitle}
+                setShareId={setShareId}
                 setSourcePrompt={setSourcePrompt}
               />
             </Suspense>
@@ -557,6 +582,12 @@ function KeyCard(props: {
 }) {
   const [draft, setDraft] = useState('')
   const [storageBlocked, setStorageBlocked] = useState(false)
+  const saveDraft = (nextDraft: string) => {
+    const key = nextDraft.trim()
+    if (!key) return
+    setDraft(nextDraft)
+    setStorageBlocked(!props.onSave(key))
+  }
   return (
     <section className="key-card">
       <h2>YOUR GEMINI KEY</h2>
@@ -580,15 +611,22 @@ function KeyCard(props: {
       <form
         onSubmit={(event) => {
           event.preventDefault()
-          if (draft.trim()) setStorageBlocked(!props.onSave(draft))
+          saveDraft(draft)
         }}
       >
         <input
           type="password"
           aria-label="Gemini API key"
+          name="gemini-api-key"
           placeholder={props.byokKey ? 'A key is saved in this browser' : 'AIza…'}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
+          onPaste={(event) => {
+            const pastedKey = event.clipboardData.getData('text')
+            if (!pastedKey.trim()) return
+            event.preventDefault()
+            saveDraft(pastedKey)
+          }}
           autoComplete="off"
         />
         <div className="key-card-actions">
@@ -635,14 +673,12 @@ function loadInitialPattern(sharedPattern?: SharedPattern) {
       customTitle: sharedPattern.title,
       sourcePrompt: undefined,
       shareId: sharedPattern.id,
-      viewerVote: sharedPattern.viewerVote,
     }
   }
   const restored = loadSessionPattern()
   if (restored) return {
     ...restored,
     shareId: restored.shareId ?? null,
-    viewerVote: 0 as const,
   }
   const starter = randomStarter()
   return {
@@ -650,7 +686,6 @@ function loadInitialPattern(sharedPattern?: SharedPattern) {
     customTitle: starter.title,
     sourcePrompt: undefined,
     shareId: null,
-    viewerVote: 0 as const,
   }
 }
 

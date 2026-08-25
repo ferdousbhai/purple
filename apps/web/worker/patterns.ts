@@ -241,7 +241,9 @@ async function voteOnPattern(
   if (!isShareId(id)) return jsonResponse({ error: 'Pattern not found.' }, 404)
 
   const voter = await getVoter(request)
-  const rateLimit = await env.VOTE_RATE_LIMITER.limit({ key: voter.id })
+  const rateLimit = await env.VOTE_RATE_LIMITER.limit({
+    key: voteRateLimitKey(request, voter.id),
+  })
   if (!rateLimit.success) return voterResponse(voter, { error: 'Too many votes.' }, 429, {
     'Retry-After': '60',
   })
@@ -252,43 +254,49 @@ async function voteOnPattern(
     return voterResponse(voter, { error: 'Invalid vote.' }, 400)
   }
 
-  const exists = await env.PATTERNS_DB.prepare(
-    'SELECT id FROM shared_patterns WHERE id = ? AND hidden = 0',
-  ).bind(id).first<{ id: string }>()
-  if (!exists) return voterResponse(voter, { error: 'Pattern not found.' }, 404)
-
   const voteStatement = value === 0
     ? env.PATTERNS_DB.prepare(
-        'DELETE FROM pattern_votes WHERE pattern_id = ? AND voter_hash = ?',
-      ).bind(id, voter.hash)
+        `DELETE FROM pattern_votes
+         WHERE pattern_id = ? AND voter_hash = ?
+           AND EXISTS (
+             SELECT 1 FROM shared_patterns WHERE id = ? AND hidden = 0
+           )`,
+      ).bind(id, voter.hash, id)
     : env.PATTERNS_DB.prepare(
         `INSERT INTO pattern_votes (pattern_id, voter_hash, value, updated_at)
-         VALUES (?, ?, ?, ?)
+         SELECT ?, ?, ?, ?
+         WHERE EXISTS (
+           SELECT 1 FROM shared_patterns WHERE id = ? AND hidden = 0
+         )
          ON CONFLICT (pattern_id, voter_hash) DO UPDATE SET
            value = excluded.value,
            updated_at = excluded.updated_at`,
-      ).bind(id, voter.hash, value, Date.now())
+      ).bind(id, voter.hash, value, Date.now(), id)
 
   const results = await env.PATTERNS_DB.batch<VoteRow>([
     voteStatement,
     env.PATTERNS_DB.prepare(
-      `UPDATE shared_patterns SET
-         likes = COALESCE((SELECT SUM(value = 1) FROM pattern_votes WHERE pattern_id = ?), 0),
-         dislikes = COALESCE((SELECT SUM(value = -1) FROM pattern_votes WHERE pattern_id = ?), 0),
-         score = COALESCE((SELECT SUM(value) FROM pattern_votes WHERE pattern_id = ?), 0)
-       WHERE id = ?`,
-    ).bind(id, id, id, id),
+      `UPDATE shared_patterns SET (likes, dislikes, score) = (
+         SELECT
+           COALESCE(SUM(value = 1), 0),
+           COALESCE(SUM(value = -1), 0),
+           COALESCE(SUM(value), 0)
+         FROM pattern_votes
+         WHERE pattern_id = ?
+       )
+       WHERE id = ? AND hidden = 0`,
+    ).bind(id, id),
     env.PATTERNS_DB.prepare(
       `SELECT p.likes, p.dislikes, p.score, COALESCE(v.value, 0) AS viewerVote
        FROM shared_patterns p
        LEFT JOIN pattern_votes v ON v.pattern_id = p.id AND v.voter_hash = ?
-       WHERE p.id = ?`,
+       WHERE p.id = ? AND p.hidden = 0`,
     ).bind(voter.hash, id),
   ])
   const row = results[2]?.results[0]
-  const viewerVote = row ? patternVote(row.viewerVote) : null
+  if (!row) return voterResponse(voter, { error: 'Pattern not found.' }, 404)
+  const viewerVote = patternVote(row.viewerVote)
   if (
-    !row ||
     !isNonNegativeInteger(row.likes) ||
     !isNonNegativeInteger(row.dislikes) ||
     !isSignedInteger(row.score) ||
@@ -301,6 +309,11 @@ async function voteOnPattern(
     score: row.score,
     viewerVote,
   }, 200)
+}
+
+export function voteRateLimitKey(request: Request, voterId: string): string {
+  const connectingIp = request.headers.get('CF-Connecting-IP')?.trim()
+  return connectingIp ? `ip:${connectingIp}` : `voter:${voterId}`
 }
 
 const PATTERN_SELECT = `SELECT
