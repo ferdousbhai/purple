@@ -402,10 +402,10 @@ button:focus-visible, a:focus-visible, select:focus-visible {
 .progression-row .chip-label {
   display: flex;
   align-items: center;
-  /* Match the control height so the label sits on the status line. */
-  height: 25px;
   color: color-mix(in srgb, var(--active) 58%, transparent);
 }
+/* Match the control height so the label sits on the status line. */
+.progression-row.running .chip-label { height: 25px; }
 /* A run in progress carries the same pulsing dot as the transport LED. */
 .progression-row.running .chip-label::before {
   content: '';
@@ -425,7 +425,6 @@ button:focus-visible, a:focus-visible, select:focus-visible {
 }
 .progression-head {
   min-width: 0;
-  min-height: 25px;
   display: flex;
   flex-wrap: wrap;
   align-items: center;

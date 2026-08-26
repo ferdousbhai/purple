@@ -1131,16 +1131,6 @@ export function Composer(props: PatternStateBindings & {
       >
         {!progressionRunning ? (
           <div className="prompt-options">
-            <label className="prompt-toggle explanatory-toggle">
-              <input
-                type="checkbox"
-                checked={explanatoryStyle}
-                disabled={busy}
-                onChange={(event) => setExplanatoryStyle(event.target.checked)}
-              />
-              <strong>Explanatory</strong>
-              <span>comment every line</span>
-            </label>
             <label className="prompt-toggle autoplay-toggle">
               <input
                 type="checkbox"
@@ -1172,6 +1162,16 @@ export function Composer(props: PatternStateBindings & {
                 </option>
               ))}
             </select>
+            <label className="prompt-toggle explanatory-toggle">
+              <input
+                type="checkbox"
+                checked={explanatoryStyle}
+                disabled={busy}
+                onChange={(event) => setExplanatoryStyle(event.target.checked)}
+              />
+              <strong>Explanatory</strong>
+              <span>comment every line</span>
+            </label>
             <span className="sr-only" role="status">
               {autoplayArmedAnnouncement(
                 autoplayArmed,
