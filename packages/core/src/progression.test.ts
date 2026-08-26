@@ -1,12 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  CONTINUE_PATTERN_ACTION,
   DEFAULT_PROGRESSION_RUN_DURATION_MS,
   MAX_PROGRESSION_RUN_DURATION_MS,
+  MIN_PROGRESSION_CYCLES,
   PROGRESSION_RUN_DURATION_PRESETS_MS,
   boundedProgressionRunDurationMs,
+  continuePatternProgressionStep,
   continueProgressionRun,
   progressionStepFromTurn,
   validatePatternProgression,
+  type ProgressionRunDependencies,
   type ProgressionStep,
   type ProgressionTurn,
 } from "./progression";
@@ -92,9 +96,30 @@ describe("pattern progression metadata", () => {
   });
 });
 
+/** Record every step the loop takes, playing back the queued turns. */
+function recordingDependencies(
+  events: string[],
+  turns: ProgressionTurn[],
+): ProgressionRunDependencies {
+  return {
+    isCurrent: () => true,
+    wait: async (step) => {
+      events.push(`wait:${step.afterCycles}`);
+      return true;
+    },
+    generate: async (step) => {
+      events.push(`generate:${step.nextAction}`);
+      return turns.shift() ?? null;
+    },
+    transition: async (turn) => {
+      events.push(`xfade:${turn.pattern}`);
+      return true;
+    },
+  };
+}
+
 describe("progression run", () => {
   it("waits, generates, and crossfades each planned step in order", async () => {
-    let current = true;
     const events: string[] = [];
     const turns: ProgressionTurn[] = [
       {
@@ -107,23 +132,10 @@ describe("progression run", () => {
       { pattern: 's("bd ~")', progression: null },
     ];
 
-    await expect(continueProgressionRun(FIRST_STEP, {
-      isCurrent: () => current,
-      wait: async (step) => {
-        events.push(`wait:${step.afterCycles}`);
-        return true;
-      },
-      generate: async (step) => {
-        events.push(`generate:${step.nextAction}`);
-        return turns.shift() ?? null;
-      },
-      transition: async (turn) => {
-        events.push(`xfade:${turn.pattern}`);
-        return true;
-      },
-    })).resolves.toBe("complete");
+    await expect(
+      continueProgressionRun(FIRST_STEP, recordingDependencies(events, turns)),
+    ).resolves.toBe("complete");
 
-    current = false;
     expect(events).toEqual([
       "wait:512",
       `generate:${FIRST_STEP.nextAction}`,
@@ -149,6 +161,59 @@ describe("progression run", () => {
     })).resolves.toBe("cancelled");
 
     expect(generate).not.toHaveBeenCalled();
+  });
+
+  it("asks for the next move first when the run has no plan yet", async () => {
+    const events: string[] = [];
+    const synthesized = continuePatternProgressionStep('s("bd*4")');
+
+    expect(synthesized).toEqual({
+      pattern: 's("bd*4")',
+      afterCycles: MIN_PROGRESSION_CYCLES,
+      nextAction: CONTINUE_PATTERN_ACTION,
+    });
+
+    await expect(continueProgressionRun(
+      synthesized,
+      recordingDependencies(events, [
+        { pattern: 's("hh*8")', progression: null },
+      ]),
+      { startPhase: "generate" },
+    )).resolves.toBe("complete");
+
+    // The playing pattern is not held first: the run opens by asking Gemini to
+    // continue it, then follows the plan that turn returns.
+    expect(events).toEqual([
+      `generate:${CONTINUE_PATTERN_ACTION}`,
+      'xfade:s("hh*8")',
+    ]);
+  });
+
+  it("holds the pattern again after a generate-first opening", async () => {
+    const events: string[] = [];
+    const turns: ProgressionTurn[] = [
+      {
+        pattern: 's("hh*8")',
+        progression: { afterCycles: 64, nextAction: "Widen the pads" },
+      },
+      { pattern: 's("bd ~")', progression: null },
+    ];
+
+    await expect(continueProgressionRun(
+      continuePatternProgressionStep('s("bd*4")'),
+      recordingDependencies(events, turns),
+      { startPhase: "generate" },
+    )).resolves.toBe("complete");
+
+    // Only the opening skips the hold: the plan the first turn returns is
+    // waited out like any other.
+    expect(events).toEqual([
+      `generate:${CONTINUE_PATTERN_ACTION}`,
+      'xfade:s("hh*8")',
+      "wait:64",
+      "generate:Widen the pads",
+      'xfade:s("bd ~")',
+    ]);
   });
 
   it("stops after a failed generation instead of spinning", async () => {

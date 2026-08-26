@@ -8,6 +8,7 @@ import {
   PROMPT_PRESETS,
   TRANSITION_CYCLE_OPTIONS,
   boundedProgressionRunDurationMs,
+  continuePatternProgressionStep,
   continueProgressionRun,
   generateRandomPrompt,
   progressionStepFromTurn,
@@ -15,6 +16,7 @@ import {
   visibleTextWithoutCodeBlocks,
   withExplanatoryStyle,
   type GeneratedTurn,
+  type ProgressionRunResult,
   type ProgressionStep,
   type TransitionSuggestion,
 } from '@purple/core'
@@ -102,6 +104,10 @@ const IDLE_PROGRESSION_RUN: ProgressionRunView = {
 interface StopProgressionRunOptions {
   abortGeneration?: boolean
   clearPlan?: boolean
+  /** Clear the standing autoplay intent as well. Every teardown that is not
+   * "playback stopped" or "the listener sent a new prompt" disarms, so a run
+   * that ends can never re-engage itself against the same conditions. */
+  disarm?: boolean
   notice?: string
 }
 
@@ -407,6 +413,10 @@ export function Composer(props: PatternStateBindings & {
   )
   const [progressionRunNotice, setProgressionRunNotice] =
     useState<string | null>(null)
+  /** Standing intent, not a transport: an armed run engages once a pattern is
+   * actually playing. Deliberately in memory only, like the run itself. */
+  const [autoplayArmed, setAutoplayArmed] = useState(false)
+  const engageProgressionRunRef = useRef<() => void>(() => {})
   const progressionRunViewRef = useRef<ProgressionRunView>(IDLE_PROGRESSION_RUN)
   const activeProgressionRunRef = useRef<ActiveProgressionRun | null>(null)
   const [queuedRunPrompt, setQueuedRunPromptState] = useState<string | null>(null)
@@ -506,6 +516,7 @@ export function Composer(props: PatternStateBindings & {
     setQueuedRunPrompt(null)
     setProgressionRunNotice(options.notice ?? null)
     if (options.clearPlan) setProgressionStep(null)
+    if (options.disarm) setAutoplayArmed(false)
   }, [chat.abortStream, setProgressionRun, setProgressionStep, setQueuedRunPrompt])
 
   useEffect(() => {
@@ -589,9 +600,30 @@ export function Composer(props: PatternStateBindings & {
     ) return
     const step = progressionStepRef.current
     if (step && step.pattern !== props.code) {
-      stopProgressionRun({ clearPlan: true })
+      // A pattern changed outside the run invalidates the plan. Cancelling a
+      // live run is a deliberate teardown, so it disarms too: an armed
+      // checkbox would otherwise answer the edit with an immediate generation.
+      stopProgressionRun({
+        clearPlan: true,
+        disarm: activeProgressionRunRef.current !== null,
+      })
     }
   }, [isAcceptingPattern, props.code, stopProgressionRun])
+
+  // Standing intent, not a start button. Audio still begins inside a user
+  // gesture: the run engages only once a pattern is already playing, and never
+  // against the transient loading and transitioning states `busy` covers. A
+  // staged revision owns its own crossfade, so the run waits for it to land.
+  useEffect(() => {
+    if (
+      !autoplayArmed ||
+      busy ||
+      flow.stagedCode !== null ||
+      props.playback.playbackState !== 'playing' ||
+      activeProgressionRunRef.current !== null
+    ) return
+    engageProgressionRunRef.current()
+  }, [autoplayArmed, busy, flow.stagedCode, props.playback.playbackState])
 
   useEffect(() => {
     if (
@@ -746,10 +778,19 @@ export function Composer(props: PatternStateBindings & {
     setInput('')
   }
 
-  const startProgressionRun = (): void => {
-    const initialStep = progressionStepRef.current
-    if (!initialStep || busy || activeProgressionRunRef.current) return
+  const engageProgressionRun = (): void => {
+    const playingPattern = props.playback.playbackState === 'playing'
+      ? props.playback.activeCode
+      : null
+    if (playingPattern === null || busy || activeProgressionRunRef.current) return
 
+    const plannedStep = progressionStepRef.current
+    // No model-supplied plan (default pattern, restored session, hand edit, or
+    // a pattern opened from the gallery): the run opens by asking for one
+    // instead of refusing to start.
+    const initialStep = plannedStep ??
+      continuePatternProgressionStep(playingPattern)
+    const startPhase = plannedStep === null ? 'generate' : 'wait'
     const durationMs = boundedProgressionRunDurationMs(
       progressionRunDurationMs,
     )
@@ -762,7 +803,8 @@ export function Composer(props: PatternStateBindings & {
       if (activeProgressionRunRef.current !== activeRun) return
       stopProgressionRun({
         abortGeneration: true,
-        notice: `${progressionRunDurationLabel(durationMs)} COMPLETE`,
+        disarm: true,
+        notice: `${progressionRunDurationLabel(durationMs)} COMPLETE, AUTOPLAY OFF`,
       })
     }, durationMs)
     setProgressionRunNotice(null)
@@ -802,25 +844,25 @@ export function Composer(props: PatternStateBindings & {
     showPhase('starting', initialStep)
     flow.setStagedCode(null)
     void (async () => {
-      const alreadyPlaying =
-        props.playback.playbackState === 'playing' &&
-        props.playback.activeCode === initialStep.pattern
-      const started = alreadyPlaying
+      // The planned pattern may not be the playing one when a plan arrives
+      // while other audio holds the transport.
+      const started = playingPattern === initialStep.pattern
         ? true
-        : props.playback.playbackState === 'playing'
-          ? await flow.transitionPattern(
-              initialStep.pattern,
-              DEFAULT_AUTOPLAY_TRANSITION_CYCLES,
-              { validateCandidate: false },
-            )
-          : await flow.playPattern(initialStep.pattern)
+        : await flow.transitionPattern(
+            initialStep.pattern,
+            DEFAULT_AUTOPLAY_TRANSITION_CYCLES,
+            { validateCandidate: false },
+          )
       if (!isCurrent()) return
       if (!started) {
-        stopProgressionRun()
+        stopProgressionRun({
+          disarm: true,
+          notice: 'COULD NOT START, AUTOPLAY OFF',
+        })
         return
       }
 
-      await continueProgressionRun(initialStep, {
+      const result = await continueProgressionRun(initialStep, {
         isCurrent,
         wait: (step) => {
           showPhase('waiting', {
@@ -873,12 +915,15 @@ export function Composer(props: PatternStateBindings & {
             { validateCandidate: false },
           )
         },
-      })
+      }, { startPhase })
 
       if (!isCurrent()) return
-      stopProgressionRun()
+      // A run that ends on its own disarms, so the next run is a deliberate
+      // choice rather than a surprise once the music keeps playing.
+      stopProgressionRun({ disarm: true, notice: progressionEndNotice(result) })
     })()
   }
+  engageProgressionRunRef.current = engageProgressionRun
 
   const clearSession = () => {
     const hadConversation = chat.messages.length > 0
@@ -886,7 +931,10 @@ export function Composer(props: PatternStateBindings & {
       progressionStep: progressionStepRef.current,
       suggestions: flow.suggestions,
     }
-    stopProgressionRun({ clearPlan: true })
+    stopProgressionRun({
+      clearPlan: true,
+      disarm: activeProgressionRunRef.current !== null,
+    })
     turnRequestRef.current++
     chat.clearChat()
     flow.setUiError(null)
@@ -1059,22 +1107,14 @@ export function Composer(props: PatternStateBindings & {
         </div>
       ) : null}
 
-      {progressionStep || progressionRun.phase !== 'idle' ? (
+      {progressionRunning || progressionRunNotice ? (
         <ProgressionRow
-          busy={busy}
-          durationMs={progressionRunDurationMs}
           notice={progressionRunNotice}
           run={progressionRun}
           overrideQueued={queuedRunPrompt !== null}
           step={progressionStep}
-          onDurationChange={(durationMs) => {
-            setProgressionRunDurationMs(
-              boundedProgressionRunDurationMs(durationMs),
-            )
-            setProgressionRunNotice(null)
-          }}
-          onStart={startProgressionRun}
-          onStop={() => stopProgressionRun({ abortGeneration: true })}
+          onStop={() =>
+            stopProgressionRun({ abortGeneration: true, disarm: true })}
           onXfadeNow={() => activeProgressionRunRef.current?.skipWait?.()}
         />
       ) : null}
@@ -1090,16 +1130,55 @@ export function Composer(props: PatternStateBindings & {
         }}
       >
         {!progressionRunning ? (
-          <label className="explanatory-toggle">
-            <input
-              type="checkbox"
-              checked={explanatoryStyle}
-              disabled={busy}
-              onChange={(event) => setExplanatoryStyle(event.target.checked)}
-            />
-            <strong>Explanatory</strong>
-            <span>comment every line</span>
-          </label>
+          <div className="prompt-options">
+            <label className="prompt-toggle explanatory-toggle">
+              <input
+                type="checkbox"
+                checked={explanatoryStyle}
+                disabled={busy}
+                onChange={(event) => setExplanatoryStyle(event.target.checked)}
+              />
+              <strong>Explanatory</strong>
+              <span>comment every line</span>
+            </label>
+            <label className="prompt-toggle autoplay-toggle">
+              <input
+                type="checkbox"
+                role="switch"
+                checked={autoplayArmed}
+                onChange={(event) => {
+                  setAutoplayArmed(event.target.checked)
+                  setProgressionRunNotice(null)
+                }}
+              />
+              <strong>Autoplay</strong>
+              <span>keep evolving while it plays</span>
+            </label>
+            <select
+              aria-label="Run duration"
+              title="How long an autoplay run may keep going"
+              className="run-duration"
+              value={progressionRunDurationMs}
+              onChange={(event) => {
+                setProgressionRunDurationMs(
+                  boundedProgressionRunDurationMs(Number(event.target.value)),
+                )
+                setProgressionRunNotice(null)
+              }}
+            >
+              {PROGRESSION_RUN_DURATION_PRESETS_MS.map((durationMs) => (
+                <option key={durationMs} value={durationMs}>
+                  {progressionRunDurationLabel(durationMs)}
+                </option>
+              ))}
+            </select>
+            <span className="sr-only" role="status">
+              {autoplayArmedAnnouncement(
+                autoplayArmed,
+                props.playback.playbackState === 'playing',
+              )}
+            </span>
+          </div>
         ) : null}
         <textarea
           aria-label={progressionRunning ? 'Steer the next transition' : 'Describe the music'}
@@ -1124,14 +1203,10 @@ export function Composer(props: PatternStateBindings & {
 }
 
 function ProgressionRow(props: {
-  busy: boolean
-  durationMs: number
   notice: string | null
   overrideQueued: boolean
   run: ProgressionRunView
   step: ProgressionStep | null
-  onDurationChange(durationMs: number): void
-  onStart(): void
   onStop(): void
   onXfadeNow(): void
 }) {
@@ -1168,36 +1243,18 @@ function ProgressionRow(props: {
               />
             </span>
           ) : null}
-          <div className="progression-controls">
-            {!running ? (
-              <select
-                aria-label="Run duration"
-                title="Run duration"
-                className="run-duration"
-                disabled={props.busy}
-                value={props.durationMs}
-                onChange={(event) => props.onDurationChange(Number(event.target.value))}
-              >
-                {PROGRESSION_RUN_DURATION_PRESETS_MS.map((durationMs) => (
-                  <option key={durationMs} value={durationMs}>
-                    {progressionRunDurationLabel(durationMs)}
-                  </option>
-                ))}
-              </select>
-            ) : null}
-            {props.run.phase === 'waiting' ? (
-              <button className="chrome run-now" onClick={props.onXfadeNow}>
-                XFADE NOW
+          {running ? (
+            <div className="progression-controls">
+              {props.run.phase === 'waiting' ? (
+                <button className="chrome run-now" onClick={props.onXfadeNow}>
+                  XFADE NOW
+                </button>
+              ) : null}
+              <button className="primary stop" onClick={props.onStop}>
+                STOP RUN
               </button>
-            ) : null}
-            <button
-              className={`primary ${running ? 'stop' : ''}`}
-              disabled={!running && props.busy}
-              onClick={running ? props.onStop : props.onStart}
-            >
-              {running ? 'STOP RUN' : 'START RUN'}
-            </button>
-          </div>
+            </div>
+          ) : null}
         </div>
         {action ? (
           <p className="progression-action" title={action}>
@@ -1221,6 +1278,21 @@ function progressionWaitProgress(run: ProgressionRunView): number | null {
   return Math.min(1, Math.max(0, elapsed))
 }
 
+/** What the armed checkbox means right now, for listeners who cannot see that
+ * the run is waiting on playback rather than on them. */
+function autoplayArmedAnnouncement(armed: boolean, playing: boolean): string {
+  if (!armed) return 'Autoplay is off.'
+  return playing
+    ? 'Autoplay is armed.'
+    : 'Autoplay is armed. Press play to start the run.'
+}
+
+function progressionEndNotice(result: ProgressionRunResult): string {
+  return result === 'complete'
+    ? 'PLAN COMPLETE, AUTOPLAY OFF'
+    : 'RUN ENDED, AUTOPLAY OFF'
+}
+
 function progressionRunAnnouncement(
   run: ProgressionRunView,
   nextAction: string | undefined,
@@ -1228,7 +1300,7 @@ function progressionRunAnnouncement(
 ): string {
   switch (run.phase) {
     case 'idle':
-      return notice ?? 'Autoplay is ready.'
+      return notice ?? 'Autoplay is idle.'
     case 'starting':
       return 'Starting autoplay.'
     case 'waiting':
@@ -1247,8 +1319,9 @@ function progressionRunStatus(
   notice: string | null,
 ): string | null {
   switch (run.phase) {
+    // The row only survives an idle run to carry the notice that ended it.
     case 'idle':
-      return notice ?? 'READY'
+      return notice
     case 'starting':
       return 'STARTING'
     case 'waiting':

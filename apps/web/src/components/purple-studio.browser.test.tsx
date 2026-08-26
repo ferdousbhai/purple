@@ -8,6 +8,7 @@ import userEvent from '@testing-library/user-event'
 import '#/styles.css'
 import { PurpleStudio } from './purple-studio'
 import { SHOWCASE_PATTERNS } from '@purple/core/recipes'
+import { CONTINUE_PATTERN_ACTION } from '@purple/core/progression'
 import { useGeneratedPattern } from '@purple/ui/use-generated-pattern'
 import type { TransitionResult } from '@purple/ui/use-playback'
 import type { EvalResult, PlaybackState } from '@purple/core/types'
@@ -433,6 +434,18 @@ async function playGeneratedPattern(expectedActiveCode: string) {
   await waitFor(() => expect(studio.activeCode).toBe(expectedActiveCode))
 }
 
+function autoplayCheckbox() {
+  return screen.getByLabelText(/Autoplay/) as HTMLInputElement
+}
+
+/** Arm the standing intent. It never starts audio by itself. */
+async function armAutoplay() {
+  const playCallsBefore = studio.playCalls.length
+  await userEvent.click(autoplayCheckbox())
+  expect(autoplayCheckbox()).toBeChecked()
+  expect(studio.playCalls).toHaveLength(playCallsBefore)
+}
+
 async function xfadeNow(expectedActiveCode: string) {
   await userEvent.click(screen.getByRole('button', { name: 'XFADE NOW' }))
   await waitFor(() => expect(studio.activeCode).toBe(expectedActiveCode))
@@ -518,9 +531,8 @@ async function startModelPlannedRun() {
   render(<PurpleStudio />)
 
   await sendPrompt('Start a beat')
-  await screen.findByRole('button', { name: 'START RUN' })
-  await userEvent.click(screen.getByRole('button', { name: 'START RUN' }))
-  await waitFor(() => expect(studio.activeCode).toBe(FIRST_PATTERN))
+  await armAutoplay()
+  await playGeneratedPattern(FIRST_PATTERN)
   await waitForProgressionWaits(1)
   return musicalWake
 }
@@ -991,7 +1003,6 @@ describe('Purple studio browser flow', () => {
   it('clears the session and brings it back through UNDO', async () => {
     await renderGeneratedPattern()
     expect(screen.getByRole('button', { name: 'Drift to dub' })).toBeVisible()
-    expect(screen.getByRole('button', { name: 'START RUN' })).toBeVisible()
 
     await userEvent.click(
       screen.getByRole('button', { name: 'Clear session and start over' }),
@@ -1000,7 +1011,8 @@ describe('Purple studio browser flow', () => {
 
     expect(screen.queryByText('Start a beat')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Drift to dub' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'START RUN' })).toBeNull()
+    // Autoplay is a standing choice, so it survives an empty session.
+    expect(autoplayCheckbox()).toBeVisible()
     expect(studio.clearChatCalls).toBe(1)
     expect(screen.getByLabelText('Pattern code')).toHaveValue(FIRST_PATTERN)
 
@@ -1009,17 +1021,16 @@ describe('Purple studio browser flow', () => {
 
     await screen.findByText('Start a beat')
     expect(screen.getByRole('button', { name: 'Drift to dub' })).toBeVisible()
-    expect(screen.getByRole('button', { name: 'START RUN' })).toBeVisible()
     expect(screen.queryByText('What do you want to hear?')).toBeNull()
     expect(screen.queryByRole('button', { name: 'UNDO' })).toBeNull()
     expect(studio.saveChatCalls).toBeGreaterThan(savesBeforeUndo)
   })
 
-  it('keeps idle run controls off the progression copy line', async () => {
-    await renderGeneratedPattern()
+  it('keeps run controls off the progression copy line', async () => {
+    await startModelPlannedRun()
 
     const action = screen.getByText(NEXT_ACTION)
-    const controls = screen.getByRole('button', { name: 'START RUN' }).parentElement
+    const controls = screen.getByRole('button', { name: 'STOP RUN' }).parentElement
     const row = action.closest('.progression-row')
 
     expect(controls).not.toBeNull()
@@ -1029,6 +1040,8 @@ describe('Purple studio browser flow', () => {
     expect(controls?.getBoundingClientRect().bottom)
       .toBeLessThanOrEqual(action.getBoundingClientRect().top)
     expect(row?.scrollWidth).toBeLessThanOrEqual(row?.clientWidth ?? 0)
+
+    await userEvent.click(screen.getByRole('button', { name: 'STOP RUN' }))
   })
 
   it('schedules a revision crossfade and lets the listener take it now', async () => {
@@ -1110,17 +1123,13 @@ describe('Purple studio browser flow', () => {
     expect(studio.transitionCalls).toEqual([])
   })
 
-  it('keeps autonomous playback opt-in with bounded duration presets', async () => {
-    studio.generations.push(FIRST_PATTERN)
+  it('offers autoplay with bounded durations before any prompt', async () => {
     render(<PurpleStudio />)
-
-    await sendPrompt('Start a beat')
 
     const duration = await screen.findByRole('combobox', {
       name: 'Run duration',
     }) as HTMLSelectElement
-    expect(screen.getByText('AUTOPLAY', { selector: '.chip-label' })).toBeVisible()
-    expect(screen.queryByText(`${PLANNED_CYCLES} CYCLES`)).toBeNull()
+    expect(autoplayCheckbox()).not.toBeChecked()
     expect(duration.value).toBe(String(5 * 60 * 60_000))
     expect(getComputedStyle(duration).color)
       .toBe(getComputedStyle(document.documentElement).color)
@@ -1133,11 +1142,61 @@ describe('Purple studio browser flow', () => {
       '5 HR',
       '10 HR',
     ])
-    expect(studio.playCalls).toEqual([])
 
     await userEvent.selectOptions(duration, String(3 * 60 * 60_000))
     expect(duration.value).toBe(String(3 * 60 * 60_000))
+    // The bound belongs to the checkbox, so the two share one line.
+    const armLabel = autoplayCheckbox().closest('label') as HTMLElement
+    expect(duration.getBoundingClientRect().top)
+      .toBeLessThan(armLabel.getBoundingClientRect().bottom)
+
+    // Arming expresses intent only: audio still waits for a user gesture.
+    await armAutoplay()
     expect(studio.playCalls).toEqual([])
+    expect(studio.streamMessages).toEqual([])
+    expect(studio.progressionWaitCalls).toEqual([])
+  })
+
+  it('leaves the plan idle while autoplay stays unchecked', async () => {
+    studio.generations.push(FIRST_PATTERN)
+    render(<PurpleStudio />)
+
+    await sendPrompt('Start a beat')
+    await playGeneratedPattern(FIRST_PATTERN)
+
+    expect(autoplayCheckbox()).not.toBeChecked()
+    expect(screen.queryByRole('button', { name: 'STOP RUN' })).toBeNull()
+    expect(studio.progressionWaitCalls).toEqual([])
+    expect(studio.streamMessages).toHaveLength(1)
+  })
+
+  it('engages a run on a pattern the model never planned for', async () => {
+    const musicalWake = deferred()
+    studio.generations.push(SECOND_PATTERN)
+    studio.progressionWaitGates.push(musicalWake.promise)
+    render(<PurpleStudio />)
+    await screen.findByLabelText('Describe the music')
+
+    await armAutoplay()
+    await userEvent.click(screen.getByRole('button', { name: /PLAY/ }))
+
+    // No plan exists for the default pattern, so the run opens by asking for
+    // one instead of refusing to start.
+    await waitFor(() => expect(studio.streamMessages).toHaveLength(1))
+    const synthesizedRequest = studio.streamMessages[0] as Array<{
+      role: string
+      content: string
+    }>
+    expect(synthesizedRequest.at(-1)?.role).toBe('user')
+    // The playing pattern rides along as context, so the direction is a
+    // revision of it rather than a fresh piece.
+    expect(synthesizedRequest.at(-1)?.content).toContain(CONTINUE_PATTERN_ACTION)
+    await waitFor(() => expect(studio.activeCode).toBe(SECOND_PATTERN))
+    expect(studio.transitionCycleCalls).toEqual([16])
+    await waitForProgressionWaits(1)
+
+    await userEvent.click(screen.getByRole('button', { name: 'STOP RUN' }))
+    expect(autoplayCheckbox()).not.toBeChecked()
   })
 
   it('runs the model-planned action after its musical wait and crossfades it', async () => {
@@ -1290,6 +1349,9 @@ describe('Purple studio browser flow', () => {
 
     await userEvent.click(stopRun)
 
+    // Stopping by hand also clears the standing intent, so the run cannot
+    // re-engage against the music that is still playing.
+    expect(autoplayCheckbox()).not.toBeChecked()
     expect(screen.getByText('EFFECT')).toBeVisible()
     expect(screen.getByText('NEXT')).toBeVisible()
     expect(screen.getByLabelText('Describe the music')).toBeVisible()
@@ -1307,23 +1369,24 @@ describe('Purple studio browser flow', () => {
     const musicalWake = deferred()
     studio.generations.push(FIRST_PATTERN)
     studio.progressionWaitGates.push(musicalWake.promise)
+    // The run's deadline is scheduled when it engages, so the clock has to be
+    // controllable from before the play gesture that engages it.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
     render(<PurpleStudio />)
 
     await sendPrompt('Start a beat')
-    vi.useFakeTimers()
-    await act(async () => {
-      screen.getByRole('button', { name: 'START RUN' }).click()
-      await Promise.resolve()
-    })
-    expect(studio.progressionWaitCalls).toEqual([PLANNED_CYCLES])
-    expect(studio.activeCode).toBe(FIRST_PATTERN)
+    await armAutoplay()
+    await playGeneratedPattern(FIRST_PATTERN)
+    await waitForProgressionWaits(1)
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5 * 60 * 60_000)
     })
 
-    expect(screen.getByRole('button', { name: 'START RUN' })).toBeEnabled()
-    expect(screen.getByText('5 HR COMPLETE', { selector: 'strong' }))
+    // The bound ends the run and clears the standing intent, so the music
+    // keeps playing but no further generation is spent without a fresh choice.
+    expect(autoplayCheckbox()).not.toBeChecked()
+    expect(screen.getByText('5 HR COMPLETE, AUTOPLAY OFF', { selector: 'strong' }))
       .toBeInTheDocument()
     expect(studio.activeCode).toBe(FIRST_PATTERN)
     expect(studio.stopCalls).toBe(0)

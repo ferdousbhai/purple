@@ -87,6 +87,27 @@ export function progressionStepFromTurn(
     : { pattern: turn.pattern, ...turn.progression };
 }
 
+/** The direction a run sends when it engages on a pattern the model never
+ * planned for: the default pattern, a restored session, a hand edit, or a
+ * pattern opened from the public gallery. */
+export const CONTINUE_PATTERN_ACTION =
+  "Continue this pattern into its next section, keeping its identity, groove, and tempo while evolving the arrangement.";
+
+/**
+ * A first step for a run that engages without a model-supplied plan. The run
+ * starts at its generate phase, so `afterCycles` only stands in until the
+ * generated turn returns a real plan.
+ */
+export function continuePatternProgressionStep(
+  pattern: string,
+): ProgressionStep {
+  return {
+    pattern,
+    afterCycles: MIN_PROGRESSION_CYCLES,
+    nextAction: CONTINUE_PATTERN_ACTION,
+  };
+}
+
 export interface ProgressionRunDependencies {
   /** False after a user action or explicit stop supersedes this run. */
   isCurrent(): boolean;
@@ -101,6 +122,17 @@ export interface ProgressionRunDependencies {
 export type ProgressionRunResult = "complete" | "cancelled" | "failed";
 
 /**
+ * Where a run enters the loop. A run that inherits a model-supplied plan holds
+ * the playing pattern first; a run that engages without one asks for the next
+ * move straight away, then follows the plan that turn returns.
+ */
+export type ProgressionRunStartPhase = "wait" | "generate";
+
+export interface ProgressionRunOptions {
+  startPhase?: ProgressionRunStartPhase;
+}
+
+/**
  * Continue model-planned music until a turn has no next plan, a step fails, or
  * ownership changes. The wait is supplied by the browser so this loop holds no
  * timer process or model request while a pattern is playing.
@@ -108,13 +140,19 @@ export type ProgressionRunResult = "complete" | "cancelled" | "failed";
 export async function continueProgressionRun(
   initialStep: ProgressionStep,
   dependencies: ProgressionRunDependencies,
+  options: ProgressionRunOptions = {},
 ): Promise<ProgressionRunResult> {
   let step = initialStep;
+  let holdCurrentPattern = options.startPhase !== "generate";
 
   while (dependencies.isCurrent()) {
-    if (!(await dependencies.wait(step)) || !dependencies.isCurrent()) {
+    if (
+      holdCurrentPattern &&
+      (!(await dependencies.wait(step)) || !dependencies.isCurrent())
+    ) {
       return "cancelled";
     }
+    holdCurrentPattern = true;
 
     const turn = await dependencies.generate(step);
     if (!dependencies.isCurrent()) return "cancelled";

@@ -94,6 +94,11 @@ Repository workflows do not deploy the site.
 - Progression runs plan conservative, phrase-aligned holds and always retain
   manual early crossfade. A queued user direction replaces one automatic turn;
   the structured progression returned by that turn resumes the run.
+- The Autoplay checkbox is standing intent, not a transport. An armed run
+  engages only while a pattern is playing, and it synthesizes a "continue this
+  pattern" turn when no model plan exists. Any teardown other than stopped
+  playback or a new user prompt also clears the intent, so a run can never
+  re-engage itself. The checkbox is in memory only.
 - `safe-strudel.ts` interprets one allowlisted expression without `eval` or
   `Function`. Statements, browser globals, computed properties, loaders, and
   custom worklets are rejected.
