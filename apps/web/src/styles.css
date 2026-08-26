@@ -381,76 +381,150 @@ a { color: var(--accent); }
   background: color-mix(in srgb, var(--hot) 18%, transparent);
   box-shadow: var(--glow-hot);
 }
+/* Autoplay: a live status line over the description of the next move. */
 .progression-row {
   flex: none;
   min-width: 0;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: start;
-  gap: 8px;
-  padding: 7px 0;
+  gap: 10px;
+  padding: 8px 0;
   border-top: 1px solid color-mix(in srgb, var(--active) 16%, transparent);
   border-bottom: 1px solid color-mix(in srgb, var(--active) 16%, transparent);
 }
 .progression-row .chip-label {
-  padding-top: 3px;
+  display: flex;
+  align-items: center;
+  /* Match the control height so the label sits on the status line. */
+  height: 25px;
   color: color-mix(in srgb, var(--active) 58%, transparent);
+}
+/* A run in progress carries the same pulsing dot as the transport LED. */
+.progression-row.running .chip-label::before {
+  content: '';
+  flex: none;
+  width: 5px;
+  height: 5px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--active);
+  box-shadow: var(--glow-active-sm);
+  animation: glow-pulse 2s ease-in-out infinite;
 }
 .progression-body {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-items: stretch;
-  gap: 8px;
+  gap: 6px;
 }
-.progression-copy {
+.progression-head {
   min-width: 0;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: baseline;
-  gap: 8px;
-  font: 400 10px var(--font-mono);
+  min-height: 25px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
 }
-.progression-copy strong {
+.progression-head strong {
   flex: none;
   color: var(--active);
-  font-size: 9px;
-  letter-spacing: 0.1em;
+  font: 600 9px var(--font-mono);
+  letter-spacing: 0.16em;
+  font-variant-numeric: tabular-nums;
 }
-.progression-copy span {
+.phase-idle .progression-head strong { color: var(--text-dim); }
+.phase-starting .progression-head strong,
+.phase-generating .progression-head strong { color: var(--warn); }
+.phase-transitioning .progression-head strong { color: var(--hot); }
+/* Elapsed share of the current hold, so the wait reads at a glance instead of
+   only through the clock. Phases that have no deadline sweep instead. */
+.progression-meter {
+  flex: 1 1 60px;
+  min-width: 48px;
+  height: 3px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--active) 18%, transparent);
+}
+.progression-meter-fill {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--active) 70%, transparent);
+  box-shadow: var(--glow-active-sm);
+  /* The countdown ticks once a second; ease across it so the fill glides. */
+  transition: width 1s linear;
+}
+.progression-meter.indeterminate .progression-meter-fill {
+  width: 35%;
+  animation: meter-sweep 1.6s ease-in-out infinite;
+}
+.phase-starting .progression-meter,
+.phase-generating .progression-meter {
+  background: color-mix(in srgb, var(--warn) 18%, transparent);
+}
+.phase-starting .progression-meter-fill,
+.phase-generating .progression-meter-fill {
+  background: color-mix(in srgb, var(--warn) 70%, transparent);
+  box-shadow: var(--glow-warn-sm);
+}
+.phase-transitioning .progression-meter {
+  background: color-mix(in srgb, var(--hot) 18%, transparent);
+}
+.phase-transitioning .progression-meter-fill {
+  background: color-mix(in srgb, var(--hot) 70%, transparent);
+  box-shadow: none;
+}
+@keyframes meter-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(286%); }
+}
+.progression-action {
   min-width: 0;
-  color: var(--text-dim);
-  line-height: 1.45;
+  margin: 0;
+  /* Bound the block: the composer shares its height with the transcript, and a
+     long plan should not push the conversation off screen. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--text) 62%, transparent);
+  font: 400 11.5px/1.55 var(--font-display);
   overflow-wrap: anywhere;
 }
-.progression-copy span:only-child { grid-column: 1 / -1; }
-.progression-copy em {
+.progression-action em {
   margin-right: 7px;
   color: var(--accent);
-  font-size: 8px;
+  font: 600 8px var(--font-mono);
   font-style: normal;
-  font-weight: 600;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.16em;
   white-space: nowrap;
+  vertical-align: 1px;
 }
 .progression-controls {
-  min-width: 0;
+  flex: none;
+  margin-left: auto;
   display: flex;
-  justify-content: flex-end;
   align-items: center;
-  gap: 8px;
+  /* Keep the destructive control clear of the one people reach for often. */
+  gap: 24px;
 }
-.progression-controls.running {
-  grid-template-columns: auto minmax(24px, 1fr) auto;
-  display: grid;
-}
-.progression-row .primary { flex: none; padding: 4px 9px; }
+.progression-row .primary { flex: none; padding: 4px 10px; }
 .progression-row .run-now {
   flex: none;
-  padding: 4px 7px;
+  padding: 4px 9px;
   white-space: nowrap;
+  border-color: color-mix(in srgb, var(--active) 30%, transparent);
+  color: color-mix(in srgb, var(--active) 85%, transparent);
 }
-.progression-controls.running .primary.stop { grid-column: 3; }
+.progression-row .run-now:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--active) 60%, transparent);
+  background: color-mix(in srgb, var(--active) 10%, transparent);
+  color: var(--active);
+  box-shadow: var(--glow-active);
+}
 .run-duration {
   height: 25px;
   padding: 0 5px;
@@ -468,15 +542,27 @@ a { color: var(--accent); }
 .run-duration:focus {
   border-color: color-mix(in srgb, var(--active) 45%, transparent);
 }
+/* Stopping a run is rarely the point of the row, so it reads as an outline
+   until it is hovered. */
 .progression-row .primary.stop {
-  border-color: color-mix(in srgb, var(--hot) 35%, transparent);
-  background: color-mix(in srgb, var(--hot) 10%, transparent);
-  color: var(--hot);
+  border-color: color-mix(in srgb, var(--hot) 28%, transparent);
+  background: transparent;
+  color: color-mix(in srgb, var(--hot) 80%, transparent);
 }
 .progression-row .primary.stop:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--hot) 65%, transparent);
-  background: color-mix(in srgb, var(--hot) 18%, transparent);
+  background: color-mix(in srgb, var(--hot) 14%, transparent);
+  color: var(--hot);
   box-shadow: var(--glow-hot);
+}
+@media (prefers-reduced-motion: reduce) {
+  .progression-row.running .chip-label::before { animation: none; }
+  .progression-meter-fill { transition: none; }
+  .progression-meter.indeterminate .progression-meter-fill {
+    width: 100%;
+    animation: none;
+    opacity: 0.5;
+  }
 }
 /* Prompt input */
 .prompt-form { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }

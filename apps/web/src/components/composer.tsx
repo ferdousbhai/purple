@@ -85,6 +85,7 @@ type ProgressionRunView =
       phase: ActiveProgressionRunPhase
       nextAction: string
       afterCycles: number
+      remainingCycles?: number
       remainingSeconds?: number
     }
 
@@ -793,7 +794,9 @@ export function Composer(props: PatternStateBindings & {
         Math.ceil(remainingCycles / cyclesPerSecond),
       )
       if (current.remainingSeconds === remainingSeconds) return
-      setProgressionRun({ ...current, remainingSeconds })
+      // The meter reads the same cycle sample the countdown does, so the fill
+      // and the clock never disagree about how much of the hold is left.
+      setProgressionRun({ ...current, remainingCycles, remainingSeconds })
     }
 
     showPhase('starting', initialStep)
@@ -1137,61 +1140,82 @@ function ProgressionRow(props: {
     ? props.step?.nextAction
     : props.run.nextAction
   const status = progressionRunStatus(props.run, props.notice)
+  const progress = progressionWaitProgress(props.run)
 
   return (
     <div
-      className={`progression-row ${running ? 'running' : ''}`}
+      className={`progression-row phase-${props.run.phase} ${running ? 'running' : ''}`}
     >
       <span className="sr-only" role="status">
         {progressionRunAnnouncement(props.run, action, props.notice)}
       </span>
       <span className="chip-label">AUTOPLAY</span>
       <div className="progression-body">
-        <div className="progression-copy">
+        <div className="progression-head">
           {status ? (
             <strong role={props.run.phase === 'waiting' ? 'timer' : undefined}>
               {status}
             </strong>
           ) : null}
-          {action ? (
-            <span>
-              {props.overrideQueued ? <em>YOUR NEXT</em> : null}
-              {action}
+          {running ? (
+            <span
+              aria-hidden="true"
+              className={`progression-meter ${progress === null ? 'indeterminate' : ''}`}
+            >
+              <span
+                className="progression-meter-fill"
+                style={progress === null ? undefined : { width: `${progress * 100}%` }}
+              />
             </span>
           ) : null}
-        </div>
-        <div className={`progression-controls ${running ? 'running' : ''}`}>
-          {!running ? (
-            <select
-              aria-label="Run duration"
-              className="run-duration"
-              disabled={props.busy}
-              value={props.durationMs}
-              onChange={(event) => props.onDurationChange(Number(event.target.value))}
+          <div className="progression-controls">
+            {!running ? (
+              <select
+                aria-label="Run duration"
+                className="run-duration"
+                disabled={props.busy}
+                value={props.durationMs}
+                onChange={(event) => props.onDurationChange(Number(event.target.value))}
+              >
+                {PROGRESSION_RUN_DURATION_PRESETS_MS.map((durationMs) => (
+                  <option key={durationMs} value={durationMs}>
+                    {progressionRunDurationLabel(durationMs)}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+            {props.run.phase === 'waiting' ? (
+              <button className="chrome run-now" onClick={props.onXfadeNow}>
+                XFADE NOW
+              </button>
+            ) : null}
+            <button
+              className={`primary ${running ? 'stop' : ''}`}
+              disabled={!running && props.busy}
+              onClick={running ? props.onStop : props.onStart}
             >
-              {PROGRESSION_RUN_DURATION_PRESETS_MS.map((durationMs) => (
-                <option key={durationMs} value={durationMs}>
-                  {progressionRunDurationLabel(durationMs)}
-                </option>
-              ))}
-            </select>
-          ) : null}
-          {props.run.phase === 'waiting' ? (
-            <button className="chrome run-now" onClick={props.onXfadeNow}>
-              XFADE NOW
+              {running ? 'STOP RUN' : 'START RUN'}
             </button>
-          ) : null}
-          <button
-            className={`primary ${running ? 'stop' : ''}`}
-            disabled={!running && props.busy}
-            onClick={running ? props.onStop : props.onStart}
-          >
-            {running ? 'STOP RUN' : 'START RUN'}
-          </button>
+          </div>
         </div>
+        {action ? (
+          <p className="progression-action" title={action}>
+            {props.overrideQueued ? <em>YOUR NEXT</em> : null}
+            {action}
+          </p>
+        ) : null}
       </div>
     </div>
   )
+}
+
+/** How much of the current hold has already played, or null when the run is
+ * not counting down a hold and the meter should read as indeterminate. */
+function progressionWaitProgress(run: ProgressionRunView): number | null {
+  if (run.phase !== 'waiting') return null
+  if (run.remainingCycles === undefined || run.afterCycles <= 0) return null
+  const elapsed = 1 - run.remainingCycles / run.afterCycles
+  return Math.min(1, Math.max(0, elapsed))
 }
 
 function progressionRunAnnouncement(
