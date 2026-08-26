@@ -496,13 +496,15 @@ a { color: var(--accent); }
 }
 .progression-action em {
   margin-right: 7px;
-  color: var(--accent);
+  color: var(--text-faint);
   font: 600 8px var(--font-mono);
   font-style: normal;
   letter-spacing: 0.16em;
   white-space: nowrap;
   vertical-align: 1px;
 }
+/* A queued user direction takes over the next turn, so its label pops. */
+.progression-action em.queued { color: var(--accent); }
 .progression-controls {
   flex: none;
   margin-left: auto;

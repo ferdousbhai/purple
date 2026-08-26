@@ -1172,6 +1172,7 @@ function ProgressionRow(props: {
             {!running ? (
               <select
                 aria-label="Run duration"
+                title="Run duration"
                 className="run-duration"
                 disabled={props.busy}
                 value={props.durationMs}
@@ -1200,7 +1201,9 @@ function ProgressionRow(props: {
         </div>
         {action ? (
           <p className="progression-action" title={action}>
-            {props.overrideQueued ? <em>YOUR NEXT</em> : null}
+            <em className={props.overrideQueued ? 'queued' : undefined}>
+              {props.overrideQueued ? 'YOUR NEXT' : 'UP NEXT'}
+            </em>
             {action}
           </p>
         ) : null}
@@ -1245,7 +1248,7 @@ function progressionRunStatus(
 ): string | null {
   switch (run.phase) {
     case 'idle':
-      return notice
+      return notice ?? 'READY'
     case 'starting':
       return 'STARTING'
     case 'waiting':
