@@ -56,6 +56,10 @@ const studio = vi.hoisted(() => ({
   transitionResults: [] as unknown[],
   progressionWaitCalls: [] as number[],
   progressionWaitGates: [] as Promise<void>[],
+  /** The live run's countdown reporter, so a test can advance the wait. */
+  reportProgressionWait: null as
+    | ((remainingCycles: number, cyclesPerSecond: number) => void)
+    | null,
   prepareValidationCalls: 0,
   stopCalls: 0,
   storedKey: 'browser-test-key' as string | null,
@@ -323,6 +327,7 @@ vi.mock('@purple/ui/use-playback', async () => {
         onProgress?: (remainingCycles: number, cyclesPerSecond: number) => void,
       ): Promise<EvalResult> => {
         studio.progressionWaitCalls.push(cycles)
+        studio.reportProgressionWait = onProgress ?? null
         onProgress?.(cycles, 0.5)
         const gate = studio.progressionWaitGates.shift()
         if (!gate) {
@@ -394,6 +399,7 @@ beforeEach(() => {
   studio.transitionResults.length = 0
   studio.progressionWaitCalls.length = 0
   studio.progressionWaitGates.length = 0
+  studio.reportProgressionWait = null
   studio.prepareValidationCalls = 0
   studio.stopCalls = 0
   studio.storedKey = 'browser-test-key'
@@ -1009,7 +1015,7 @@ describe('Purple studio browser flow', () => {
     expect(studio.saveChatCalls).toBeGreaterThan(savesBeforeUndo)
   })
 
-  it('keeps idle run controls below the progression copy', async () => {
+  it('keeps idle run controls off the progression copy line', async () => {
     await renderGeneratedPattern()
 
     const action = screen.getByText(NEXT_ACTION)
@@ -1018,8 +1024,10 @@ describe('Purple studio browser flow', () => {
 
     expect(controls).not.toBeNull()
     expect(row).not.toBeNull()
-    expect(controls?.getBoundingClientRect().top)
-      .toBeGreaterThanOrEqual(action.getBoundingClientRect().bottom)
+    // Controls ride the status line, so the wrapping copy never shares a row
+    // with them and cannot squeeze them into an overflow.
+    expect(controls?.getBoundingClientRect().bottom)
+      .toBeLessThanOrEqual(action.getBoundingClientRect().top)
     expect(row?.scrollWidth).toBeLessThanOrEqual(row?.clientWidth ?? 0)
   })
 
@@ -1257,6 +1265,12 @@ describe('Purple studio browser flow', () => {
     await startModelPlannedRun()
 
     expect(await screen.findByText('NEXT IN 1:01:52')).toBeVisible()
+    const meterFill = () =>
+      document.querySelector<HTMLElement>('.progression-meter-fill')
+    expect(meterFill()?.style.width).toBe('0%')
+    act(() => studio.reportProgressionWait?.(PLANNED_CYCLES / 4, 0.5))
+    await waitFor(() => expect(meterFill()?.style.width).toBe('75%'))
+
     const action = screen.getByText(NEXT_ACTION)
     const actionStyle = getComputedStyle(action)
     expect(action).toBeVisible()
