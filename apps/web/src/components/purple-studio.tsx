@@ -572,7 +572,14 @@ function PurpleStudioView({
 }
 
 function StatusLed({ state }: { state: 'active' | 'busy' | 'idle' }) {
-  return <div aria-label={`Status: ${state}`} role="status" className={`status-led ${state}`} />
+  return (
+    <div
+      aria-label={`Status: ${state}`}
+      title={`Status: ${state}`}
+      role="status"
+      className={`status-led ${state}`}
+    />
+  )
 }
 
 function KeyCard(props: {

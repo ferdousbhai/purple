@@ -50,6 +50,8 @@ function PatternsPageView({
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState(false)
+  const [loadAttempt, setLoadAttempt] = useState(0)
   const [votePending, setVotePending] = useState<Set<string>>(() => new Set())
   const loadMoreControllerRef = useRef<AbortController | null>(null)
   const mainRef = useRef<HTMLElement | null>(null)
@@ -80,6 +82,7 @@ function PatternsPageView({
     setPatterns([])
     setNextCursor(null)
     setError(null)
+    setLoadError(false)
     void fetchPatternPage(sort, null, controller.signal)
       .then((page) => {
         if (controller.signal.aborted) return
@@ -88,6 +91,7 @@ function PatternsPageView({
       })
       .catch((reason: Error) => {
         if (reason.name === 'AbortError') return
+        setLoadError(true)
         setError('Purple could not load public patterns. Please try again.')
       })
       .finally(() => {
@@ -101,7 +105,7 @@ function PatternsPageView({
         loadMoreControllerRef.current = null
       }
     }
-  }, [sort])
+  }, [loadAttempt, sort])
 
   const updatePattern = useCallback((id: string, update: PatternVoteResult) => {
     setPatterns((current) => current.map((pattern) =>
@@ -241,7 +245,10 @@ function PatternsPageView({
 
       <section className="patterns-content">
         <header className="patterns-intro">
-          <h1>Preview public patterns without a Gemini key, like the ones you want to keep, and open any pattern in the studio to edit it.</h1>
+          <div className="patterns-intro-copy">
+            <h1>PUBLIC PATTERNS</h1>
+            <p>No key needed to listen. Vote for keepers, open any pattern in the studio.</p>
+          </div>
           <div className="pattern-sort" role="group" aria-label="Sort patterns">
             <button
               className={sort === 'fresh' ? 'active' : ''}
@@ -260,14 +267,26 @@ function PatternsPageView({
           </div>
         </header>
 
-        {error ? <p className="error patterns-error" role="alert">{error}</p> : null}
+        {error ? (
+          <div className="error patterns-error" role="alert">
+            <span>{error}</span>
+            {loadError ? (
+              <button
+                className="chrome"
+                onClick={() => setLoadAttempt((current) => current + 1)}
+              >
+                RETRY
+              </button>
+            ) : null}
+          </div>
+        ) : null}
         {playback.error ? (
           <p className="error patterns-error" role="alert">{playback.error}</p>
         ) : null}
 
         {loading ? (
           <p className="patterns-status" role="status">LOADING PATTERNS…</p>
-        ) : patterns.length === 0 ? (
+        ) : loadError ? null : patterns.length === 0 ? (
           <section className="patterns-empty">
             <p>No public patterns yet.</p>
             <InternalLink className="primary" href="/" navigate={navigate}>

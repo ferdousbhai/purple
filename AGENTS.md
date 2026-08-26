@@ -130,5 +130,4 @@ in the application; it never reaches Purple's Worker.
 - `apps/web/vite/superdough-worklet.ts` rewrites Strudel's AudioWorklet URL. Keep
   `scripts/verify-worklet-csp.mjs` aligned with its emitted filename.
 - Without a saved session, the studio starts with its current default pattern.
-- CSS follows `prefers-color-scheme` and stores explicit theme choices in the
-  browser.
+- CSS follows `prefers-color-scheme`; there is no in-app theme toggle.

@@ -45,6 +45,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; background: none; border: 0; padding: 0; }
 button:disabled { cursor: not-allowed; opacity: 0.35; }
 a { color: var(--accent); }
+/* Keep keyboard focus visible across custom controls and links. */
+button:focus-visible, a:focus-visible, select:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: 1px;
+}
 
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -176,7 +181,8 @@ a { color: var(--accent); }
 /* ── Split layout ── */
 .studio-grid {
   flex: 1; min-height: 0;
-  display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
+  /* Wide screens give the transcript more room, while the editor stays the hero. */
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, min(480px, 34vw));
 }
 
 /* ── Editor pane (the hero) ── */
@@ -599,7 +605,7 @@ a { color: var(--accent); }
 .muted { color: var(--text-dim); font-size: 13px; }
 
 /* ── Key card ── */
-.key-card { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 12px; padding: 22px; }
+.key-card { flex: 1; max-width: 62ch; display: flex; flex-direction: column; justify-content: center; gap: 12px; padding: 22px; }
 .key-card h2 { margin: 0; color: color-mix(in srgb, var(--accent) 70%, transparent); font: 600 11px var(--font-mono); letter-spacing: 0.3em; }
 .key-card p { margin: 0; color: var(--text-dim); font-size: 13px; line-height: 1.55; }
 .key-card form { display: grid; gap: 10px; }
@@ -739,7 +745,11 @@ a { color: var(--accent); }
   display: flex; align-items: end; justify-content: space-between; gap: 28px;
   padding: 0 2px 20px; margin-bottom: 18px; border-bottom: 1px solid var(--border);
 }
-.patterns-intro h1 { margin: 0; font: 600 25px/1.15 var(--font-display); }
+.patterns-intro-copy { display: grid; gap: 7px; }
+.patterns-intro h1 {
+  margin: 0; font: 600 22px/1.15 var(--font-mono); letter-spacing: 0.18em;
+}
+.patterns-intro p { margin: 0; color: var(--text-dim); font-size: 13px; line-height: 1.4; }
 .pattern-sort {
   flex: none; display: inline-flex; padding: 3px;
   border: 1px solid var(--border); border-radius: 6px; background: var(--panel);
@@ -752,7 +762,9 @@ a { color: var(--accent); }
 .pattern-sort button.active {
   color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
-.patterns-error { margin-bottom: 14px; }
+.patterns-error { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.patterns-error span { flex: 1; min-width: 0; }
+.patterns-error .chrome { flex: none; color: var(--hot); }
 .patterns-status, .patterns-empty {
   margin: 70px 0; text-align: center; color: var(--text-dim);
   font: 500 11px var(--font-mono); letter-spacing: 0.12em;

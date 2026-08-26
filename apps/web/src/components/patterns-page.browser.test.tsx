@@ -137,8 +137,11 @@ describe('public pattern gallery', () => {
     const heading = await screen.findByRole('heading', { name: 'Acid rain' })
     expect(screen.getByRole('heading', {
       level: 1,
-      name: 'Preview public patterns without a Gemini key, like the ones you want to keep, and open any pattern in the studio to edit it.',
+      name: 'PUBLIC PATTERNS',
     })).toBeVisible()
+    expect(screen.getByText(
+      'No key needed to listen. Vote for keepers, open any pattern in the studio.',
+    )).toBeVisible()
     expect(screen.queryByRole('button', { name: 'STOP AUDIO' })).toBeNull()
     expect(screen.getByRole('link', { name: 'BACK TO STUDIO' })).toHaveClass(
       'primary',
@@ -250,6 +253,30 @@ describe('public pattern gallery', () => {
     )
     expect(screen.queryByRole('heading', { name: 'Acid rain' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'LOAD MORE' })).toBeNull()
+    expect(screen.queryByText('No public patterns yet.')).toBeNull()
+    expect(screen.queryByRole('link', { name: 'MAKE THE FIRST ONE' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'RETRY' })).toBeVisible()
+  })
+
+  it('retries a failed initial load and renders patterns on success', async () => {
+    gallery.failSort = 'fresh'
+    const user = userEvent.setup()
+    render(<PatternsPage />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Purple could not load public patterns. Please try again.',
+    )
+    expect(screen.queryByText('No public patterns yet.')).toBeNull()
+
+    gallery.failSort = null
+    await user.click(screen.getByRole('button', { name: 'RETRY' }))
+
+    expect(await screen.findByRole('heading', { name: 'Acid rain' })).toBeVisible()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(gallery.fetchCalls).toEqual([
+      ['fresh', null],
+      ['fresh', null],
+    ])
   })
 
   it('does not append a duplicate card from a moved Top cursor', async () => {
