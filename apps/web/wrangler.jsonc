@@ -6,6 +6,7 @@
   "name": "purple-web",
   "main": "./worker/index.ts",
   "compatibility_date": "2026-08-18",
+  "preview_urls": true,
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
     "directory": "./dist",
