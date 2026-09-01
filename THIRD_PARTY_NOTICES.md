@@ -26,6 +26,19 @@ AGPL-3.0-or-later to reflect this combination. This does not relicense
 separately identifiable Purple-authored MIT files; redistributors remain
 responsible for satisfying the licenses of the combined artifact.
 
+## Bundled font
+
+The application bundle embeds the JetBrains Mono variable webfont, distributed
+through `@fontsource-variable/jetbrains-mono`:
+
+> Copyright 2020 The JetBrains Mono Project Authors
+> (https://github.com/JetBrains/JetBrainsMono)
+
+JetBrains Mono is licensed under the SIL Open Font License, Version 1.1. The
+full license text ships inside the package at
+`node_modules/@fontsource-variable/jetbrains-mono/LICENSE` and is also
+available at https://openfontlicense.org.
+
 ## Other dependencies
 
 Other JavaScript dependencies retain the licenses declared in their package

@@ -1,35 +1,39 @@
-/*
- * Palette: every color routes through the tokens below - rules only ever use
- * var(...) or color-mix(...) tints of them, so restyling the site is a matter
- * of swapping token values here (and in public/404.html, which duplicates the
- * accent because it must stay standalone).
- */
+@import '@fontsource-variable/jetbrains-mono/wght.css';
+
 :root {
   --surface: #0c0914;
   --text: #e6e1f2;
   --text-dim: color-mix(in srgb, var(--text) 50%, transparent);
   --text-faint: color-mix(in srgb, var(--text) 28%, transparent);
   --border: rgba(255, 255, 255, 0.08);
-  --accent: #c77dff; /* brand: wordmark, links, primary actions, focus */
-  --active: #39ff14; /* playing / saved / success */
-  --hot: #ff2d95; /* stop, errors, next-move emphasis */
-  --warn: #ffb800; /* busy, nudges */
-  --panel-base: #221a33; /* the raised-surface hue behind every tint below */
-  --panel: color-mix(in srgb, var(--panel-base) 40%, transparent); /* chips, buttons, cards */
-  --panel-strong: color-mix(in srgb, var(--panel-base) 60%, transparent); /* inputs, user bubbles */
+  --accent: #c77dff;
+  --active: #39ff14;
+  --hot: #ff2d95;
+  --warn: #ffb800;
+  --panel-base: #221a33;
+  --panel: color-mix(in srgb, var(--panel-base) 40%, transparent);
+  --panel-strong: color-mix(in srgb, var(--panel-base) 60%, transparent);
   --panel-hover: color-mix(in srgb, var(--panel-base) 80%, transparent);
   --bar-bg: color-mix(in srgb, var(--surface) 80%, transparent);
   --pane-editor: color-mix(in srgb, var(--surface) 55%, transparent);
   --pane-session: rgba(24, 18, 36, 0.45);
   --grid-line: color-mix(in srgb, var(--accent) 3%, transparent);
-  --glow-accent: 0 0 12px color-mix(in srgb, var(--accent) 19%, transparent);
   --glow-active: 0 0 12px color-mix(in srgb, var(--active) 19%, transparent);
   --glow-hot: 0 0 12px color-mix(in srgb, var(--hot) 19%, transparent);
   --glow-active-sm: 0 0 6px color-mix(in srgb, var(--active) 50%, transparent);
   --glow-warn-sm: 0 0 6px color-mix(in srgb, var(--warn) 50%, transparent);
   --shadow: rgba(0, 0, 0, 0.55);
-  --font-display: 'Outfit', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --font-display: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-mono: var(--font-display);
+  --r-sm: 4px;
+  --r: 6px;
+  --r-lg: 8px;
+  --tracking: 0.14em;
+  /* Stacked drop shadow: the depth cue reads as a physical key rather than a
+     blurred halo, which is what makes the solid-fill buttons feel like keys. */
+  --shadow-raised:
+    0 1px 0 0 rgba(0, 0, 0, 0.1), 0 3px 18px -6px rgba(0, 0, 0, 0.2), 0 6px 30px -12px rgba(0, 0, 0, 0.3);
+  --scanline: rgba(0, 0, 0, 0.5);
 
   color: var(--text);
   background: var(--surface);
@@ -45,7 +49,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; background: none; border: 0; padding: 0; }
 button:disabled { cursor: not-allowed; opacity: 0.35; }
 a { color: var(--accent); }
-/* Keep keyboard focus visible across custom controls and links. */
 button:focus-visible, a:focus-visible, select:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
   outline-offset: 1px;
@@ -69,7 +72,6 @@ button:focus-visible, a:focus-visible, select:focus-visible {
 .route-message h1, .route-message p { margin: 0; }
 .route-message h1, .route-message a { color: var(--accent); }
 
-/* ── Shell: one fixed screen, no page scroll ── */
 .studio-shell {
   height: 100vh;
   height: 100dvh;
@@ -83,7 +85,34 @@ button:focus-visible, a:focus-visible, select:focus-visible {
   background-size: 24px 24px;
 }
 
-/* ── Topbar ── */
+.chip,
+.new-session,
+.card-play,
+.card-open,
+.pattern-sort button,
+.editor-revision-status,
+.progression-head strong,
+.progression-action em,
+.key-card h2,
+.library-head,
+.chip-label,
+.patterns-status,
+.patterns-empty,
+.feedback-form > label > span {
+  text-transform: uppercase;
+}
+
+.studio-shell::after,
+.patterns-shell::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  pointer-events: none;
+  opacity: 0.1;
+  background: repeating-linear-gradient(to bottom, var(--scanline) 0 1px, transparent 1px 3px);
+}
+
 .topbar {
   height: 40px; flex: none;
   padding: 0 14px;
@@ -101,7 +130,7 @@ button:focus-visible, a:focus-visible, select:focus-visible {
 
 .eq-bars { display: flex; align-items: flex-end; gap: 2px; height: 14px; }
 .eq-bars span {
-  width: 3px; height: 100%; border-radius: 2px; background: var(--active);
+  width: 3px; height: 100%; border-radius: 0; background: var(--active);
   transform-origin: bottom;
 }
 /* Canned motion only until the real analyser drives the bars (.live). */
@@ -110,18 +139,18 @@ button:focus-visible, a:focus-visible, select:focus-visible {
 .eq-bars:not(.live) span:nth-child(3) { animation-delay: 0.3s; }
 .eq-bars:not(.live) span:nth-child(4) { animation-delay: 0.1s; }
 .eq-bars:not(.live) span:nth-child(5) { animation-delay: 0.25s; }
-.status-led { width: 8px; height: 8px; border-radius: 50%; background: rgba(255, 255, 255, 0.2); }
+.status-led { width: 8px; height: 8px; border-radius: 1px; background: rgba(255, 255, 255, 0.2); }
 .status-led.active { background: var(--active); box-shadow: var(--glow-active-sm); animation: glow-pulse 2s ease-in-out infinite; }
 .status-led.busy { background: var(--warn); box-shadow: var(--glow-warn-sm); animation: glow-pulse 2s ease-in-out infinite; }
 
 @keyframes glow-pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
 @keyframes bar-bounce { 0%, 100% { transform: scaleY(0.3); } 50% { transform: scaleY(1); } }
 
-/* ── Buttons ── */
 .chrome {
-  padding: 4px 9px; border-radius: 5px;
+  padding: 4px 9px; border-radius: var(--r-sm);
   border: 1px solid var(--border); background: var(--panel);
-  color: var(--text-dim); font: 500 10px var(--font-mono); letter-spacing: 0.14em;
+  color: var(--text-dim); font: 600 10px var(--font-mono); letter-spacing: var(--tracking);
+  text-transform: uppercase;
   text-decoration: none;
   transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
 }
@@ -142,50 +171,52 @@ button:focus-visible, a:focus-visible, select:focus-visible {
   background: color-mix(in srgb, var(--active) 18%, transparent);
   color: var(--active);
 }
+/* Solid keys. The fill colour is what distinguishes them; the geometry,
+   label treatment and press feel are shared. */
+.primary, .transport {
+  border-radius: var(--r);
+  font: 700 11px var(--font-mono); letter-spacing: var(--tracking);
+  text-transform: uppercase;
+  box-shadow: var(--shadow-raised);
+  transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease, transform 120ms ease;
+}
+.primary:hover:not(:disabled), .transport:hover:not(:disabled) { transform: translateY(-1px); }
+.primary:active:not(:disabled), .transport:active:not(:disabled) { transform: translateY(1px); }
 .primary {
-  padding: 8px 14px; border-radius: 7px;
-  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  color: var(--accent); font: 500 11px var(--font-mono); letter-spacing: 0.14em;
-  transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+  padding: 8px 14px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--surface);
 }
 .primary:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
-  background: color-mix(in srgb, var(--accent) 20%, transparent);
-  box-shadow: var(--glow-accent);
+  background: color-mix(in srgb, var(--accent) 84%, var(--text));
+  border-color: color-mix(in srgb, var(--accent) 84%, var(--text));
 }
-.transport {
-  min-width: 92px; padding: 6px 12px; border-radius: 7px;
-  font: 600 11px var(--font-mono); letter-spacing: 0.12em;
-  transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
-}
+.transport { min-width: 92px; padding: 6px 12px; }
 .transport.start {
-  color: var(--active);
-  border: 1px solid color-mix(in srgb, var(--active) 30%, transparent);
-  background: color-mix(in srgb, var(--active) 8%, transparent);
+  color: var(--surface);
+  border: 1px solid var(--active);
+  background: var(--active);
 }
 .transport.start:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--active) 60%, transparent);
-  box-shadow: var(--glow-active);
+  background: color-mix(in srgb, var(--active) 84%, var(--text));
+  border-color: color-mix(in srgb, var(--active) 84%, var(--text));
 }
 .transport.stop {
-  color: var(--hot);
-  border: 1px solid color-mix(in srgb, var(--hot) 30%, transparent);
-  background: color-mix(in srgb, var(--hot) 8%, transparent);
+  color: var(--surface);
+  border: 1px solid var(--hot);
+  background: var(--hot);
 }
 .transport.stop:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--hot) 60%, transparent);
-  box-shadow: var(--glow-hot);
+  background: color-mix(in srgb, var(--hot) 84%, var(--text));
+  border-color: color-mix(in srgb, var(--hot) 84%, var(--text));
 }
 
-/* ── Split layout ── */
 .studio-grid {
   flex: 1; min-height: 0;
-  /* Wide screens give the transcript more room, while the editor stays the hero. */
   display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, min(480px, 34vw));
 }
 
-/* ── Editor pane (the hero) ── */
 .editor-pane {
   min-width: 0; min-height: 0;
   display: flex; flex-direction: column;
@@ -208,7 +239,7 @@ button:focus-visible, a:focus-visible, select:focus-visible {
   flex: none;
   color: var(--active);
   font: 600 9px var(--font-mono);
-  letter-spacing: 0.14em;
+  letter-spacing: var(--tracking);
   white-space: nowrap;
 }
 .editor-surface { flex: 1; min-height: 0; }
@@ -233,7 +264,6 @@ button:focus-visible, a:focus-visible, select:focus-visible {
 }
 .editor-pane > .error { margin: 10px 14px; }
 
-/* ── Session pane ── */
 .session-pane { min-height: 0; display: flex; flex-direction: column; background: var(--pane-session); }
 
 .composer { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 0 14px 14px; }
@@ -246,7 +276,7 @@ button:focus-visible, a:focus-visible, select:focus-visible {
   width: 100%; height: 32px;
   display: flex; align-items: center; justify-content: center; gap: 8px;
   border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
-  border-radius: 6px;
+  border-radius: var(--r);
   background: color-mix(in srgb, var(--accent) 6%, transparent);
   color: var(--accent); font: 600 10px var(--font-mono); letter-spacing: 0.16em;
   transition: border-color 150ms ease, background 150ms ease;
@@ -257,8 +287,6 @@ button:focus-visible, a:focus-visible, select:focus-visible {
 }
 .new-session-mark { font-size: 16px; font-weight: 400; line-height: 1; letter-spacing: 0; }
 
-/* Sits between the session bar and whatever follows, so it never displaces the
-   transcript: a cleared session shows the empty screen underneath it. */
 .undo-strip {
   flex: none; display: flex; align-items: center; gap: 10px;
   padding: 6px 0;
@@ -275,7 +303,6 @@ button:focus-visible, a:focus-visible, select:focus-visible {
   color: var(--accent);
 }
 
-/* Empty session: the only place presets appear */
 .empty-session {
   flex: 1; min-height: 0; overflow-y: auto;
   display: flex; flex-direction: column; justify-content: center; gap: 18px;
@@ -286,14 +313,14 @@ button:focus-visible, a:focus-visible, select:focus-visible {
 .preset-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .preset-grid button {
   display: grid; gap: 3px; padding: 10px 11px; text-align: left;
-  border: 1px solid var(--border); border-radius: 8px; background: var(--panel);
+  border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--panel);
   transition: border-color 150ms ease, background 150ms ease;
 }
 .preset-grid button:hover:not(:disabled) { border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: var(--panel-hover); }
 .preset-title { font: 600 12px var(--font-display); color: color-mix(in srgb, var(--text) 85%, transparent); }
 .preset-genre { font: 400 10px var(--font-mono); color: var(--text-faint); }
 .random {
-  justify-self: center; margin: 0 auto; padding: 6px 14px; border-radius: 999px;
+  justify-self: center; margin: 0 auto; padding: 6px 14px; border-radius: var(--r-sm);
   border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
   background: color-mix(in srgb, var(--accent) 8%, transparent);
   color: var(--accent); font: 400 11px var(--font-mono);
@@ -304,10 +331,9 @@ button:focus-visible, a:focus-visible, select:focus-visible {
   background: color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
-/* Transcript */
 .transcript { flex: 1; min-height: 0; overflow-y: auto; display: grid; gap: 8px; align-content: start; padding-top: 2px; }
 .transcript-log { display: grid; gap: 8px; align-content: start; }
-.transcript p { margin: 0; padding: 8px 11px; border-radius: 8px; line-height: 1.45; font-size: 13px; }
+.transcript p { margin: 0; padding: 8px 11px; border-radius: var(--r-lg); line-height: 1.45; font-size: 13px; }
 .transcript .user { background: var(--panel-strong); color: color-mix(in srgb, var(--text) 85%, transparent); justify-self: end; max-width: 88%; }
 .transcript .assistant {
   background: color-mix(in srgb, var(--accent) 5%, transparent);
@@ -337,7 +363,6 @@ button:focus-visible, a:focus-visible, select:focus-visible {
   color: var(--warn);
 }
 
-/* Chips: quiet rows, separated by spacing - no boxes */
 .chip-row, .mix-row { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .sr-only {
   position: absolute;
@@ -353,7 +378,7 @@ button:focus-visible, a:focus-visible, select:focus-visible {
 .chip-label { color: var(--text-faint); font: 600 9px var(--font-mono); letter-spacing: 0.22em; margin-right: 2px; }
 .chip-row.next .chip-label { color: color-mix(in srgb, var(--hot) 55%, transparent); }
 .chip {
-  padding: 3px 10px; border-radius: 999px;
+  padding: 3px 10px; border-radius: var(--r-sm);
   border: 1px solid var(--border); background: var(--panel);
   color: color-mix(in srgb, var(--text) 70%, transparent); font: 400 11px var(--font-mono); white-space: nowrap;
   transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
@@ -378,16 +403,14 @@ button:focus-visible, a:focus-visible, select:focus-visible {
 }
 .mix-row .primary {
   padding: 4px 12px;
-  border-color: color-mix(in srgb, var(--hot) 35%, transparent);
-  background: color-mix(in srgb, var(--hot) 10%, transparent);
-  color: var(--hot); font-variant-numeric: tabular-nums;
+  border-color: var(--hot);
+  background: var(--hot);
+  color: var(--surface); font-variant-numeric: tabular-nums;
 }
 .mix-row .primary:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--hot) 65%, transparent);
-  background: color-mix(in srgb, var(--hot) 18%, transparent);
-  box-shadow: var(--glow-hot);
+  border-color: color-mix(in srgb, var(--hot) 84%, var(--text));
+  background: color-mix(in srgb, var(--hot) 84%, var(--text));
 }
-/* Autoplay: a live status line over the description of the next move. */
 .progression-row {
   flex: none;
   min-width: 0;
@@ -404,16 +427,14 @@ button:focus-visible, a:focus-visible, select:focus-visible {
   align-items: center;
   color: color-mix(in srgb, var(--active) 58%, transparent);
 }
-/* Match the control height so the label sits on the status line. */
 .progression-row.running .chip-label { height: 25px; }
-/* A run in progress carries the same pulsing dot as the transport LED. */
 .progression-row.running .chip-label::before {
   content: '';
   flex: none;
   width: 5px;
   height: 5px;
   margin-right: 6px;
-  border-radius: 50%;
+  border-radius: 1px;
   background: var(--active);
   box-shadow: var(--glow-active-sm);
   animation: glow-pulse 2s ease-in-out infinite;
@@ -441,8 +462,6 @@ button:focus-visible, a:focus-visible, select:focus-visible {
 .phase-starting .progression-head strong,
 .phase-generating .progression-head strong { color: var(--warn); }
 .phase-transitioning .progression-head strong { color: var(--hot); }
-/* Elapsed share of the current hold, so the wait reads at a glance instead of
-   only through the clock. Phases that have no deadline sweep instead. */
 .progression-meter {
   flex: 1 1 60px;
   min-width: 48px;
@@ -458,7 +477,6 @@ button:focus-visible, a:focus-visible, select:focus-visible {
   border-radius: inherit;
   background: color-mix(in srgb, var(--active) 70%, transparent);
   box-shadow: var(--glow-active-sm);
-  /* The countdown ticks once a second; ease across it so the fill glides. */
   transition: width 1s linear;
 }
 .progression-meter.indeterminate .progression-meter-fill {
@@ -508,14 +526,12 @@ button:focus-visible, a:focus-visible, select:focus-visible {
   white-space: nowrap;
   vertical-align: 1px;
 }
-/* A queued user direction takes over the next turn, so its label pops. */
 .progression-action em.queued { color: var(--accent); }
 .progression-controls {
   flex: none;
   margin-left: auto;
   display: flex;
   align-items: center;
-  /* Keep the destructive control clear of the one people reach for often. */
   gap: 24px;
 }
 .progression-row .primary { flex: none; padding: 4px 10px; }
@@ -536,7 +552,7 @@ button:focus-visible, a:focus-visible, select:focus-visible {
   height: 25px;
   padding: 0 5px;
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: var(--r-sm);
   outline: none;
   background: var(--panel-strong);
   color: var(--text);
@@ -549,8 +565,6 @@ button:focus-visible, a:focus-visible, select:focus-visible {
 .run-duration:focus {
   border-color: color-mix(in srgb, var(--active) 45%, transparent);
 }
-/* Stopping a run is rarely the point of the row, so it reads as an outline
-   until it is hovered. */
 .progression-row .primary.stop {
   border-color: color-mix(in srgb, var(--hot) 28%, transparent);
   background: transparent;
@@ -571,10 +585,8 @@ button:focus-visible, a:focus-visible, select:focus-visible {
     opacity: 0.5;
   }
 }
-/* Prompt input */
 .prompt-form { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
 .prompt-form.run-steer textarea { min-height: 34px; }
-/* Standing options for the next prompt, and the armed autoplay intent. */
 .prompt-options {
   grid-column: 1 / -1;
   display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px;
@@ -587,18 +599,16 @@ button:focus-visible, a:focus-visible, select:focus-visible {
 .prompt-toggle:has(input:disabled) { cursor: not-allowed; opacity: 0.5; }
 .prompt-toggle input { margin: 0; accent-color: var(--accent); }
 .prompt-toggle strong { color: var(--text-dim); font-weight: 600; }
-/* An armed run is live intent, so it renders as a switch in the run color
-   rather than the accent checkbox the one-shot prompt options use. */
 .autoplay-toggle input {
   appearance: none;
-  width: 26px; height: 14px; border-radius: 999px;
+  width: 26px; height: 14px; border-radius: var(--r-sm);
   border: 1px solid var(--border); background: var(--panel-strong);
   position: relative; cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
 }
 .autoplay-toggle input::after {
   content: ""; position: absolute; top: 1px; left: 1px;
-  width: 10px; height: 10px; border-radius: 50%;
+  width: 10px; height: 10px; border-radius: 1px;
   background: var(--text-faint);
   transition: translate 0.15s, background 0.15s;
 }
@@ -613,7 +623,7 @@ button:focus-visible, a:focus-visible, select:focus-visible {
 .prompt-form textarea, .key-card input {
   width: 100%; resize: none; outline: none;
   color: var(--text); background: var(--panel-strong);
-  border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px;
+  border: 1px solid var(--border); border-radius: var(--r-lg); padding: 9px 12px;
   font: 400 13px var(--font-mono);
   transition: border-color 150ms ease, box-shadow 150ms ease;
 }
@@ -624,27 +634,36 @@ button:focus-visible, a:focus-visible, select:focus-visible {
 }
 
 .error {
-  flex: none; margin: 0; padding: 8px 11px; border-radius: 7px; font-size: 12px;
+  flex: none; margin: 0; padding: 8px 11px; border-radius: var(--r); font-size: 12px;
   color: var(--hot);
   background: color-mix(in srgb, var(--hot) 8%, transparent);
   border: 1px solid color-mix(in srgb, var(--hot) 25%, transparent);
 }
 .muted { color: var(--text-dim); font-size: 13px; }
 
-/* ── Key card ── */
 .key-card { flex: 1; max-width: 62ch; display: flex; flex-direction: column; justify-content: center; gap: 12px; padding: 22px; }
+.key-card-ascii {
+  width: max-content;
+  max-width: 100%;
+  margin: 0 0 4px;
+  overflow: hidden;
+  color: var(--accent);
+  font: 700 clamp(5px, 1.1vw, 9px)/1.05 var(--font-mono);
+  white-space: pre;
+  text-shadow: 0 0 14px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
 .key-card h2 { margin: 0; color: color-mix(in srgb, var(--accent) 70%, transparent); font: 600 11px var(--font-mono); letter-spacing: 0.3em; }
 .key-card p { margin: 0; color: var(--text-dim); font-size: 13px; line-height: 1.55; }
 .key-card form { display: grid; gap: 10px; }
 .key-card-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 
-/* ── Library popover ── */
 .library-popover {
   position: absolute; top: 44px; right: 10px; z-index: 20;
   width: min(320px, calc(100vw - 20px)); max-height: 55vh; overflow-y: auto;
   display: grid; gap: 4px; padding: 8px;
   border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
-  border-radius: 10px;
+  border-radius: var(--r-lg);
   background: color-mix(in srgb, var(--surface) 88%, transparent);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
@@ -661,12 +680,12 @@ button:focus-visible, a:focus-visible, select:focus-visible {
   color: color-mix(in srgb, var(--accent) 72%, transparent);
   font: 600 10px var(--font-mono); letter-spacing: 0.3em;
 }
-.library-count { color: var(--text-faint); font-weight: 400; letter-spacing: 0.14em; }
+.library-count { color: var(--text-faint); font-weight: 400; letter-spacing: var(--tracking); }
 .library-popover .muted { margin: 0; padding: 6px 9px 4px; font: 400 12px/1.55 var(--font-mono); }
 .library-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px; }
 .library-row button:first-child {
   text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  padding: 7px 9px; border-radius: 6px; font-size: 13px;
+  padding: 7px 9px; border-radius: var(--r); font-size: 13px;
   color: color-mix(in srgb, var(--text) 85%, transparent);
   border: 1px solid transparent;
   transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
@@ -677,17 +696,16 @@ button:focus-visible, a:focus-visible, select:focus-visible {
   border-color: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 .library-row .delete {
-  padding: 0 9px; border-radius: 6px; color: var(--text-faint); font-size: 14px;
+  padding: 0 9px; border-radius: var(--r); color: var(--text-faint); font-size: 14px;
   transition: color 150ms ease, background 150ms ease;
 }
 .library-row .delete:hover { color: var(--hot); background: color-mix(in srgb, var(--hot) 8%, transparent); }
 
-/* ── Feedback ── */
 .feedback-dialog {
   width: min(500px, calc(100vw - 28px)); max-height: min(720px, calc(100dvh - 28px));
   padding: 0; overflow: auto;
   border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
-  border-radius: 9px;
+  border-radius: var(--r-lg);
   color: var(--text); background: color-mix(in srgb, var(--surface) 96%, var(--panel-base));
   box-shadow: 0 18px 46px var(--shadow);
 }
@@ -698,7 +716,7 @@ button:focus-visible, a:focus-visible, select:focus-visible {
 }
 .feedback-head h2 { margin: 0; color: var(--text); font: 600 18px var(--font-display); }
 .feedback-head > button {
-  flex: none; width: 30px; height: 30px; border-radius: 5px;
+  flex: none; width: 30px; height: 30px; border-radius: var(--r-sm);
   color: var(--text-dim); font-size: 20px; line-height: 1;
 }
 .feedback-head > button:hover {
@@ -717,7 +735,7 @@ button:focus-visible, a:focus-visible, select:focus-visible {
 .feedback-form select,
 .feedback-form textarea {
   width: 100%; outline: none;
-  border: 1px solid var(--border); border-radius: 6px;
+  border: 1px solid var(--border); border-radius: var(--r);
   color: var(--text); background: var(--panel-strong);
   font: 400 13px/1.5 var(--font-mono);
   transition: border-color 150ms ease, background 150ms ease;
@@ -739,19 +757,17 @@ button:focus-visible, a:focus-visible, select:focus-visible {
 .feedback-success { display: grid; justify-items: start; gap: 9px; padding: 26px 18px 22px; }
 .feedback-success p { margin: 0 0 6px; color: var(--text-dim); font-size: 14px; }
 
-/* ── Share dialog ── */
 .share-success { display: grid; gap: 12px; padding: 22px 18px 18px; }
 .share-success > p { margin: 0; color: var(--text-dim); font-size: 14px; }
 .share-link-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
 .share-link-row input {
   min-width: 0; height: 38px; padding: 0 10px; outline: none;
-  border: 1px solid var(--border); border-radius: 6px;
+  border: 1px solid var(--border); border-radius: var(--r);
   color: var(--text); background: var(--panel-strong); font: 400 12px var(--font-mono);
 }
 .share-link-row input:focus { border-color: color-mix(in srgb, var(--accent) 48%, transparent); }
 .share-success .feedback-actions { border-top: 1px solid var(--border); padding-top: 12px; }
 
-/* ── Public patterns ── */
 .patterns-shell {
   min-height: 100vh;
   min-height: 100dvh;
@@ -763,7 +779,7 @@ button:focus-visible, a:focus-visible, select:focus-visible {
 .patterns-topbar { position: sticky; top: 0; z-index: 10; }
 .patterns-topbar .brand { color: inherit; text-decoration: none; }
 .patterns-studio-link {
-  padding: 4px 9px; border-radius: 5px; font-size: 10px; text-decoration: none;
+  padding: 4px 9px; border-radius: var(--r-sm); font-size: 10px; text-decoration: none;
 }
 .patterns-content {
   width: min(1380px, calc(100% - 32px)); margin: 0 auto; padding: 34px 0 56px;
@@ -779,10 +795,10 @@ button:focus-visible, a:focus-visible, select:focus-visible {
 .patterns-intro p { margin: 0; color: var(--text-dim); font-size: 13px; line-height: 1.4; }
 .pattern-sort {
   flex: none; display: inline-flex; padding: 3px;
-  border: 1px solid var(--border); border-radius: 6px; background: var(--panel);
+  border: 1px solid var(--border); border-radius: var(--r); background: var(--panel);
 }
 .pattern-sort button {
-  min-width: 72px; padding: 6px 10px; border-radius: 4px;
+  min-width: 72px; padding: 6px 10px; border-radius: var(--r-sm);
   color: var(--text-faint); font: 600 9px var(--font-mono); letter-spacing: 0.16em;
 }
 .pattern-sort button:hover { color: var(--text); }
@@ -806,7 +822,7 @@ button:focus-visible, a:focus-visible, select:focus-visible {
 }
 .pattern-card {
   min-width: 0; overflow: hidden;
-  border: 1px solid var(--border); border-radius: 8px;
+  border: 1px solid var(--border); border-radius: var(--r-lg);
   background: color-mix(in srgb, var(--surface) 80%, var(--panel-base));
   transition: border-color 150ms ease, background 150ms ease;
 }
@@ -838,14 +854,14 @@ button:focus-visible, a:focus-visible, select:focus-visible {
 }
 .pattern-card-actions { display: flex; align-items: center; gap: 3px; }
 .card-play {
-  padding: 5px 8px; border-radius: 4px;
+  padding: 5px 8px; border-radius: var(--r-sm);
   color: var(--active); font: 600 9px var(--font-mono); letter-spacing: 0.12em;
 }
 .card-play:hover { background: color-mix(in srgb, var(--active) 9%, transparent); }
 .card-play.stop { color: var(--hot); }
 .card-play.stop:hover { background: color-mix(in srgb, var(--hot) 9%, transparent); }
 .card-open {
-  padding: 5px 8px; border-radius: 4px;
+  padding: 5px 8px; border-radius: var(--r-sm);
   color: var(--text-faint); font: 600 8px var(--font-mono); letter-spacing: 0.1em;
   text-decoration: none;
 }
@@ -854,7 +870,7 @@ button:focus-visible, a:focus-visible, select:focus-visible {
 }
 .pattern-votes { display: flex; align-items: center; gap: 2px; }
 .pattern-votes button {
-  display: inline-flex; align-items: center; gap: 4px; padding: 5px 7px; border-radius: 4px;
+  display: inline-flex; align-items: center; gap: 4px; padding: 5px 7px; border-radius: var(--r-sm);
   color: var(--text-faint); font: 500 10px var(--font-mono);
 }
 .pattern-votes button:hover:not(:disabled) {
@@ -866,7 +882,6 @@ button:focus-visible, a:focus-visible, select:focus-visible {
 .pattern-votes .thumb-down { transform: rotate(180deg); }
 .load-more { display: block; margin: 24px auto 0; padding: 8px 18px; }
 
-/* ── Small screens: stack, editor stays the hero ── */
 @media (max-width: 880px) {
   /* minmax(0, ...) everywhere: a bare 1fr track minimum is min-content, and
      CodeMirror's unwrapped lines would push the whole page wider. */
@@ -882,12 +897,10 @@ button:focus-visible, a:focus-visible, select:focus-visible {
   /* The session row sizes to its content; keep the preset picker (and, in
      landscape, the composer) from crowding out the editor. */
   .session-pane { max-height: 60vh; max-height: 60dvh; overflow-y: auto; }
-  /* Developer chrome; widen the window to reach the repo. */
   .source-link { display: none; }
   .patterns-content { padding-top: 24px; }
 }
 
-/* ── Phone widths: every pixel goes to the music ── */
 @media (max-width: 560px) {
   .topbar { padding-inline: 9px; }
   .topbar-actions { gap: 5px; }
@@ -895,9 +908,7 @@ button:focus-visible, a:focus-visible, select:focus-visible {
   .brand-name { display: none; }
   /* File downloads are awkward on phones; SAVE and the session store keep work. */
   .editor-bar .export { display: none; }
-  /* Line numbers spend ~7% of the viewport on navigation nobody does here. */
   .cm-editor .cm-gutters { display: none !important; }
-  /* One swipeable line per chip row instead of a three-row wrap. */
   .chip-row {
     flex-wrap: nowrap;
     overflow-x: auto;
@@ -945,6 +956,14 @@ button:focus-visible, a:focus-visible, select:focus-visible {
     --pane-session: rgba(230, 226, 236, 0.62);
     --grid-line: color-mix(in srgb, var(--accent) 5%, transparent);
     --shadow: rgba(33, 27, 41, 0.18);
+    /* A dark scanline reads as a grey wash on a light ground, so it is both
+       weaker in colour and drawn at a lower opacity here. */
+    --scanline: rgba(33, 27, 41, 0.16);
     color-scheme: light;
+  }
+
+  .studio-shell::after,
+  .patterns-shell::after {
+    opacity: 0.05;
   }
 }

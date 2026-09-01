@@ -177,7 +177,6 @@ function PurpleStudioView({
   const currentPatternSaved = libraryPattern !== undefined
 
   const toggleSavedPattern = () => {
-    // Mirror the pattern schema's bounds; an out-of-range upsert throws.
     if (!code.trim() || code.length > MAX_PATTERN_LENGTH) return
     const targetShareId = shareId
     let persisted = true
@@ -582,6 +581,16 @@ function StatusLed({ state }: { state: 'active' | 'busy' | 'idle' }) {
   )
 }
 
+// Block wordmark for the first-run panel. Rows are fixed width so the
+// letterforms stay aligned in any monospace fallback.
+const PURPLE_WORDMARK = [
+  '███  █  █ ███  ███  █    ████',
+  '█  █ █  █ █  █ █  █ █    █',
+  '███  █  █ ███  ███  █    ███',
+  '█    █  █ █ █  █    █    █',
+  '█     ██  █  █ █    ████ ████',
+].join('\n')
+
 function KeyCard(props: {
   byokKey: string | null
   onSave: (key: string | null) => boolean
@@ -597,6 +606,7 @@ function KeyCard(props: {
   }
   return (
     <section className="key-card">
+      <pre className="key-card-ascii" aria-hidden="true">{PURPLE_WORDMARK}</pre>
       <h2>YOUR GEMINI KEY</h2>
       <p>
         Purple has no accounts. Your Gemini key, chat, and library stay in this browser.
@@ -666,7 +676,6 @@ function usePhoneWidth(): boolean {
   return isPhone
 }
 
-/** A default title from the generating prompt, so saved patterns do not collide. */
 function titleFromPrompt(prompt: string | undefined): string | null {
   const text = prompt?.trim().replace(/\s+/g, ' ')
   if (!text) return null

@@ -19,6 +19,7 @@
     "check": "pnpm run test && pnpm run typecheck && pnpm run build"
   },
   "dependencies": {
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
     "@purple/core": "workspace:*",
     "@purple/ui": "workspace:*",
     "react": "^19.2.8",
