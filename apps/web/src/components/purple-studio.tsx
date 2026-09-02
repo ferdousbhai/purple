@@ -108,7 +108,9 @@ function PurpleStudioView({
 }: PurpleStudioProps & { playback: WebPlayback }) {
   const [byokKey, setByokKeyState] = useState<string | null>(() => getByokKey())
   const [agentLink, setAgentLinkState] = useState<AgentLinkSettings>(loadAgentLinkSettings)
-  const [keyPanelOpen, setKeyPanelOpen] = useState(false)
+  // Which session pane is showing: the active provider's view, the two-way
+  // chooser, or the key form (Gemini chosen but no key saved yet).
+  const [pane, setPane] = useState<'auto' | 'chooser' | 'key'>('auto')
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
@@ -184,6 +186,11 @@ function PurpleStudioView({
 
   const title = customTitle ?? titleFromPrompt(sourcePrompt) ?? 'Untitled Pattern'
   const patternName = title.trim() || 'Untitled Pattern'
+
+  // The two ways to play are equal peers; neither is a default. A visitor
+  // who has picked neither sees the chooser until they do.
+  const activeProvider: 'agent' | 'gemini' | null =
+    agentLink.enabled ? 'agent' : byokKey ? 'gemini' : null
 
   const updateAgentLink = (next: AgentLinkSettings) => {
     saveAgentLinkSettings(next)
@@ -427,14 +434,33 @@ function PurpleStudioView({
           >
             LIBRARY
           </button>
-          {agentLink.enabled ? null : (
-            <button
-              className={`chrome ${keyPanelOpen ? 'open' : ''}`}
-              onClick={() => setKeyPanelOpen((open) => !open)}
-            >
-              {byokKey ? 'KEY ✓' : 'KEY'}
-            </button>
-          )}
+          <button
+            className={`chrome provider-badge ${pane !== 'auto' ? 'open' : ''}`}
+            aria-label={
+              activeProvider === 'agent'
+                ? 'AGENT'
+                : activeProvider === 'gemini'
+                  ? 'GEMINI'
+                  : 'CHOOSE'
+            }
+            title={
+              activeProvider === 'agent'
+                ? 'Purple is played by your connected agent. Click to change how you play.'
+                : activeProvider === 'gemini'
+                  ? 'Purple is played by your Gemini key. Click to change how you play.'
+                  : 'Choose how you play'
+            }
+            onClick={() => setPane(pane === 'auto' ? 'chooser' : 'auto')}
+          >
+            {activeProvider === null ? (
+              'CHOOSE'
+            ) : (
+              <>
+                {activeProvider === 'agent' ? 'AGENT' : 'GEMINI'}
+                <span className="badge-check"> ✓</span>
+              </>
+            )}
+          </button>
         </div>
       </header>
 
@@ -605,27 +631,43 @@ function PurpleStudioView({
         </section>
 
         <aside className="session-pane">
-          {agentLink.enabled ? (
-            <AgentCard
-              status={agentStatus}
-              settings={agentLink}
-              onSettingsChange={updateAgentLink}
+          {pane === 'chooser' || (pane === 'auto' && activeProvider === null) ? (
+            <ProviderChooser
+              activeProvider={activeProvider}
+              onChooseGemini={() => {
+                if (agentLink.enabled) {
+                  updateAgentLink({ ...agentLink, enabled: false })
+                }
+                setPane('key')
+              }}
+              onChooseAgent={() => {
+                if (!agentLink.enabled) {
+                  updateAgentLink({ ...agentLink, enabled: true })
+                }
+                setPane('auto')
+              }}
+              onClose={
+                activeProvider !== null ? () => setPane('auto') : undefined
+              }
             />
-          ) : !byokKey || keyPanelOpen ? (
+          ) : pane === 'key' ? (
             <KeyCard
               byokKey={byokKey}
               onSave={(key) => {
                 const stored = updateByokKey(key)
-                if (stored) setKeyPanelOpen(false)
+                if (stored) setPane('auto')
                 return stored
               }}
-              onClose={byokKey ? () => setKeyPanelOpen(false) : undefined}
-              onUseAgent={() => {
-                setKeyPanelOpen(false)
-                updateAgentLink({ ...agentLink, enabled: true })
-              }}
+              onBack={() => setPane('chooser')}
+              onClose={byokKey ? () => setPane('auto') : undefined}
             />
-          ) : (
+          ) : activeProvider === 'agent' ? (
+            <AgentCard
+              status={agentStatus}
+              settings={agentLink}
+              onChangeMethod={() => setPane('chooser')}
+            />
+          ) : byokKey === null ? null : (
             <Suspense fallback={<section className="composer" aria-busy="true" />}>
               <Composer
                 byokKey={byokKey}
@@ -678,8 +720,8 @@ const PURPLE_WORDMARK = [
 function KeyCard(props: {
   byokKey: string | null
   onSave: (key: string | null) => boolean
+  onBack: () => void
   onClose?: () => void
-  onUseAgent: () => void
 }) {
   const [draft, setDraft] = useState('')
   const [storageBlocked, setStorageBlocked] = useState(false)
@@ -738,20 +780,76 @@ function KeyCard(props: {
               REMOVE KEY
             </button>
           ) : null}
+          <button type="button" className="chrome" onClick={props.onBack}>
+            CHANGE HOW YOU PLAY
+          </button>
           {props.onClose ? (
             <button type="button" className="chrome" onClick={props.onClose}>CLOSE</button>
           ) : null}
         </div>
       </form>
-      <div className="provider-alt">
-        <p>
-          No key? Purple can also be played by your own AI agent, like Claude
-          Code, over MCP. Nothing to install.
-        </p>
-        <button type="button" className="chrome" onClick={props.onUseAgent}>
-          CONNECT LOCAL AGENT
+    </section>
+  )
+}
+
+function ProviderChooser(props: {
+  activeProvider: 'agent' | 'gemini' | null
+  onChooseGemini: () => void
+  onChooseAgent: () => void
+  onClose?: () => void
+}) {
+  return (
+    <section className="key-card chooser-card">
+      <pre className="key-card-ascii" aria-hidden="true">{PURPLE_WORDMARK}</pre>
+      <h2>TWO WAYS TO PLAY</h2>
+      <p>
+        Purple has no accounts. An AI turns your ideas into Strudel patterns,
+        and you choose who provides it. Both ways are equal, everything stays
+        in this browser, and you can switch anytime.
+      </p>
+      <div className="provider-options">
+        <button
+          type="button"
+          className="provider-option"
+          aria-pressed={props.activeProvider === 'gemini'}
+          onClick={props.onChooseGemini}
+        >
+          <strong>
+            GEMINI API KEY
+            {props.activeProvider === 'gemini' ? (
+              <span className="provider-current">CURRENT</span>
+            ) : null}
+          </strong>
+          <span>
+            Paste a free key from Google AI Studio and chat with the built-in
+            composer right here.
+          </span>
+        </button>
+        <button
+          type="button"
+          className="provider-option"
+          aria-pressed={props.activeProvider === 'agent'}
+          onClick={props.onChooseAgent}
+        >
+          <strong>
+            YOUR AI AGENT
+            {props.activeProvider === 'agent' ? (
+              <span className="provider-current">CURRENT</span>
+            ) : null}
+          </strong>
+          <span>
+            Let Claude Code or any MCP agent play this tab for you. No key and
+            nothing to install.
+          </span>
         </button>
       </div>
+      {props.onClose ? (
+        <div className="key-card-actions">
+          <button type="button" className="chrome" onClick={props.onClose}>
+            CLOSE
+          </button>
+        </div>
+      ) : null}
     </section>
   )
 }
@@ -759,7 +857,7 @@ function KeyCard(props: {
 function AgentCard(props: {
   status: AgentLinkStatus
   settings: AgentLinkSettings
-  onSettingsChange: (settings: AgentLinkSettings) => void
+  onChangeMethod: () => void
 }) {
   const [copied, setCopied] = useState(false)
   const connected = props.status === 'connected'
@@ -792,14 +890,8 @@ function AgentCard(props: {
         <button type="button" className="primary" onClick={copyCommand}>
           <span aria-live="polite">{copied ? 'COPIED' : 'COPY COMMAND'}</span>
         </button>
-        <button
-          type="button"
-          className="chrome"
-          onClick={() =>
-            props.onSettingsChange({ ...props.settings, enabled: false })
-          }
-        >
-          USE GEMINI KEY INSTEAD
+        <button type="button" className="chrome" onClick={props.onChangeMethod}>
+          CHANGE HOW YOU PLAY
         </button>
       </div>
       <p>

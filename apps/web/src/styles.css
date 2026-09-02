@@ -658,10 +658,32 @@ button:focus-visible, a:focus-visible, select:focus-visible {
 .key-card form { display: grid; gap: 10px; }
 .key-card-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 
-.provider-alt {
-  display: grid; gap: 10px; justify-items: start;
-  margin-top: 6px; padding-top: 14px;
-  border-top: 1px solid var(--border);
+.provider-options { display: grid; gap: 10px; }
+.provider-option {
+  display: grid; gap: 6px; justify-items: start; text-align: left;
+  padding: 14px 16px; cursor: pointer;
+  color: var(--text); background: var(--panel-strong);
+  border: 1px solid var(--border); border-radius: var(--r-lg);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+.provider-option:hover, .provider-option:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 12%, transparent);
+  outline: none;
+}
+.provider-option strong {
+  display: flex; gap: 8px; align-items: center;
+  color: color-mix(in srgb, var(--accent) 80%, var(--text));
+  font: 600 12px var(--font-mono); letter-spacing: 0.2em;
+}
+.provider-option span:not(.provider-current) {
+  color: var(--text-dim); font-size: 13px; line-height: 1.5;
+}
+.provider-current {
+  padding: 2px 6px; border-radius: var(--r);
+  color: var(--active); font: 600 9px var(--font-mono); letter-spacing: 0.15em;
+  background: color-mix(in srgb, var(--active) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--active) 30%, transparent);
 }
 .agent-status { letter-spacing: 0.08em; }
 .agent-status.connected { color: var(--active); }
@@ -918,7 +940,11 @@ button:focus-visible, a:focus-visible, select:focus-visible {
 @media (max-width: 560px) {
   .topbar { padding-inline: 9px; }
   .topbar-actions { gap: 5px; }
-  .topbar-actions .chrome { padding-inline: 6px; letter-spacing: 0.08em; }
+  .topbar-actions .chrome { padding-inline: 6px; letter-spacing: 0.08em; font-size: 9px; }
+  /* The method badge keeps its name on phones; the check mark is the part
+     that can go without losing which way the visitor is playing. */
+  .provider-badge .badge-check { display: none; }
+  .topbar-actions .provider-badge { padding-inline: 5px; }
   .brand-name { display: none; }
   /* File downloads are awkward on phones; SAVE and the session store keep work. */
   .editor-bar .export { display: none; }

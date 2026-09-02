@@ -461,7 +461,7 @@ async function unmountComposerAndExpectPattern(
   editor: HTMLElement,
   expectedPattern: string,
 ) {
-  await userEvent.click(screen.getByRole('button', { name: 'KEY ✓' }))
+  await userEvent.click(screen.getByRole('button', { name: 'GEMINI' }))
   await waitFor(() => expect(editor).toHaveValue(expectedPattern))
   expect(editor).not.toHaveAttribute('readonly')
 }
@@ -578,6 +578,8 @@ describe('Purple studio browser flow', () => {
     render(<PurpleStudio />)
     await screen.findByLabelText('Pattern code')
 
+    // A fresh visit offers both ways to play as equals; pick the key path.
+    await user.click(screen.getByRole('button', { name: /GEMINI API KEY/ }))
     const keyInput = screen.getByLabelText('Gemini API key')
     keyInput.focus()
     await act(async () => {
@@ -586,7 +588,7 @@ describe('Purple studio browser flow', () => {
 
     expect(studio.storedKey).toBe('AIza-pasted-browser-key')
     expect(screen.queryByLabelText('Gemini API key')).toBeNull()
-    expect(screen.getByRole('button', { name: 'KEY ✓' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'GEMINI' })).toBeVisible()
   })
 
   it('does not send a prompt when Enter confirms IME composition', async () => {
@@ -711,7 +713,7 @@ describe('Purple studio browser flow', () => {
     const actions = container.querySelector('.topbar-actions')
     const feedback = screen.getByRole('button', { name: 'FEEDBACK' })
     const library = screen.getByRole('button', { name: 'LIBRARY' })
-    const key = screen.getByRole('button', { name: 'KEY ✓' })
+    const key = screen.getByRole('button', { name: 'GEMINI' })
 
     expect(actions?.firstElementChild).toHaveClass('eq-bars')
     expect(feedback.nextElementSibling).toBe(library)
@@ -1463,7 +1465,7 @@ describe('Purple studio browser flow', () => {
 
   it('does not apply a delayed PLAY repair after the composer unmounts', async () => {
     const repair = await startDelayedPlayRepair('unmounted-play-repair')
-    await userEvent.click(screen.getByRole('button', { name: 'KEY ✓' }))
+    await userEvent.click(screen.getByRole('button', { name: 'GEMINI' }))
     repair.resolve()
 
     const editor = screen.getByLabelText('Pattern code')
