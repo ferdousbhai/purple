@@ -1,5 +1,12 @@
+import {
+  agentLinkCodeFromPath,
+  handleAgentLinkUpgrade,
+  handleMcpRequest,
+} from './agent-relay'
 import { hasContentType, jsonResponse, readBoundedBody } from './http'
 import { handlePatternRequest } from './patterns'
+
+export { AgentLinkSession } from './agent-relay'
 import {
   type SiteverifyFetch,
   turnstileFailureResponse,
@@ -7,6 +14,8 @@ import {
 } from './turnstile'
 
 const FEEDBACK_PATH = '/api/feedback'
+const MCP_PREFIX = '/mcp/'
+const LINK_PREFIX = '/link/'
 const CANONICAL_HOST = 'soundspurple.com'
 const WWW_HOST = `www.${CANONICAL_HOST}`
 const FEEDBACK_SENDER = 'feedback@soundspurple.com'
@@ -41,6 +50,20 @@ export default {
     if (redirect) return redirect
 
     const url = new URL(request.url)
+    if (url.pathname.startsWith(MCP_PREFIX)) {
+      return handleMcpRequest(
+        request,
+        env,
+        agentLinkCodeFromPath(url.pathname, MCP_PREFIX),
+      )
+    }
+    if (url.pathname.startsWith(LINK_PREFIX)) {
+      return handleAgentLinkUpgrade(
+        request,
+        env,
+        agentLinkCodeFromPath(url.pathname, LINK_PREFIX),
+      )
+    }
     if (url.pathname === FEEDBACK_PATH) {
       return handleFeedbackRequest(request, env)
     }

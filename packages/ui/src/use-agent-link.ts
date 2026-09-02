@@ -75,7 +75,8 @@ async function dispatchAgentRequest(
 
 export function useAgentLink(options: {
   enabled: boolean;
-  port: number;
+  /** ws:// or wss:// endpoint: the hosted relay, or a local bridge. */
+  url: string;
   handlers: AgentLinkHandlers;
 }): AgentLinkStatus {
   const [connected, setConnected] = useState(false);
@@ -89,7 +90,7 @@ export function useAgentLink(options: {
     let disposed = false;
 
     const connect = () => {
-      const candidate = new WebSocket(`ws://127.0.0.1:${options.port}`);
+      const candidate = new WebSocket(options.url);
       socket = candidate;
       candidate.onopen = () => {
         candidate.send(encodeAgentHello());
@@ -118,7 +119,7 @@ export function useAgentLink(options: {
       setConnected(false);
       socket?.close();
     };
-  }, [options.enabled, options.port]);
+  }, [options.enabled, options.url]);
 
   if (!options.enabled) return "off";
   return connected ? "connected" : "connecting";

@@ -1,38 +1,40 @@
 /**
  * Agent mode is the visitor's alternative to a Gemini key: their own agent
- * drives the studio through the purple-mcp bridge. The choice (and the
- * bridge port) lives only in this browser, like everything else personal.
+ * drives the studio through the hosted MCP relay. The choice and the pairing
+ * code live only in this browser; the code doubles as the capability that
+ * lets an agent reach this tab, so it is minted from crypto randomness and
+ * kept stable so a registered MCP endpoint keeps working across visits.
  */
 
 import { AGENT_LINK_DEFAULT_PORT } from '@purple/core/agent-link'
-import { isJsonNumber, parseJsonMembers } from '@purple/core/json'
+import { jsonText, parseJsonMembers } from '@purple/core/json'
 
 const STORAGE_KEY = 'purple-agent-link'
+const CODE_PATTERN = /^[A-Za-z0-9_-]{12,64}$/
 
 export interface AgentLinkSettings {
   enabled: boolean
-  port: number
+  code: string
+  /** Hand-set escape hatch: pair with the offline purple-mcp bridge on
+   * 127.0.0.1 instead of the hosted relay. No UI toggles this. */
+  local: boolean
 }
 
-export const DEFAULT_AGENT_LINK_SETTINGS: AgentLinkSettings = {
-  enabled: false,
-  port: AGENT_LINK_DEFAULT_PORT,
+export function generateAgentLinkCode(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(10))
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
 export function parseAgentLinkSettings(raw: string): AgentLinkSettings | null {
   const fields = parseJsonMembers(raw)
   if (!fields) return null
-  const port = fields.get('port')
+  const code = jsonText(fields.get('code'))
+  if (code === null || !CODE_PATTERN.test(code)) return null
   return {
     enabled: fields.get('enabled') === true,
-    port: isJsonNumber(port) && isValidPort(port)
-      ? port
-      : AGENT_LINK_DEFAULT_PORT,
+    code,
+    local: fields.get('local') === true,
   }
-}
-
-export function isValidPort(port: number): boolean {
-  return Number.isInteger(port) && port >= 1 && port <= 65_535
 }
 
 export function loadAgentLinkSettings(): AgentLinkSettings {
@@ -45,7 +47,11 @@ export function loadAgentLinkSettings(): AgentLinkSettings {
   } catch {
     // Blocked storage means agent mode simply starts switched off.
   }
-  return DEFAULT_AGENT_LINK_SETTINGS
+  // First visit (or a pre-relay stored shape): mint a code and keep it, so
+  // the MCP endpoint the visitor registers stays stable across sessions.
+  const settings = { enabled: false, code: generateAgentLinkCode(), local: false }
+  saveAgentLinkSettings(settings)
+  return settings
 }
 
 export function saveAgentLinkSettings(settings: AgentLinkSettings): void {
@@ -54,4 +60,14 @@ export function saveAgentLinkSettings(settings: AgentLinkSettings): void {
   } catch {
     // The choice still applies for this page's lifetime.
   }
+}
+
+export function agentLinkSocketUrl(settings: AgentLinkSettings): string {
+  if (settings.local) return `ws://127.0.0.1:${AGENT_LINK_DEFAULT_PORT}`
+  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${wsProtocol}//${window.location.host}/link/${settings.code}`
+}
+
+export function agentMcpUrl(code: string): string {
+  return `${window.location.origin}/mcp/${code}`
 }

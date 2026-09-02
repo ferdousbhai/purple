@@ -1,10 +1,12 @@
 # purple-mcp
 
 An MCP stdio server that lets a local agent (Claude Code, or any MCP client)
-play music in a Purple tab. It listens for the studio on a 127.0.0.1
-WebSocket; the tab connects out when the visitor chooses LOCAL AGENT on the
-session panel. Nothing leaves the computer: the bridge relays only session
-state and pattern code between the agent and the tab.
+play music in a Purple tab entirely over 127.0.0.1.
+
+Most people do not need it: the website hosts an MCP relay, and the LOCAL
+AGENT panel in the studio shows a `claude mcp add --transport http` command
+with the tab's private pairing address. This bridge is the fully offline
+alternative for development or for keeping even pattern code off the wire.
 
 ## Setup
 
@@ -16,11 +18,15 @@ From a checkout, register the bridge with Claude Code:
 claude mcp add purple -- node <repo>/packages/agent-bridge/bin/purple-mcp.mjs
 ```
 
-Then open Purple, choose LOCAL AGENT on the session panel, and ask the agent
-to make music. `--port <n>` (or `PURPLE_MCP_PORT`) moves the WebSocket off
-the default port 7723; change the port in the studio panel to match.
+Then open Purple, choose LOCAL AGENT, and point the tab at the bridge by
+setting `"local": true` inside the `purple-agent-link` localStorage entry
+(no UI toggles this). Ask the agent to make music. `--port <n>` (or
+`PURPLE_MCP_PORT`) moves the WebSocket off the default port 7723, though the
+tab always dials 7723 in local mode.
 
 ## Tools
+
+The tool surface is shared with the hosted relay via `@purple/core/agent-tools`:
 
 - `get_strudel_reference`: the notation reference patterns must stay within
   (works before a tab connects)

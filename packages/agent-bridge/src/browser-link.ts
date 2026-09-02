@@ -15,11 +15,10 @@ import {
   encodeAgentRequest,
   type AgentCall,
 } from "@purple/core/agent-link";
+import { NOT_CONNECTED_MESSAGE } from "@purple/core/agent-tools";
 import type { JsonValue } from "@purple/core/json";
 
-export const NOT_CONNECTED_MESSAGE =
-  "No Purple tab is connected to the bridge. Ask the user to open Purple in " +
-  "their browser, choose LOCAL AGENT on the session panel, and keep the tab open.";
+export { NOT_CONNECTED_MESSAGE };
 
 export interface BrowserLinkOptions {
   /** 0 asks the OS for a free port; read the actual one from the result. */

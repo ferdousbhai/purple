@@ -671,10 +671,6 @@ button:focus-visible, a:focus-visible, select:focus-visible {
   border: 1px solid var(--border); border-radius: var(--r-lg);
   font: 400 13px var(--font-mono);
 }
-.agent-port {
-  display: grid; gap: 6px; max-width: 16ch;
-  color: var(--text-dim); font: 600 10px var(--font-mono); letter-spacing: 0.2em;
-}
 
 .library-popover {
   position: absolute; top: 44px; right: 10px; z-index: 20;

@@ -14,8 +14,22 @@
     "not_found_handling": "404-page",
     // Run only app documents and APIs through Worker logic. Matching static
     // assets and the standalone 404 page stay on Cloudflare's asset fast path.
-    "run_worker_first": ["/", "/patterns", "/api/*"]
+    "run_worker_first": ["/", "/patterns", "/api/*", "/mcp/*", "/link/*"]
   },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "AGENT_LINK",
+        "class_name": "AgentLinkSession"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["AgentLinkSession"]
+    }
+  ],
   "d1_databases": [
     {
       "binding": "PATTERNS_DB",

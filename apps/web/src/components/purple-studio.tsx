@@ -28,7 +28,8 @@ import {
   usePatterns,
 } from '#/lib/patterns'
 import {
-  isValidPort,
+  agentLinkSocketUrl,
+  agentMcpUrl,
   loadAgentLinkSettings,
   saveAgentLinkSettings,
   type AgentLinkSettings,
@@ -197,7 +198,7 @@ function PurpleStudioView({
   patternNameRef.current = patternName
   const agentStatus = useAgentLink({
     enabled: agentLink.enabled,
-    port: agentLink.port,
+    url: agentLinkSocketUrl(agentLink),
     handlers: {
       getSession: () => ({
         code: codeRef.current,
@@ -744,8 +745,8 @@ function KeyCard(props: {
       </form>
       <div className="provider-alt">
         <p>
-          No key? Purple can also be played by an agent on your computer, like
-          Claude Code, through its MCP bridge.
+          No key? Purple can also be played by your own AI agent, like Claude
+          Code, over MCP. Nothing to install.
         </p>
         <button type="button" className="chrome" onClick={props.onUseAgent}>
           CONNECT LOCAL AGENT
@@ -760,15 +761,17 @@ function AgentCard(props: {
   settings: AgentLinkSettings
   onSettingsChange: (settings: AgentLinkSettings) => void
 }) {
-  const [portDraft, setPortDraft] = useState(String(props.settings.port))
+  const [copied, setCopied] = useState(false)
   const connected = props.status === 'connected'
-  const applyPort = () => {
-    const port = Number(portDraft)
-    if (!isValidPort(port)) {
-      setPortDraft(String(props.settings.port))
-      return
+  const command = `claude mcp add --transport http purple ${agentMcpUrl(props.settings.code)}`
+  const copyCommand = async () => {
+    try {
+      await navigator.clipboard.writeText(command)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2_000)
+    } catch {
+      // Clipboard blocked; the command stays selectable text.
     }
-    props.onSettingsChange({ ...props.settings, port })
   }
   return (
     <section className="key-card agent-card">
@@ -776,48 +779,35 @@ function AgentCard(props: {
       <h2>LOCAL AGENT</h2>
       <p role="status" className={connected ? 'agent-status connected' : 'agent-status'}>
         {connected
-          ? 'BRIDGE CONNECTED. Ask your agent to make music.'
-          : `WAITING FOR THE BRIDGE on ws://127.0.0.1:${props.settings.port}`}
+          ? 'AGENT LINKED. Ask your agent to make music.'
+          : 'WAITING FOR YOUR AGENT. Register it below, then talk to it.'}
       </p>
       <p>
-        Run the purple-mcp bridge on this computer and register it with your
-        agent. For Claude Code:
+        Nothing to install: register this tab with your agent and it can read
+        the session, set patterns, and start or stop playback. For Claude
+        Code, run this once:
       </p>
-      <pre className="agent-command">claude mcp add purple -- npx purple-mcp</pre>
+      <pre className="agent-command">{command}</pre>
+      <div className="key-card-actions">
+        <button type="button" className="primary" onClick={copyCommand}>
+          <span aria-live="polite">{copied ? 'COPIED' : 'COPY COMMAND'}</span>
+        </button>
+        <button
+          type="button"
+          className="chrome"
+          onClick={() =>
+            props.onSettingsChange({ ...props.settings, enabled: false })
+          }
+        >
+          USE GEMINI KEY INSTEAD
+        </button>
+      </div>
       <p>
-        The agent can then read the session, set patterns, and start or stop
-        playback. Browsers only allow sound after a click, so press PLAY once
-        if the agent reports blocked audio. Everything stays on this computer.
+        Any MCP client that can reach remote servers works the same way; the
+        link in the command is this browser&rsquo;s private pairing address, so
+        share it with your own agent only. Browsers allow sound only after a
+        click, so press PLAY once if the agent reports blocked audio.
       </p>
-      <form
-        onSubmit={(event) => {
-          event.preventDefault()
-          applyPort()
-        }}
-      >
-        <label className="agent-port">
-          BRIDGE PORT
-          <input
-            inputMode="numeric"
-            name="agent-port"
-            aria-label="Bridge port"
-            value={portDraft}
-            onChange={(event) => setPortDraft(event.target.value)}
-            onBlur={applyPort}
-          />
-        </label>
-        <div className="key-card-actions">
-          <button
-            type="button"
-            className="chrome"
-            onClick={() =>
-              props.onSettingsChange({ ...props.settings, enabled: false })
-            }
-          >
-            USE GEMINI KEY INSTEAD
-          </button>
-        </div>
-      </form>
     </section>
   )
 }
