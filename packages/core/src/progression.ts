@@ -1,7 +1,7 @@
-import { isJsonNumber, jsonMembers, jsonText, type JsonValue } from "./json";
-import { MAX_PROGRESSION_RUN_DURATION_MS } from "./progression-limits";
+import { isJsonNumber, jsonMembers, jsonText, type JsonValue } from "./json.ts";
+import { MAX_PROGRESSION_RUN_DURATION_MS } from "./progression-limits.ts";
 
-export { MAX_PROGRESSION_RUN_DURATION_MS } from "./progression-limits";
+export { MAX_PROGRESSION_RUN_DURATION_MS } from "./progression-limits.ts";
 
 export const MIN_PROGRESSION_CYCLES = 32;
 /** A safety ceiling, not a creative target. Long-form plans may need thousands. */

@@ -10,6 +10,7 @@
     "./session-store": "./src/session-store.ts",
     "./spectrum-bars": "./src/spectrum-bars.tsx",
     "./testing": "./src/testing.ts",
+    "./use-agent-link": "./src/use-agent-link.ts",
     "./use-generated-pattern": "./src/use-generated-pattern.ts",
     "./use-playback": "./src/use-playback.ts",
     "./use-studio-chat": "./src/use-studio-chat.ts",

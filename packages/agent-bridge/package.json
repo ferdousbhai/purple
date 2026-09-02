@@ -1,0 +1,28 @@
+{
+  "name": "purple-mcp",
+  "version": "0.1.0",
+  "description": "MCP bridge that lets a local agent play music in a Purple tab",
+  "license": "MIT",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "purple-mcp": "bin/purple-mcp.mjs"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.21.0",
+    "@purple/core": "workspace:*",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/ws": "^8.18.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
+  }
+}

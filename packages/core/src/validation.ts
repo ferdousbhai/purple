@@ -116,7 +116,9 @@ export function buildValidationRetryMessage(
   code: string,
   problems: readonly ValidationProblem[],
 ): string {
-  const lines = problems.map((problem) => `- ${describeProblem(problem)}`);
+  const lines = problems.map(
+    (problem) => `- ${describeValidationProblem(problem)}`,
+  );
   return `Repair this pattern to resolve these validation problems:
 ${lines.join("\n")}
 Original pattern:
@@ -125,7 +127,7 @@ ${code}
 \`\`\``;
 }
 
-function describeProblem(problem: ValidationProblem): string {
+export function describeValidationProblem(problem: ValidationProblem): string {
   switch (problem.kind) {
     case "evaluation":
       return `It fails to evaluate: ${problem.error}`;

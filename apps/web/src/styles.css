@@ -658,6 +658,24 @@ button:focus-visible, a:focus-visible, select:focus-visible {
 .key-card form { display: grid; gap: 10px; }
 .key-card-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 
+.provider-alt {
+  display: grid; gap: 10px; justify-items: start;
+  margin-top: 6px; padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.agent-status { letter-spacing: 0.08em; }
+.agent-status.connected { color: var(--active); }
+.agent-command {
+  margin: 0; padding: 9px 12px; overflow-x: auto;
+  color: var(--text); background: var(--panel-strong);
+  border: 1px solid var(--border); border-radius: var(--r-lg);
+  font: 400 13px var(--font-mono);
+}
+.agent-port {
+  display: grid; gap: 6px; max-width: 16ch;
+  color: var(--text-dim); font: 600 10px var(--font-mono); letter-spacing: 0.2em;
+}
+
 .library-popover {
   position: absolute; top: 44px; right: 10px; z-index: 20;
   width: min(320px, calc(100vw - 20px)); max-height: 55vh; overflow-y: auto;

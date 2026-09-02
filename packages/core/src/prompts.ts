@@ -1,8 +1,8 @@
 import {
   MAX_PROGRESSION_CYCLES,
   MIN_PROGRESSION_CYCLES,
-} from "./progression";
-import { SHOWCASE_PATTERNS } from "./recipes";
+} from "./progression.ts";
+import { SHOWCASE_PATTERNS } from "./recipes.ts";
 
 /**
  * The Strudel context sent with every generation request. Distilled from the

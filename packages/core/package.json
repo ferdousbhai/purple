@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./agent-link": "./src/agent-link.ts",
     "./compaction": "./src/compaction.ts",
     "./error": "./src/error.ts",
     "./json": "./src/json.ts",

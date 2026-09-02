@@ -1,4 +1,10 @@
-import { MAX_PATTERN_LENGTH, patternFilename } from '@purple/core/pattern'
+import {
+  MAX_PATTERN_LENGTH,
+  patternFilename,
+  validateGeneratedPatternTitle,
+  validatePatternCode,
+} from '@purple/core/pattern'
+import { describeValidationProblem } from '@purple/core/validation'
 import { SHOWCASE_PATTERNS, type ShowcasePattern } from '@purple/core/recipes'
 import type { SharedPattern } from '@purple/core/shared-pattern'
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
@@ -21,8 +27,15 @@ import {
   upsertPattern,
   usePatterns,
 } from '#/lib/patterns'
+import {
+  isValidPort,
+  loadAgentLinkSettings,
+  saveAgentLinkSettings,
+  type AgentLinkSettings,
+} from '#/lib/agent-link-storage'
 import { hasUnappliedEditorChanges } from '@purple/ui/playback-flow'
 import { PurpleMark } from '@purple/ui/purple-mark'
+import { useAgentLink, type AgentLinkStatus } from '@purple/ui/use-agent-link'
 import { SpectrumBars } from '@purple/ui/spectrum-bars'
 import { usePlayback } from '@purple/ui/use-playback'
 import type { PatternEditorProps } from '@purple/ui/pattern-editor'
@@ -93,6 +106,7 @@ function PurpleStudioView({
   sharedPattern,
 }: PurpleStudioProps & { playback: WebPlayback }) {
   const [byokKey, setByokKeyState] = useState<string | null>(() => getByokKey())
+  const [agentLink, setAgentLinkState] = useState<AgentLinkSettings>(loadAgentLinkSettings)
   const [keyPanelOpen, setKeyPanelOpen] = useState(false)
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
@@ -169,6 +183,63 @@ function PurpleStudioView({
 
   const title = customTitle ?? titleFromPrompt(sourcePrompt) ?? 'Untitled Pattern'
   const patternName = title.trim() || 'Untitled Pattern'
+
+  const updateAgentLink = (next: AgentLinkSettings) => {
+    saveAgentLinkSettings(next)
+    setAgentLinkState(next)
+  }
+
+  // The bridge can send set_pattern and play back to back, faster than React
+  // re-renders the handler closures; refs keep the served code current.
+  const codeRef = useRef(code)
+  codeRef.current = code
+  const patternNameRef = useRef(patternName)
+  patternNameRef.current = patternName
+  const agentStatus = useAgentLink({
+    enabled: agentLink.enabled,
+    port: agentLink.port,
+    handlers: {
+      getSession: () => ({
+        code: codeRef.current,
+        title: patternNameRef.current,
+        playbackState: playback.playbackState,
+        playbackError: playback.error,
+      }),
+      setPattern: async (rawCode, rawTitle) => {
+        const nextCode = validatePatternCode(rawCode)
+        if (!nextCode) {
+          throw new Error(
+            `The pattern must be non-empty and at most ${MAX_PATTERN_LENGTH} characters.`,
+          )
+        }
+        // Null means the engine has not initialized yet (no click so far);
+        // the pattern lands unaudited and play-time errors stay the net.
+        const problems = await playback.validatePattern(nextCode)
+        if (problems !== null && problems.length > 0) {
+          return {
+            committed: false,
+            problems: problems.map(describeValidationProblem),
+          }
+        }
+        codeRef.current = nextCode
+        commitCode(nextCode)
+        if (rawTitle !== null) {
+          const nextTitle = validateGeneratedPatternTitle(rawTitle)
+          if (nextTitle) commitCustomTitle(nextTitle)
+        }
+        return { committed: true }
+      },
+      play: async () => {
+        const result = await playback.transition(codeRef.current)
+        if (result.ok) return { ok: true }
+        if (result.kind === 'cancelled') {
+          return { ok: false, error: 'Playback was interrupted by another action.' }
+        }
+        return { ok: false, error: result.error }
+      },
+      stop: () => playback.stop(),
+    },
+  })
   const libraryPattern = savedPatterns.find(
     (pattern) =>
       (shareId !== null && pattern.shareId === shareId) ||
@@ -355,12 +426,14 @@ function PurpleStudioView({
           >
             LIBRARY
           </button>
-          <button
-            className={`chrome ${keyPanelOpen ? 'open' : ''}`}
-            onClick={() => setKeyPanelOpen((open) => !open)}
-          >
-            {byokKey ? 'KEY ✓' : 'KEY'}
-          </button>
+          {agentLink.enabled ? null : (
+            <button
+              className={`chrome ${keyPanelOpen ? 'open' : ''}`}
+              onClick={() => setKeyPanelOpen((open) => !open)}
+            >
+              {byokKey ? 'KEY ✓' : 'KEY'}
+            </button>
+          )}
         </div>
       </header>
 
@@ -531,7 +604,13 @@ function PurpleStudioView({
         </section>
 
         <aside className="session-pane">
-          {!byokKey || keyPanelOpen ? (
+          {agentLink.enabled ? (
+            <AgentCard
+              status={agentStatus}
+              settings={agentLink}
+              onSettingsChange={updateAgentLink}
+            />
+          ) : !byokKey || keyPanelOpen ? (
             <KeyCard
               byokKey={byokKey}
               onSave={(key) => {
@@ -540,6 +619,10 @@ function PurpleStudioView({
                 return stored
               }}
               onClose={byokKey ? () => setKeyPanelOpen(false) : undefined}
+              onUseAgent={() => {
+                setKeyPanelOpen(false)
+                updateAgentLink({ ...agentLink, enabled: true })
+              }}
             />
           ) : (
             <Suspense fallback={<section className="composer" aria-busy="true" />}>
@@ -595,6 +678,7 @@ function KeyCard(props: {
   byokKey: string | null
   onSave: (key: string | null) => boolean
   onClose?: () => void
+  onUseAgent: () => void
 }) {
   const [draft, setDraft] = useState('')
   const [storageBlocked, setStorageBlocked] = useState(false)
@@ -656,6 +740,82 @@ function KeyCard(props: {
           {props.onClose ? (
             <button type="button" className="chrome" onClick={props.onClose}>CLOSE</button>
           ) : null}
+        </div>
+      </form>
+      <div className="provider-alt">
+        <p>
+          No key? Purple can also be played by an agent on your computer, like
+          Claude Code, through its MCP bridge.
+        </p>
+        <button type="button" className="chrome" onClick={props.onUseAgent}>
+          CONNECT LOCAL AGENT
+        </button>
+      </div>
+    </section>
+  )
+}
+
+function AgentCard(props: {
+  status: AgentLinkStatus
+  settings: AgentLinkSettings
+  onSettingsChange: (settings: AgentLinkSettings) => void
+}) {
+  const [portDraft, setPortDraft] = useState(String(props.settings.port))
+  const connected = props.status === 'connected'
+  const applyPort = () => {
+    const port = Number(portDraft)
+    if (!isValidPort(port)) {
+      setPortDraft(String(props.settings.port))
+      return
+    }
+    props.onSettingsChange({ ...props.settings, port })
+  }
+  return (
+    <section className="key-card agent-card">
+      <pre className="key-card-ascii" aria-hidden="true">{PURPLE_WORDMARK}</pre>
+      <h2>LOCAL AGENT</h2>
+      <p role="status" className={connected ? 'agent-status connected' : 'agent-status'}>
+        {connected
+          ? 'BRIDGE CONNECTED. Ask your agent to make music.'
+          : `WAITING FOR THE BRIDGE on ws://127.0.0.1:${props.settings.port}`}
+      </p>
+      <p>
+        Run the purple-mcp bridge on this computer and register it with your
+        agent. For Claude Code:
+      </p>
+      <pre className="agent-command">claude mcp add purple -- npx purple-mcp</pre>
+      <p>
+        The agent can then read the session, set patterns, and start or stop
+        playback. Browsers only allow sound after a click, so press PLAY once
+        if the agent reports blocked audio. Everything stays on this computer.
+      </p>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault()
+          applyPort()
+        }}
+      >
+        <label className="agent-port">
+          BRIDGE PORT
+          <input
+            inputMode="numeric"
+            name="agent-port"
+            aria-label="Bridge port"
+            value={portDraft}
+            onChange={(event) => setPortDraft(event.target.value)}
+            onBlur={applyPort}
+          />
+        </label>
+        <div className="key-card-actions">
+          <button
+            type="button"
+            className="chrome"
+            onClick={() =>
+              props.onSettingsChange({ ...props.settings, enabled: false })
+            }
+          >
+            USE GEMINI KEY INSTEAD
+          </button>
         </div>
       </form>
     </section>
