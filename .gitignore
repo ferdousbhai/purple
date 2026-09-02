@@ -10,11 +10,9 @@ artifacts/
 .dev.vars.*
 !.dev.vars.example
 *.tsbuildinfo
-# Cloudflare local state and generated Worker types
 .wrangler/
 apps/web/worker-configuration.d.ts
 
-# Vitest browser failure artifacts
 **/.vitest-attachments/
 **/__screenshots__/
 
