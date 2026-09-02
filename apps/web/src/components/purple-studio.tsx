@@ -445,10 +445,10 @@ function PurpleStudioView({
             }
             title={
               activeProvider === 'agent'
-                ? 'Purple is played by your connected agent. Click to change how you play.'
+                ? 'Playing via your agent. Click to change.'
                 : activeProvider === 'gemini'
-                  ? 'Purple is played by your Gemini key. Click to change how you play.'
-                  : 'Choose how you play'
+                  ? 'Playing via your Gemini key. Click to change.'
+                  : 'Choose your AI'
             }
             onClick={() => setPane(pane === 'auto' ? 'chooser' : 'auto')}
           >
@@ -781,7 +781,7 @@ function KeyCard(props: {
             </button>
           ) : null}
           <button type="button" className="chrome" onClick={props.onBack}>
-            CHANGE HOW YOU PLAY
+            SWITCH
           </button>
           {props.onClose ? (
             <button type="button" className="chrome" onClick={props.onClose}>CLOSE</button>
@@ -801,12 +801,7 @@ function ProviderChooser(props: {
   return (
     <section className="key-card chooser-card">
       <pre className="key-card-ascii" aria-hidden="true">{PURPLE_WORDMARK}</pre>
-      <h2>TWO WAYS TO PLAY</h2>
-      <p>
-        Purple has no accounts. An AI turns your ideas into Strudel patterns,
-        and you choose who provides it. Both ways are equal, everything stays
-        in this browser, and you can switch anytime.
-      </p>
+      <h2>CHOOSE YOUR AI</h2>
       <div className="provider-options">
         <button
           type="button"
@@ -821,8 +816,7 @@ function ProviderChooser(props: {
             ) : null}
           </strong>
           <span>
-            Paste a free key from Google AI Studio and chat with the built-in
-            composer right here.
+            Free key from Google AI Studio. Chat with the built-in composer.
           </span>
         </button>
         <button
@@ -838,8 +832,7 @@ function ProviderChooser(props: {
             ) : null}
           </strong>
           <span>
-            Let Claude Code or any MCP agent play this tab for you. No key and
-            nothing to install.
+            Claude Code or any MCP agent plays this tab. Nothing to install.
           </span>
         </button>
       </div>
@@ -876,29 +869,21 @@ function AgentCard(props: {
       <pre className="key-card-ascii" aria-hidden="true">{PURPLE_WORDMARK}</pre>
       <h2>LOCAL AGENT</h2>
       <p role="status" className={connected ? 'agent-status connected' : 'agent-status'}>
-        {connected
-          ? 'AGENT LINKED. Ask your agent to make music.'
-          : 'WAITING FOR YOUR AGENT. Register it below, then talk to it.'}
+        {connected ? 'AGENT LINKED' : 'WAITING FOR YOUR AGENT'}
       </p>
-      <p>
-        Nothing to install: register this tab with your agent and it can read
-        the session, set patterns, and start or stop playback. For Claude
-        Code, run this once:
-      </p>
+      <p>Register this tab with your agent. For Claude Code, run once:</p>
       <pre className="agent-command">{command}</pre>
       <div className="key-card-actions">
         <button type="button" className="primary" onClick={copyCommand}>
-          <span aria-live="polite">{copied ? 'COPIED' : 'COPY COMMAND'}</span>
+          <span aria-live="polite">{copied ? 'COPIED' : 'COPY'}</span>
         </button>
         <button type="button" className="chrome" onClick={props.onChangeMethod}>
-          CHANGE HOW YOU PLAY
+          SWITCH
         </button>
       </div>
       <p>
-        Any MCP client that can reach remote servers works the same way; the
-        link in the command is this browser&rsquo;s private pairing address, so
-        share it with your own agent only. Browsers allow sound only after a
-        click, so press PLAY once if the agent reports blocked audio.
+        The link is this tab&rsquo;s private pairing address. If sound is
+        blocked, press PLAY once.
       </p>
     </section>
   )
