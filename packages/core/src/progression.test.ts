@@ -96,7 +96,6 @@ describe("pattern progression metadata", () => {
   });
 });
 
-/** Record every step the loop takes, playing back the queued turns. */
 function recordingDependencies(
   events: string[],
   turns: ProgressionTurn[],
@@ -181,8 +180,6 @@ describe("progression run", () => {
       { startPhase: "generate" },
     )).resolves.toBe("complete");
 
-    // The playing pattern is not held first: the run opens by asking Gemini to
-    // continue it, then follows the plan that turn returns.
     expect(events).toEqual([
       `generate:${CONTINUE_PATTERN_ACTION}`,
       'xfade:s("hh*8")',
@@ -205,8 +202,6 @@ describe("progression run", () => {
       { startPhase: "generate" },
     )).resolves.toBe("complete");
 
-    // Only the opening skips the hold: the plan the first turn returns is
-    // waited out like any other.
     expect(events).toEqual([
       `generate:${CONTINUE_PATTERN_ACTION}`,
       'xfade:s("hh*8")',

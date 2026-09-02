@@ -13,7 +13,6 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-/** The pattern store debounces writes; run the trailing save now. */
 function flushPatternSave(): void {
   vi.advanceTimersByTime(300);
 }
@@ -117,7 +116,6 @@ describe("chat persistence envelope", () => {
     const envelope = toChatEnvelope(chat({ messages, coveredCount: 240 }));
     expect(envelope.messages).toHaveLength(200);
     expect(envelope.messages[0]?.content).toBe("message 50");
-    // 50 covered messages fell off the front; the artifact still summarizes them.
     expect(envelope.coveredCount).toBe(190);
   });
 
@@ -188,7 +186,6 @@ describe("session pattern storage", () => {
     sourcePrompt: "a warehouse techno beat",
   };
 
-  /** Fake timers, stubbed storage, and a store already holding `pattern`. */
   function storeWithSavedPattern() {
     vi.useFakeTimers();
     const values = stubStorage();

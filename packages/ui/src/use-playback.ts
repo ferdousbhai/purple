@@ -557,11 +557,8 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
     stop,
     /** Changes only for an explicit Stop action, not an internal eval failure. */
     getStopToken,
-    /** Audit generated code against the live engine without touching playback. */
     validatePattern: validate,
-    /** Read scheduler highlights without routing its 50 ms poll through React. */
     getActiveSourceRanges,
-    /** The master-mix tap, or null until the engine initializes. */
     getOutputAnalyser,
   };
 }

@@ -123,7 +123,6 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
           // Manifests and audio bases are commit-addressed. The loader parses
           // data instead of executing it and ignores upstream `_base` fields.
           prebake: async () => {
-            // z_* chiptune synths (no network involved).
             strudel.registerZZFXSounds();
             try {
               await pinnedSamples.loadPinnedSamples(strudel);
@@ -372,7 +371,6 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
     hush,
     getSchedulerPosition,
     getActiveSourceRanges,
-    /** The master-mix tap, or null until the engine initializes. */
     getOutputAnalyser,
   };
 }

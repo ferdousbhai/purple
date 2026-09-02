@@ -11,9 +11,7 @@ import { tags } from "@lezer/highlight";
  */
 
 interface SyntaxPalette {
-  /** Callables - the verbs of a Strudel expression (s, note, .lpf). */
   call: string;
-  /** Mini-notation strings - the musical content. */
   string: string;
   number: string;
   keyword: string;
@@ -51,7 +49,6 @@ function purpleEditorTheme(palette: SyntaxPalette, dark: boolean): Extension {
   ];
 }
 
-/** The accent follows the browser app's palette token with a brand fallback. */
 function accentVar(fallback: string): string {
   return `var(--accent, ${fallback})`;
 }

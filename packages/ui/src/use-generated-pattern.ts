@@ -13,12 +13,10 @@ export interface GeneratedPatternContext {
   adoptionId: number;
   code: string;
   repairsUsed: number;
-  /** False while a new revision is being checked off-editor. */
   commitsToEditor: boolean;
 }
 
 export interface AdoptGeneratedPatternOptions {
-  /** Keep the preceding editor revision visible until validation succeeds. */
   commit?: boolean;
 }
 
@@ -31,21 +29,17 @@ interface ValidationRequest {
 export interface GeneratedValidationOutcome extends ValidationOutcome {
   /** Identifies the exact adoption that initiated this validation. */
   adoptionId: number | null;
-  /** True when the audio engine could not audit the final candidate. */
   validationSkipped: boolean;
 }
 
 export interface GeneratedAttemptOutcome extends RepairOutcome {
   /** Identifies the exact adoption that initiated this playback attempt. */
   adoptionId: number | null;
-  /** True when the listener explicitly stopped playback during the attempt. */
   stopped: boolean;
 }
 
 export interface PlayingRevisionOptions {
-  /** The code currently playing, or null when playback is not active. */
   getPlayingCode(): string | null;
-  /** Replace the live scheduler with a validated revision. */
   replace(code: string): Promise<EvalResult>;
 }
 

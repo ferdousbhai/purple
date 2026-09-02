@@ -205,8 +205,6 @@ describe("auditHapSounds on real evaluated patterns", () => {
     const [houseExample] = PROMPT_EXAMPLES;
     if (!houseExample) throw new Error("need the house prompt example");
     const pattern = await evaluatePattern(houseExample);
-    // An empty registry makes the audit list everything the pattern asks the
-    // engine for - proving extraction works on real haps, banks included.
     const requested = auditHapSounds(pattern.queryArc(0, 4), () => false);
     expect(requested).toEqual(
       expect.arrayContaining([
@@ -216,7 +214,6 @@ describe("auditHapSounds on real evaluated patterns", () => {
         "sawtooth",
       ]),
     );
-    // And a registry holding exactly those names passes the audit.
     const registry = new Set(requested.map((name) => name.toLowerCase()));
     const unknown = auditHapSounds(pattern.queryArc(0, 4), (name) =>
       registry.has(name.toLowerCase()),

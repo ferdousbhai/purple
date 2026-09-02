@@ -25,7 +25,6 @@ export function parameterAnnotation(
   return parameter.typeAnnotation;
 }
 
-/** One visitor entry per function-like node kind that carries a signature. */
 export function functionLikeVisitors(
   check: (node: ParameterOwner) => void,
 ): Visitor {

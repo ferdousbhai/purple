@@ -181,7 +181,6 @@ function subscribe(listener: () => void): () => void {
   }
 }
 
-/** Insert or replace a pattern by id. Throws if it violates the schema bounds. */
 export function upsertPattern(pattern: SavedPattern): boolean {
   const valid = normalizePattern(pattern)
   if (!valid) throw new TypeError('Pattern is outside the saved-library bounds.')
@@ -197,7 +196,6 @@ export function sharedLibraryId(shareId: string): string {
   return `shared:${shareId}`
 }
 
-/** Keep a colliding title recognizable without overwriting another pattern. */
 export function uniquePatternTitle(
   requestedTitle: string,
   patterns: readonly Pick<SavedPattern, 'title'>[],

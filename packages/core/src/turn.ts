@@ -11,7 +11,6 @@ import {
   type PatternProgression,
 } from "./progression";
 
-/** The single structured result produced for a normal studio turn. */
 export interface GeneratedTurn {
   pattern: string;
   /** Missing or malformed planning metadata disables autonomous continuation. */
@@ -62,7 +61,6 @@ export function formatGeneratedTurn(turn: GeneratedTurn): string {
   return turn.explanation ? `${block}\n${turn.explanation}` : block;
 }
 
-/** Hide structured fields embedded by older Purple sessions from chat prose. */
 export function visibleGeneratedTurnExplanation(content: string): string {
   return visibleTextWithoutCodeBlocks(content)
     .split("\n")
@@ -82,7 +80,6 @@ interface DecodedPattern {
 
 export interface PatternStreamDecoder {
   push(chunk: string): void;
-  /** The complete pattern, or null until its closing JSON quote arrives. */
   pattern(): string | null;
 }
 

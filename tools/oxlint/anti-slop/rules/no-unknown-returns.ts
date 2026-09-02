@@ -12,7 +12,6 @@ import {
   type ParameterOwner,
 } from "../shared/parameters.ts";
 
-/** Ban function contracts that return unknown instead of a parsed domain type. */
 export const noUnknownReturnsRule = defineRule({
   meta: {
     type: "problem",

@@ -42,10 +42,8 @@ const ONE_SHOT_TIMEOUT_MS = 45_000
 const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${DEFAULT_GEMINI_MODEL}:generateContent`
 const STREAM_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${DEFAULT_GEMINI_MODEL}:streamGenerateContent`
 
-/** The BYOK chat a browser carries across reloads. */
 export type ByokChatState = StudioChatState
 
-/** The generation knobs this client sets on Gemini's generateContent call. */
 interface GeminiGenerationConfig {
   responseMimeType?: string
   responseJsonSchema?: ResponseSchema
@@ -71,7 +69,6 @@ interface GeminiContent {
   usageMetadata?: { promptTokenCount?: number }
 }
 
-/** Envelope handling, trimming and validation live in the shared store. */
 const chatStore = createChatStore(CHAT_STORAGE_KEY)
 
 export function loadByokChat(): ByokChatState | null {
@@ -87,22 +84,14 @@ export function loadByokChat(): ByokChatState | null {
 
 export const saveByokChat = chatStore.save
 
-/**
- * The web app's backend: the shared capability interfaces it implements,
- * plus the repair round-trip the shared repair loop plugs into.
- */
 interface ByokBackend
   extends CompactionSummarizer,
     PatternStreamer {
-  /** Send a prepared repair message; resolves with the corrected pattern. */
   repairPattern(message: string): Promise<string>
-  /** Cancel a repair that no longer owns the editor pattern. */
   abortRepair(): void
-  /** Cancel background compaction when its chat session disappears. */
   abortCompaction(): void
 }
 
-/** Bind the visitor's key into a backend the studio UI talks to. */
 export function createByokBackend(key: string): ByokBackend {
   let activeStream: AbortController | null = null
   let activeRepair: AbortController | null = null
@@ -252,16 +241,20 @@ function buildRequestBody(
 
 async function throwRequestError(response: Response): Promise<never> {
   let detail = `Gemini request failed (${response.status}).`
-  try {
-    const message = geminiErrorMessage(await response.json())
-    if (message) detail = message
-  } catch {
-    // Keep the status-based message.
-  }
+  const message = geminiErrorMessage(await readGeminiErrorBody(response))
+  if (message) detail = message
   if (response.status === 400 || response.status === 401 || response.status === 403) {
     detail += ' Check that your Gemini API key is valid.'
   }
   throw new Error(detail)
+}
+
+async function readGeminiErrorBody(response: Response): Promise<JsonValue | null> {
+  try {
+    return await response.json()
+  } catch {
+    return null
+  }
 }
 
 function chunkText(data: GeminiContent): string {

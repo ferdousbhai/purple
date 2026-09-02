@@ -1,6 +1,5 @@
 import { createNoReflectMethodRule } from "../shared/reflect-method.ts";
 
-/** Ban Reflect.get, which bypasses ordinary property access and useful type evidence. */
 export const noReflectGetRule = createNoReflectMethodRule(
   "get",
   "Disallow Reflect.get; use typed property access or parse dynamic input into a domain type.",

@@ -25,7 +25,6 @@ export function jsonMembers(
   return new Map(Object.entries(value));
 }
 
-/** The text of a JSON string member, or null when absent or not a string. */
 export function jsonText(value: JsonValue | undefined): string | null {
   return isJsonString(value) ? value : null;
 }
@@ -38,7 +37,6 @@ export function isJsonNumber(value: JsonValue | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
-/** Decode a raw model response into the members of its top-level JSON object. */
 export function parseJsonMembers(
   response: string,
 ): ReadonlyMap<string, JsonValue> | null {

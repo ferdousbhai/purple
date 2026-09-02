@@ -15,20 +15,14 @@ import type { EvalResult } from "./types";
 export const MAX_RETRIES = 10;
 
 export interface RepairDeps {
-  /** Run the play/transition operation with the given code. */
   attempt: (code: string) => Promise<EvalResult>;
   /** True when the code is the model-generated pattern. Hand-edited code is
    * never repaired: silently rewriting a user's edit would be surprising, so
    * its evaluation error surfaces in the UI instead. */
   isGeneratedPattern: (code: string) => boolean;
-  /** Send the repair prompt to the model; resolves with the fixed pattern, or
-   * null when the request failed or produced no pattern. */
   requestFix: (message: string) => Promise<string | null>;
-  /** Land a fixed pattern in the editor before it replays. */
   applyFix: (code: string) => void;
-  /** True when a newer prompt replaced the pattern while the fix streamed. */
   isStale: () => boolean;
-  /** True when the user stopped playback while the fix streamed. */
   isStopped: () => boolean;
   /** Repair budget for this attempt. Generation-time validation and play-time
    * repair share MAX_RETRIES per pattern, so a caller that already spent
@@ -77,21 +71,15 @@ export interface ValidationRepairDeps {
    * (empty = plays correctly), or null when the engine is not initialized
    * yet - validation is then skipped and play-time repair remains the net. */
   validate: (code: string) => Promise<ValidationProblem[] | null>;
-  /** Send the repair prompt to the model; resolves with the fixed pattern, or
-   * null when the request failed or produced no pattern. */
   requestFix: (message: string) => Promise<string | null>;
-  /** Land a fixed pattern in the editor. */
   applyFix: (code: string) => void;
-  /** True when a newer prompt replaced the pattern while the fix streamed. */
   isStale: () => boolean;
   maxRetries?: number;
 }
 
 export interface ValidationOutcome {
   code: string;
-  /** Problems still present when the loop ended (empty on success or skip). */
   problems: ValidationProblem[];
-  /** Fixes spent, so play-time repair can be handed the remaining budget. */
   retriesUsed: number;
 }
 

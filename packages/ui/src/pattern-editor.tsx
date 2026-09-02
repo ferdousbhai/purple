@@ -81,8 +81,6 @@ export interface PatternEditorProps {
   className?: string;
   /** Streamed model prefixes are display-only until the pattern is complete. */
   readOnly?: boolean;
-  /** Wrap long lines instead of scrolling sideways - the readable choice on
-   * touch-width screens. */
   wrapLines?: boolean;
 }
 

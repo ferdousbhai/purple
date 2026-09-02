@@ -24,7 +24,6 @@ export function spectrumLevels(bins: Uint8Array, bars: number): number[] {
   return levels;
 }
 
-/** Bars never vanish entirely; the resting stub reads as "on, quiet". */
 const MIN_SCALE = 0.15;
 
 export interface SpectrumBarsProps {
@@ -32,7 +31,6 @@ export interface SpectrumBarsProps {
   getAnalyser: () => AnalyserNode | null;
   bars?: number;
   className?: string;
-  /** Applied to every bar; hosts without child selectors style bars here. */
   barClassName?: string;
 }
 

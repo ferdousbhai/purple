@@ -31,7 +31,6 @@ interface StoredMessage {
   content: string;
 }
 
-/** Versioned envelope: anything that does not match is discarded silently. */
 interface ChatEnvelope {
   v: 2;
   messages: StoredMessage[];
@@ -66,7 +65,6 @@ export function toChatEnvelope(state: StudioChatState): ChatEnvelope {
   };
 }
 
-/** Decode a stored envelope; null for anything malformed or from another version. */
 export function parseChatEnvelope(raw: string): StudioChatState | null {
   let value: JsonValue;
   try {

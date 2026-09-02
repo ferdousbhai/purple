@@ -5,7 +5,6 @@ export interface TransitionSuggestion {
   prompt: string;
 }
 
-/** Extract the last explicitly-labelled Strudel/JavaScript fenced block. */
 export function extractPattern(text: string): string | null {
   const matches = [
     ...text.matchAll(/```(?:strudel|js|javascript)\s*\n([\s\S]*?)```/g),
@@ -21,13 +20,11 @@ export function extractPattern(text: string): string | null {
 /** Patterns larger than this are rejected rather than landed in the editor. */
 export const MAX_PATTERN_LENGTH = 30_000;
 
-/** Validate an unfenced pattern returned through structured output. */
 export function validatePatternCode(value: string): string | null {
   const pattern = value.trim();
   return pattern && pattern.length <= MAX_PATTERN_LENGTH ? pattern : null;
 }
 
-/** Hide complete and still-streaming fenced code while keeping assistant prose. */
 export function visibleTextWithoutCodeBlocks(text: string): string {
   return text.replace(/(```[\s\S]*?```|```[\s\S]*$)/g, '').trim()
 }
@@ -59,7 +56,6 @@ export function validateGeneratedPatternTitle(value: string): string | null {
   return title;
 }
 
-/** Validate the decoded suggestions from a structured turn. */
 export function validateTransitionSuggestions(
   candidates: JsonValue | undefined,
 ): TransitionSuggestion[] | null {

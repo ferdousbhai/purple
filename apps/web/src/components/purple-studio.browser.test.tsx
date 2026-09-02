@@ -25,7 +25,6 @@ const NEXT_SUGGESTIONS = [
   { label: 'Melt to ambient', prompt: 'Continue as soft ambient' },
 ]
 
-// The real playback unions, so the mock cannot drift from the contract.
 interface TestPlaybackSnapshot {
   playbackState: PlaybackState
   error: string | null
@@ -57,7 +56,6 @@ const studio = vi.hoisted(() => ({
   transitionResults: [] as unknown[],
   progressionWaitCalls: [] as number[],
   progressionWaitGates: [] as Promise<void>[],
-  /** The live run's countdown reporter, so a test can advance the wait. */
   reportProgressionWait: null as
     | ((remainingCycles: number, cyclesPerSecond: number) => void)
     | null,
@@ -438,7 +436,6 @@ function autoplayCheckbox() {
   return screen.getByLabelText(/Autoplay/) as HTMLInputElement
 }
 
-/** Arm the standing intent. It never starts audio by itself. */
 async function armAutoplay() {
   const playCallsBefore = studio.playCalls.length
   await userEvent.click(autoplayCheckbox())
@@ -1011,7 +1008,6 @@ describe('Purple studio browser flow', () => {
 
     expect(screen.queryByText('Start a beat')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Drift to dub' })).toBeNull()
-    // Autoplay is a standing choice, so it survives an empty session.
     expect(autoplayCheckbox()).toBeVisible()
     expect(studio.clearChatCalls).toBe(1)
     expect(screen.getByLabelText('Pattern code')).toHaveValue(FIRST_PATTERN)
@@ -1035,8 +1031,6 @@ describe('Purple studio browser flow', () => {
 
     expect(controls).not.toBeNull()
     expect(row).not.toBeNull()
-    // Controls ride the status line, so the wrapping copy never shares a row
-    // with them and cannot squeeze them into an overflow.
     expect(controls?.getBoundingClientRect().bottom)
       .toBeLessThanOrEqual(action.getBoundingClientRect().top)
     expect(row?.scrollWidth).toBeLessThanOrEqual(row?.clientWidth ?? 0)
@@ -1145,12 +1139,10 @@ describe('Purple studio browser flow', () => {
 
     await userEvent.selectOptions(duration, String(3 * 60 * 60_000))
     expect(duration.value).toBe(String(3 * 60 * 60_000))
-    // The bound belongs to the checkbox, so the two share one line.
     const armLabel = autoplayCheckbox().closest('label') as HTMLElement
     expect(duration.getBoundingClientRect().top)
       .toBeLessThan(armLabel.getBoundingClientRect().bottom)
 
-    // Arming expresses intent only: audio still waits for a user gesture.
     await armAutoplay()
     expect(studio.playCalls).toEqual([])
     expect(studio.streamMessages).toEqual([])
@@ -1180,16 +1172,12 @@ describe('Purple studio browser flow', () => {
     await armAutoplay()
     await userEvent.click(screen.getByRole('button', { name: /PLAY/ }))
 
-    // No plan exists for the default pattern, so the run opens by asking for
-    // one instead of refusing to start.
     await waitFor(() => expect(studio.streamMessages).toHaveLength(1))
     const synthesizedRequest = studio.streamMessages[0] as Array<{
       role: string
       content: string
     }>
     expect(synthesizedRequest.at(-1)?.role).toBe('user')
-    // The playing pattern rides along as context, so the direction is a
-    // revision of it rather than a fresh piece.
     expect(synthesizedRequest.at(-1)?.content).toContain(CONTINUE_PATTERN_ACTION)
     await waitFor(() => expect(studio.activeCode).toBe(SECOND_PATTERN))
     expect(studio.transitionCycleCalls).toEqual([16])
@@ -1349,8 +1337,6 @@ describe('Purple studio browser flow', () => {
 
     await userEvent.click(stopRun)
 
-    // Stopping by hand also clears the standing intent, so the run cannot
-    // re-engage against the music that is still playing.
     expect(autoplayCheckbox()).not.toBeChecked()
     expect(screen.getByText('EFFECT')).toBeVisible()
     expect(screen.getByText('NEXT')).toBeVisible()
@@ -1369,8 +1355,6 @@ describe('Purple studio browser flow', () => {
     const musicalWake = deferred()
     studio.generations.push(FIRST_PATTERN)
     studio.progressionWaitGates.push(musicalWake.promise)
-    // The run's deadline is scheduled when it engages, so the clock has to be
-    // controllable from before the play gesture that engages it.
     vi.useFakeTimers({ shouldAdvanceTime: true })
     render(<PurpleStudio />)
 
@@ -1383,8 +1367,6 @@ describe('Purple studio browser flow', () => {
       await vi.advanceTimersByTimeAsync(5 * 60 * 60_000)
     })
 
-    // The bound ends the run and clears the standing intent, so the music
-    // keeps playing but no further generation is spent without a fresh choice.
     expect(autoplayCheckbox()).not.toBeChecked()
     expect(screen.getByText('5 HR COMPLETE, AUTOPLAY OFF', { selector: 'strong' }))
       .toBeInTheDocument()

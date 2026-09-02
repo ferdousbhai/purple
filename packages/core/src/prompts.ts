@@ -117,7 +117,6 @@ action. Each suggestion prompt is a standalone music-generation instruction
 with the target groove, mood, instrumentation, and a gentle relationship to
 this pattern. The explanation is at most one short sentence.`;
 
-/** The same grounded producer context with repair-only response behavior. */
 export const REPAIR_SYSTEM_PROMPT = `${STRUDEL_CONTEXT}
 
 # Repair task
@@ -137,15 +136,12 @@ export function withExplanatoryStyle(
     : prompt;
 }
 
-/** The Gemini model Purple targets. */
 export const DEFAULT_GEMINI_MODEL = "gemini-3.7-flash";
 
-/** The hidden chat message that asks Gemini to repair a failing pattern. */
 export function buildRetryMessage(code: string, error: string): string {
   return `Repair this pattern to resolve the evaluation error:\n\`\`\`\n${error}\n\`\`\`\nOriginal pattern:\n\`\`\`strudel\n${code}\n\`\`\``;
 }
 
-/** The JSON Schema subset forwarded to Gemini's structured output. */
 export interface ResponseSchema {
   type: "object" | "array" | "string" | "integer";
   description?: string;
@@ -175,7 +171,7 @@ const SUGGESTION_ITEM_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-/** Structured output for the one-call normal turn. Property order is intentional. */
+/** Property order keeps the pattern first so it can be validated while metadata streams. */
 export const GENERATED_TURN_SCHEMA = {
   type: "object",
   properties: {
@@ -221,7 +217,6 @@ export const GENERATED_TURN_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-/** Structured output for validation and playback repairs. */
 export const REPAIR_PATTERN_SCHEMA = {
   type: "object",
   properties: {

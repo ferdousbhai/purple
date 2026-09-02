@@ -335,7 +335,6 @@ describe("createFoldScheduler", () => {
     const h = harness();
     const folded = h.live;
     h.scheduler.maybeFold(folded);
-    // The session was cleared while the summarizer ran.
     h.live = {
       messages: [],
       artifact: null,

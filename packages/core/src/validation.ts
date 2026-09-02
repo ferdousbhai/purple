@@ -7,9 +7,7 @@
  */
 
 export interface UnknownSound {
-  /** The name as the engine would resolve it (bank prefix included). */
   name: string;
-  /** Registered names closest to the unknown one, best first. */
   suggestions: readonly string[];
 }
 
@@ -34,7 +32,6 @@ export type AuditableHapValue =
       readonly bank?: number | string | null;
     };
 
-/** The slice of a Strudel hap the sound audit reads. */
 export interface AuditableHap {
   readonly value?: AuditableHapValue;
 }
@@ -62,7 +59,6 @@ export function auditHapSounds(
   return unknown;
 }
 
-/** The sound name one hap would ask the engine for, or null for non-sound events. */
 function hapSoundName(hap: AuditableHap): string | null {
   const value = hap.value;
   if (!isControlObject(value)) return null;
@@ -95,7 +91,6 @@ function isName(
   return typeof field === "string";
 }
 
-/** Registered names closest to `name`, best first - the did-you-mean list. */
 export function closestSoundNames(
   name: string,
   available: readonly string[],
@@ -117,7 +112,6 @@ export function closestSoundNames(
   return ranked.slice(0, limit).map((entry) => entry.candidate);
 }
 
-/** The hidden chat message asking Gemini to fix a pattern that validated badly. */
 export function buildValidationRetryMessage(
   code: string,
   problems: readonly ValidationProblem[],

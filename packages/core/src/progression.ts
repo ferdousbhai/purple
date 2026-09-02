@@ -3,7 +3,6 @@ import { MAX_PROGRESSION_RUN_DURATION_MS } from "./progression-limits";
 
 export { MAX_PROGRESSION_RUN_DURATION_MS } from "./progression-limits";
 
-/** Musical time bounds for a model-planned progression. */
 export const MIN_PROGRESSION_CYCLES = 32;
 /** A safety ceiling, not a creative target. Long-form plans may need thousands. */
 export const MAX_PROGRESSION_CYCLES = 4_096;
@@ -23,7 +22,6 @@ export const PROGRESSION_RUN_DURATION_PRESETS_MS = [
   MAX_PROGRESSION_RUN_DURATION_MS,
 ] as const;
 
-/** Apply the product ceiling at the boundary where a run is started. */
 export function boundedProgressionRunDurationMs(durationMs: number): number {
   if (!Number.isFinite(durationMs) || durationMs < 1) {
     return DEFAULT_PROGRESSION_RUN_DURATION_MS;
@@ -32,13 +30,10 @@ export function boundedProgressionRunDurationMs(durationMs: number): number {
 }
 
 export interface PatternProgression {
-  /** How many Strudel cycles this pattern should remain active. */
   afterCycles: number;
-  /** A standalone English instruction for the next generation turn. */
   nextAction: string;
 }
 
-/** A progression tied to the pattern whose playback it schedules. */
 export interface ProgressionStep extends PatternProgression {
   pattern: string;
 }
@@ -113,9 +108,7 @@ export interface ProgressionRunDependencies {
   isCurrent(): boolean;
   /** Resolve false when the musical-time wake is cancelled or fails. */
   wait(step: ProgressionStep): Promise<boolean>;
-  /** Run the planned English action through the normal model turn. */
   generate(step: ProgressionStep): Promise<ProgressionTurn | null>;
-  /** Land the generated pattern through the normal crossfade path. */
   transition(turn: ProgressionTurn): Promise<boolean>;
 }
 

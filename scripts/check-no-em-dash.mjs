@@ -7,7 +7,6 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const EM_DASH = '\u2014'
-/** Mirrors .gitignore: what the old `git grep --untracked` scan never saw. */
 const SKIPPED_DIRECTORIES = new Set([
   '.git',
   '.vite',
@@ -27,6 +26,7 @@ const SKIPPED_PATHS = new Set([
 ])
 
 const offenders = []
+const isBinaryFileContents = (contents) => contents.includes(0)
 
 function scan(directory) {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -38,7 +38,7 @@ function scan(directory) {
     if (SKIPPED_PATHS.has(path)) continue
     if (!entry.isFile()) continue
     const contents = readFileSync(path)
-    if (contents.includes(0)) continue // binary
+    if (isBinaryFileContents(contents)) continue
     const text = contents.toString('utf8')
     if (!text.includes(EM_DASH)) continue
     text.split('\n').forEach((line, index) => {

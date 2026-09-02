@@ -256,7 +256,6 @@ export interface QueryablePattern<Hap> {
   queryArc(begin: number, end: number): Hap[];
 }
 
-/** Narrow the untyped Strudel result before it reaches playback or validation. */
 export function isQueryablePattern<Pattern extends QueryablePattern<unknown>>(
   value: SafeStrudelValue,
 ): value is Pattern {
@@ -308,7 +307,6 @@ class UnsafePatternError extends Error {
   }
 }
 
-/** Parse and interpret one safe Strudel expression without eval or Function. */
 export function evaluateSafeStrudelExpression(
   source: string,
   scope: Scope,
@@ -352,7 +350,6 @@ export function evaluateSafeStrudelExpression(
   ) as SafeStrudelValue;
 }
 
-/** Copy only the allowlisted Strudel bindings into an immutable scope. */
 export function createSafeStrudelScope(source: object): SafeStrudelScope {
   const sourceValues = source as Record<string, SafeStrudelValue>;
   const result: Record<string, SafeStrudelValue> = Object.create(null) as Record<

@@ -1,6 +1,5 @@
 import type { ESTree, Scope, SourceCode, Variable } from "@oxlint/plugins";
 
-/** The declarator behind a variable defined exactly once, if it is one. */
 export function variableDeclarator(
   variable: Variable,
 ): ESTree.VariableDeclarator | null {
@@ -11,7 +10,6 @@ export function variableDeclarator(
     : null;
 }
 
-/** The declarator of a `const` binding that is never reassigned, else null. */
 export function stableConstDeclarator(
   variable: Variable,
 ): ESTree.VariableDeclarator | null {
@@ -24,7 +22,6 @@ export function stableConstDeclarator(
     : null;
 }
 
-/** Resolve an identifier through Oxlint's lexical scope chain. */
 export function resolveVariable(
   sourceCode: SourceCode,
   identifier: ESTree.IdentifierReference,

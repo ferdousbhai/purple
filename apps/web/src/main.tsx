@@ -10,7 +10,6 @@ interface CrashScreenState {
   error: Error | null
 }
 
-/** A render crash replaces the studio with the same message page routes used to show. */
 class CrashScreen extends Component<{ children: ReactNode }, CrashScreenState> {
   state: CrashScreenState = { error: null }
 

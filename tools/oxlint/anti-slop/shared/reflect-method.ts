@@ -9,7 +9,6 @@ function isGlobalReflect(sourceCode: SourceCode, expression: ESTree.Expression):
   return variable === null || variable.defs.length === 0;
 }
 
-/** Reports whether a call target names one method on the global Reflect object. */
 function isGlobalReflectMethodCall(
   sourceCode: SourceCode,
   callee: ESTree.Expression,
@@ -23,7 +22,6 @@ function isGlobalReflectMethodCall(
     : property.type === "Identifier" && property.name === methodName;
 }
 
-/** Build one rule for a forbidden method on the unshadowed global Reflect. */
 export function createNoReflectMethodRule(
   methodName: string,
   description: string,

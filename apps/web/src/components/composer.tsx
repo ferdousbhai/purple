@@ -55,10 +55,6 @@ export interface GeneratedPatternController {
 
 export type RevisionPhase = 'idle' | 'revising' | 'checking'
 
-/**
- * Pattern acceptance: validate and repair generated code, stage revisions,
- * and keep next-move suggestions fresh.
- */
 interface PatternStateBindings {
   playback: Playback
   setCode: (code: string) => void
@@ -134,7 +130,6 @@ function progressionRunDurationLabel(durationMs: number): string {
 function usePatternFlow(deps: PatternStateBindings & {
   abortRepair: () => void
   setRevisionStaged: (staged: boolean) => void
-  /** Send the prepared repair message; the fixed pattern, or null on failure. */
   requestFix: (message: string) => Promise<string | null>
   /** A repair replaced `broken` with `fixed`: propagate it into the stored
    * transcript, so future generations and compaction folds see the pattern
@@ -171,7 +166,6 @@ function usePatternFlow(deps: PatternStateBindings & {
     onInvalidate: deps.abortRepair,
   })
 
-  /** Adopt and validate as soon as the leading structured field is complete. */
   const preparePattern = async (pattern: string): Promise<PreparedPattern> => {
     const sourcePrompt = lastPromptRef.current
     generatedPattern.adopt(pattern, { commit: false })
@@ -197,7 +191,6 @@ function usePatternFlow(deps: PatternStateBindings & {
     return { code: validated.code, valid: true }
   }
 
-  /** Land validated code without starting audio; revisions can be crossfaded. */
   const landPattern = (
     pattern: string,
     scheduleTransition: boolean,
@@ -487,7 +480,6 @@ export function Composer(props: PatternStateBindings & {
           ),
         )
       } catch {
-        // The caller reports a generic pattern failure after the repair budget ends.
         return null
       }
     },
@@ -836,8 +828,6 @@ export function Composer(props: PatternStateBindings & {
         Math.ceil(remainingCycles / cyclesPerSecond),
       )
       if (current.remainingSeconds === remainingSeconds) return
-      // The meter reads the same cycle sample the countdown does, so the fill
-      // and the clock never disagree about how much of the hold is left.
       setProgressionRun({ ...current, remainingCycles, remainingSeconds })
     }
 
@@ -972,7 +962,6 @@ export function Composer(props: PatternStateBindings & {
 
   const isEmpty = chat.messages.length === 0
   const hasPattern = props.code.trim().length > 0
-  // Settled messages only need transforming when the transcript changes.
   const transcript = useMemo(
     () =>
       chat.messages.map((message) => ({
@@ -1269,8 +1258,6 @@ function ProgressionRow(props: {
   )
 }
 
-/** How much of the current hold has already played, or null when the run is
- * not counting down a hold and the meter should read as indeterminate. */
 function progressionWaitProgress(run: ProgressionRunView): number | null {
   if (run.phase !== 'waiting') return null
   if (run.remainingCycles === undefined || run.afterCycles <= 0) return null
@@ -1278,8 +1265,6 @@ function progressionWaitProgress(run: ProgressionRunView): number | null {
   return Math.min(1, Math.max(0, elapsed))
 }
 
-/** What the armed checkbox means right now, for listeners who cannot see that
- * the run is waiting on playback rather than on them. */
 function autoplayArmedAnnouncement(armed: boolean, playing: boolean): string {
   if (!armed) return 'Autoplay is off.'
   return playing
