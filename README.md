@@ -1,28 +1,41 @@
 # Purple
 
-Purple is a local-first browser app for making music with AI. Describe a musical
-idea in plain English and Gemini writes a Strudel pattern that you can inspect,
-edit, and play in the studio.
+Purple is a local-first browser studio for making music with Strudel. Your own
+coding agent writes the patterns; the tab plays them, and you can inspect, edit,
+and save every one.
 
 Use the hosted app at [soundspurple.com](https://soundspurple.com), or run it
-locally. Purple has no accounts or server-side inference. Your Gemini API key,
-chat history, and personal library remain in your browser, and generation
-requests go directly from the page to Google. Patterns you explicitly share
-publish their title and Strudel code through Cloudflare D1 so anyone can play
-them. If you deliberately submit the feedback form, its category, message, and
-optional reply address are sent through a Turnstile-protected Cloudflare Worker
-to the maintainer's inbox.
+locally. Purple has no accounts and no server-side inference. Your saved
+patterns and the tab's pairing code stay in your browser. Patterns you
+explicitly share publish their title and Strudel code through Cloudflare D1 so
+anyone can play them. If you deliberately submit the feedback form, its
+category, message, and optional reply address are sent through a
+Turnstile-protected Cloudflare Worker to the maintainer's inbox.
 
 ## Requirements
 
 - A current browser with Web Audio support
-- An internet connection for Gemini requests
-- A Google Gemini API key
+- An MCP-capable coding agent for writing music (editing and playback work
+  without one)
 
-Create a key in [Google AI Studio](https://aistudio.google.com/app/apikey), open
-Purple, select `KEY`, and save it. The key is stored in localStorage for the
-current browser profile and sent to Google in a request header. Clear it from
-Purple when using a shared browser profile.
+## Connecting your agent
+
+Open Purple. The agent panel shows a registration command carrying this tab's
+private pairing address, which is a Streamable HTTP MCP endpoint:
+
+```bash
+claude mcp add --transport http purple https://soundspurple.com/mcp/<pairing-code>
+codex mcp add purple --url https://soundspurple.com/mcp/<pairing-code>
+```
+
+Any other MCP client can use the same URL. Then ask your agent for music. It
+reads Purple's Strudel reference, writes a pattern, plays it, and keeps the set
+evolving by crossfading into each next section. Keep the tab open; if sound is
+blocked, press `PLAY` once so the browser unlocks Web Audio.
+
+The pairing code is minted in your browser and is the only way an agent reaches
+your tab. `packages/agent-bridge` is a fully offline alternative that runs the
+same tool surface over 127.0.0.1.
 
 ## Development
 
@@ -50,27 +63,29 @@ pnpm run deploy        # Build, migrate remote D1, and deploy with Wrangler
 
 ## Architecture
 
-- `apps/web` contains the React application and its browser-to-Gemini transport.
-- `packages/core` contains dependency-free prompts, parsing, validation, repair,
-  compaction, recipes, transitions, and shared types.
+- `apps/web` contains the React application, the Worker, and the hosted MCP
+  relay that pairs an agent with a tab.
+- `packages/core` contains dependency-free prompts, parsing, validation, the
+  agent tool surface, transitions, and shared types.
 - `packages/ui` contains the Strudel engine, safe expression interpreter,
-  CodeMirror editor, playback controller, chat hooks, and browser persistence.
+  CodeMirror editor, playback controller, agent link client, and browser
+  persistence.
+- `packages/agent-bridge` contains purple-mcp, the offline stdio bridge.
 - `apps/web/vite` contains build checks and the plugin that serves Strudel's
   AudioWorklet from the application's own origin.
 
-Cloudflare Workers serves the static application assets, a stateless
-`/api/feedback` route, and the public pattern API. Feedback validates Cloudflare
-Turnstile and uses a fixed-destination email binding without storing
-submissions. Explicitly shared pattern titles and code, plus anonymous votes,
-are stored in D1. Cloudflare Workers Builds deploys the site on pushes to
-`master` after running `pnpm run check`.
+Cloudflare Workers serves the static application assets, the `/mcp/<code>` and
+`/link/<code>` pairing endpoints, a stateless `/api/feedback` route, and the
+public pattern API. Feedback validates Cloudflare Turnstile and uses a
+fixed-destination email binding without storing submissions. Explicitly shared
+pattern titles and code, plus anonymous votes, are stored in D1. Cloudflare
+Workers Builds deploys the site on pushes to `master` after running
+`pnpm run check`.
 
 ## Keyboard shortcuts
 
-- `Enter`: send a chat message.
 - `Ctrl+Enter`: play or re-run the pattern in the editor.
 - `Ctrl+.`: stop playback.
-- `Escape`: stop Gemini while it is generating a response.
 
 ## Troubleshooting
 
@@ -78,8 +93,8 @@ If audio does not start, click the play control once so the browser can unlock
 Web Audio. Check the selected audio output and system volume if playback remains
 silent.
 
-For an invalid-key error, open `KEY`, replace the stored key, and try again. A
-rate-limit error comes from the Gemini API and normally clears after waiting.
+If your agent reports that no tab is connected, make sure the Purple tab is open
+and that the pairing address it registered matches the one the agent panel shows.
 
 ## Licensing
 

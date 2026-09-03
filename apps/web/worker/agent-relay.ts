@@ -12,9 +12,11 @@ import {
   decodeAgentResponse,
   decodeAgentRequest,
   encodeAgentRequest,
+  LINK_TAKEN_OVER_CODE,
   type AgentCall,
 } from '@purple/core/agent-link'
 import {
+  AGENT_INSTRUCTIONS,
   AGENT_TOOLS,
   formatAgentToolResult,
   NOT_CONNECTED_MESSAGE,
@@ -29,7 +31,6 @@ import {
   parseJsonMembers,
   type JsonValue,
 } from '@purple/core/json'
-import { STRUDEL_REFERENCE } from '@purple/core/prompts'
 import { hasContentType, jsonResponse, readBoundedBody } from './http'
 
 /** Codes are minted by the studio (20 hex chars); accept a little latitude. */
@@ -136,6 +137,7 @@ export async function handleMcpMessage(
         protocolVersion: negotiatedVersion(params),
         capabilities: { tools: {} },
         serverInfo: { name: 'purple', version: '0.1.0' },
+        instructions: AGENT_INSTRUCTIONS,
       })
     case 'ping':
       return rpcResult(id, {})
@@ -160,7 +162,7 @@ async function callTool(
   const args = jsonMembers(params?.get('arguments') ?? null)
   try {
     const plan = planAgentToolCall(name, args)
-    if (plan.kind === 'reference') return toolText(id, STRUDEL_REFERENCE)
+    if (plan.kind === 'text') return toolText(id, plan.text)
     const outcome = await callAgent(plan.call, plan.timeoutMs)
     return outcome.ok
       ? toolText(id, formatAgentToolResult(plan.call, outcome.result))
@@ -239,7 +241,7 @@ export class AgentLinkSession {
   private connectTab(): Response {
     // The newest tab wins: a reload or second window replaces the old link.
     for (const socket of this.state.getWebSockets()) {
-      socket.close(4000, 'Another Purple tab connected.')
+      socket.close(LINK_TAKEN_OVER_CODE, 'Another Purple tab connected.')
     }
     this.failPending('The Purple tab was replaced by a new connection.')
     const pair = new WebSocketPair()

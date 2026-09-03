@@ -1,23 +1,14 @@
 import {
   MAX_PATTERN_LENGTH,
   patternFilename,
-  validateGeneratedPatternTitle,
+  validatePatternTitle,
   validatePatternCode,
 } from '@purple/core/pattern'
 import { describeValidationProblem } from '@purple/core/validation'
-import { SHOWCASE_PATTERNS, type ShowcasePattern } from '@purple/core/recipes'
+import { SHOWCASE_PATTERNS, type ShowcasePattern } from '@purple/core/showcase-patterns'
 import type { SharedPattern } from '@purple/core/shared-pattern'
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
-import type {
-  GeneratedPatternController,
-  RevisionPhase,
-} from './composer'
 import { InternalLink, type NavigateInApp } from './internal-link'
-import {
-  clearByokChat,
-  getByokKey,
-  setByokKey,
-} from '#/lib/byok-storage'
 import {
   loadSessionPattern,
   removePattern,
@@ -29,16 +20,17 @@ import {
 } from '#/lib/patterns'
 import {
   agentLinkSocketUrl,
-  agentMcpUrl,
   loadAgentLinkSettings,
-  saveAgentLinkSettings,
   type AgentLinkSettings,
 } from '#/lib/agent-link-storage'
-import { hasUnappliedEditorChanges } from '@purple/ui/playback-flow'
 import { PurpleMark } from '@purple/ui/purple-mark'
-import { useAgentLink, type AgentLinkStatus } from '@purple/ui/use-agent-link'
+import { useAgentLink } from '@purple/ui/use-agent-link'
 import { SpectrumBars } from '@purple/ui/spectrum-bars'
-import { usePlayback } from '@purple/ui/use-playback'
+import {
+  hasUnappliedEditorChanges,
+  isTransportActive,
+  usePlayback,
+} from '@purple/ui/use-playback'
 import type { PatternEditorProps } from '@purple/ui/pattern-editor'
 import { WEB_AUDIO_OPTIONS, type WebPlayback } from '#/lib/playback'
 
@@ -46,9 +38,9 @@ const PatternEditor = lazy(async () => {
   const editor = await import('@purple/ui/pattern-editor')
   return { default: editor.PatternEditor }
 })
-const Composer = lazy(async () => {
-  const composer = await import('./composer')
-  return { default: composer.Composer }
+const AgentCard = lazy(async () => {
+  const card = await import('./agent-card')
+  return { default: card.AgentCard }
 })
 const FeedbackDialog = lazy(async () => {
   const feedback = await import('./feedback-dialog')
@@ -58,6 +50,9 @@ const ShareDialog = lazy(async () => {
   const share = await import('./share-dialog')
   return { default: share.ShareDialog }
 })
+
+const LIBRARY_WRITE_ERROR =
+  'This browser could not update the library. Allow site data and try again.'
 
 function DeferredPatternEditor(props: PatternEditorProps) {
   const [ready, setReady] = useState(false)
@@ -106,105 +101,53 @@ function PurpleStudioView({
   playback,
   sharedPattern,
 }: PurpleStudioProps & { playback: WebPlayback }) {
-  const [byokKey, setByokKeyState] = useState<string | null>(() => getByokKey())
-  const [agentLink, setAgentLinkState] = useState<AgentLinkSettings>(loadAgentLinkSettings)
-  // Which session pane is showing: the active provider's view, the two-way
-  // chooser, or the key form (Gemini chosen but no key saved yet).
-  const [pane, setPane] = useState<'auto' | 'chooser' | 'key'>('auto')
+  const [agentLink] = useState<AgentLinkSettings>(loadAgentLinkSettings)
+  // The pairing panel is the whole session pane. It steps aside once an agent
+  // is actually driving the tab, and the topbar badge brings it back.
+  const [agentPanelOpen, setAgentPanelOpen] = useState(true)
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
   const [libraryWasCleared, setLibraryWasCleared] = useState(false)
   const [patternStorageError, setPatternStorageError] = useState<string | null>(null)
-  // The chat transcript survives reloads (loadByokChat), so the pattern it
-  // produced must too - restoring one without the other desyncs the session.
   const [initialPattern] = useState(() => loadInitialPattern(sharedPattern))
   const [code, setCode] = useState(initialPattern.code)
-  const [revisionPhase, setRevisionPhase] = useState<RevisionPhase>('idle')
-  const [revisionStaged, setRevisionStaged] = useState(false)
-  const [patternProvisional, setPatternProvisional] = useState(false)
   const [customTitle, setCustomTitle] = useState(initialPattern.customTitle)
-  const [sourcePrompt, setSourcePrompt] = useState(initialPattern.sourcePrompt)
   const [shareId, setShareId] = useState<string | null>(initialPattern.shareId)
   const isPhoneWidth = usePhoneWidth()
   const savedPatterns = usePatterns()
   const mainRef = useRef<HTMLElement | null>(null)
   const libraryRef = useRef<HTMLElement | null>(null)
   const libraryButtonRef = useRef<HTMLButtonElement | null>(null)
-  const generatedPatternControllerRef = useRef<GeneratedPatternController | null>(null)
-  const codeRevisionRef = useRef(0)
-  const titleRevisionRef = useRef(0)
-  const registerGeneratedPatternController = useCallback(
-    (controller: GeneratedPatternController | null) => {
-      generatedPatternControllerRef.current = controller
-    },
-    [],
-  )
-  const getCodeRevision = useCallback(() => codeRevisionRef.current, [])
-  const getTitleRevision = useCallback(() => titleRevisionRef.current, [])
-  const patternLocked = revisionPhase !== 'idle'
-  const patternActionLocked = patternLocked || patternProvisional
   const editorHasUnappliedChanges = hasUnappliedEditorChanges(
     playback.playbackState,
     code,
     playback.activeCode,
   )
-  const commitGeneratedCode = useCallback((nextCode: string) => {
+  const commitCode = useCallback((nextCode: string) => {
     setCode(nextCode)
     setShareId(null)
   }, [])
-  const commitCode = useCallback((nextCode: string) => {
-    codeRevisionRef.current++
-    setRevisionStaged(false)
-    generatedPatternControllerRef.current?.invalidate()
-    commitGeneratedCode(nextCode)
-  }, [commitGeneratedCode])
   const commitCustomTitle = useCallback((nextTitle: string | null) => {
-    titleRevisionRef.current++
     setCustomTitle(nextTitle)
     setShareId(null)
   }, [])
 
   useEffect(() => {
-    if (patternProvisional) return
-    saveSessionPattern({ code, customTitle, sourcePrompt, shareId: shareId ?? undefined })
-  }, [code, customTitle, patternProvisional, shareId, sourcePrompt])
+    saveSessionPattern({ code, customTitle, shareId: shareId ?? undefined })
+  }, [code, customTitle, shareId])
 
-  useEffect(() => {
-    if (sharedPattern) clearByokChat()
-  }, [sharedPattern?.id])
-
-  /** False when the browser blocks localStorage, so the key cannot outlive this render. */
-  const updateByokKey = (key: string | null): boolean => {
-    setByokKey(key)
-    // Removing the key also forgets the conversation it produced.
-    if (!key) clearByokChat()
-    const stored = getByokKey()
-    setByokKeyState(stored)
-    return key === null || stored === key.trim()
-  }
-
-  const title = customTitle ?? titleFromPrompt(sourcePrompt) ?? 'Untitled Pattern'
+  const title = customTitle ?? 'Untitled Pattern'
   const patternName = title.trim() || 'Untitled Pattern'
+  const patternIsSavable = validatePatternCode(code) !== null
 
-  // The two ways to play are equal peers; neither is a default. A visitor
-  // who has picked neither sees the chooser until they do.
-  const activeProvider: 'agent' | 'gemini' | null =
-    agentLink.enabled ? 'agent' : byokKey ? 'gemini' : null
-
-  const updateAgentLink = (next: AgentLinkSettings) => {
-    saveAgentLinkSettings(next)
-    setAgentLinkState(next)
-  }
-
-  // The bridge can send set_pattern and play back to back, faster than React
+  // The agent can send set_pattern and play back to back, faster than React
   // re-renders the handler closures; refs keep the served code current.
   const codeRef = useRef(code)
   codeRef.current = code
   const patternNameRef = useRef(patternName)
   patternNameRef.current = patternName
-  const agentStatus = useAgentLink({
-    enabled: agentLink.enabled,
+  const agentLinked = useAgentLink({
     url: agentLinkSocketUrl(agentLink),
     handlers: {
       getSession: () => ({
@@ -232,7 +175,7 @@ function PurpleStudioView({
         codeRef.current = nextCode
         commitCode(nextCode)
         if (rawTitle !== null) {
-          const nextTitle = validateGeneratedPatternTitle(rawTitle)
+          const nextTitle = validatePatternTitle(rawTitle)
           if (nextTitle) commitCustomTitle(nextTitle)
         }
         return { committed: true }
@@ -248,6 +191,13 @@ function PurpleStudioView({
       stop: () => playback.stop(),
     },
   })
+
+  useEffect(() => {
+    // Setup is done the moment an agent answers, so hand the room back to the
+    // editor. Reopening stays a deliberate click on the topbar badge.
+    if (agentLinked) setAgentPanelOpen(false)
+  }, [agentLinked])
+
   const libraryPattern = savedPatterns.find(
     (pattern) =>
       (shareId !== null && pattern.shareId === shareId) ||
@@ -256,7 +206,7 @@ function PurpleStudioView({
   const currentPatternSaved = libraryPattern !== undefined
 
   const toggleSavedPattern = () => {
-    if (!code.trim() || code.length > MAX_PATTERN_LENGTH) return
+    if (!patternIsSavable) return
     const targetShareId = shareId
     let persisted = true
     if (libraryPattern) {
@@ -268,7 +218,6 @@ function PurpleStudioView({
         id: targetShareId ? sharedLibraryId(targetShareId) : crypto.randomUUID(),
         title: savedTitle,
         code,
-        prompt: sourcePrompt,
         shareId: targetShareId ?? undefined,
         createdAt: now,
         updatedAt: now,
@@ -278,9 +227,7 @@ function PurpleStudioView({
       }
     }
     if (!persisted) {
-      setPatternStorageError(
-        'This browser could not update the library. Allow site data and try again.',
-      )
+      setPatternStorageError(LIBRARY_WRITE_ERROR)
       return
     }
     setPatternStorageError(null)
@@ -317,18 +264,11 @@ function PurpleStudioView({
   }
 
   const playCurrentPattern = () => {
-    if (patternActionLocked || revisionStaged) return
-    const generatedController = generatedPatternControllerRef.current
-    if (generatedController) void generatedController.play(code)
-    else void playback.play(code)
+    void playback.play(code)
   }
 
   const togglePlayback = () => {
-    if (
-      playback.playbackState === 'playing' ||
-      playback.playbackState === 'loading' ||
-      playback.playbackState === 'transitioning'
-    ) playback.stop()
+    if (isTransportActive(playback.playbackState)) playback.stop()
     else playCurrentPattern()
   }
 
@@ -435,31 +375,21 @@ function PurpleStudioView({
             LIBRARY
           </button>
           <button
-            className={`chrome provider-badge ${pane !== 'auto' ? 'open' : ''}`}
-            aria-label={
-              activeProvider === 'agent'
-                ? 'AGENT'
-                : activeProvider === 'gemini'
-                  ? 'GEMINI'
-                  : 'CHOOSE'
-            }
+            className={`chrome agent-badge ${agentPanelOpen ? 'open' : ''}`}
+            aria-expanded={agentPanelOpen}
             title={
-              activeProvider === 'agent'
-                ? 'Playing via your agent. Click to change.'
-                : activeProvider === 'gemini'
-                  ? 'Playing via your Gemini key. Click to change.'
-                  : 'Choose your AI'
+              agentLinked
+                ? 'Your agent is driving this tab. Click for the link.'
+                : 'No agent yet. Click for the link.'
             }
-            onClick={() => setPane(pane === 'auto' ? 'chooser' : 'auto')}
+            onClick={() => setAgentPanelOpen((open) => !open)}
           >
-            {activeProvider === null ? (
-              'CHOOSE'
-            ) : (
-              <>
-                {activeProvider === 'agent' ? 'AGENT' : 'GEMINI'}
-                <span className="badge-check"> ✓</span>
-              </>
-            )}
+            AGENT
+            <span
+              className={`agent-dot ${agentLinked ? 'linked' : ''}`}
+              aria-hidden="true"
+            />
+            <span className="sr-only">{agentLinked ? ' linked' : ' waiting'}</span>
           </button>
         </div>
       </header>
@@ -503,11 +433,9 @@ function PurpleStudioView({
               .map((pattern) => (
                 <div key={pattern.id} className="library-row">
                   <button
-                    disabled={patternLocked}
                     onClick={() => {
                       commitCode(pattern.code)
                       commitCustomTitle(pattern.title)
-                      setSourcePrompt(pattern.prompt)
                       setShareId(pattern.shareId ?? null)
                       setPatternStorageError(null)
                       setLibraryOpen(false)
@@ -521,9 +449,7 @@ function PurpleStudioView({
                     onClick={() => {
                       if (!window.confirm(`Delete “${pattern.title}” from this browser?`)) return
                       if (!removePattern(pattern.id)) {
-                        setPatternStorageError(
-                          'This browser could not update the library. Allow site data and try again.',
-                        )
+                        setPatternStorageError(LIBRARY_WRITE_ERROR)
                         return
                       }
                       setPatternStorageError(null)
@@ -538,7 +464,7 @@ function PurpleStudioView({
         </section>
       ) : null}
 
-      <div className="studio-grid">
+      <div className={`studio-grid ${agentPanelOpen ? '' : 'editor-only'}`}>
         <section className="editor-pane">
           <div className="editor-bar">
             <input
@@ -546,24 +472,12 @@ function PurpleStudioView({
               aria-label="Pattern title"
               name="pattern-title"
               value={title}
-              disabled={patternActionLocked}
               onChange={(event) => commitCustomTitle(event.target.value)}
               maxLength={60}
             />
-            {revisionPhase !== 'idle' || patternProvisional ? (
-              <span className="editor-revision-status" role="status">
-                {revisionPhase === 'revising'
-                  ? 'REVISING…'
-                  : revisionPhase === 'checking'
-                    ? 'CHECKING…'
-                    : 'FINISHING…'}
-              </span>
-            ) : null}
             <button
               className={`chrome ${currentPatternSaved ? 'saved' : ''}`}
-              disabled={
-                patternActionLocked || !code.trim() || code.length > MAX_PATTERN_LENGTH
-              }
+              disabled={!patternIsSavable}
               onClick={toggleSavedPattern}
               title={
                 currentPatternSaved
@@ -575,24 +489,19 @@ function PurpleStudioView({
             </button>
             <button
               className="chrome"
-              disabled={patternActionLocked || !code.trim() || code.length > MAX_PATTERN_LENGTH}
+              disabled={!patternIsSavable}
               onClick={() => setShareOpen(true)}
             >
               SHARE
             </button>
-            <button
-              className="chrome export"
-              disabled={patternActionLocked}
-              onClick={exportPattern}
-            >
+            <button className="chrome export" onClick={exportPattern}>
               EXPORT
             </button>
-            {editorHasUnappliedChanges && !revisionStaged ? (
+            {editorHasUnappliedChanges ? (
               <button
                 className="chrome apply-changes"
                 aria-label="Apply editor changes to playback (Ctrl+Enter)"
                 title="Apply editor changes (Ctrl+Enter)"
-                disabled={patternActionLocked}
                 onClick={playCurrentPattern}
               >
                 APPLY
@@ -600,7 +509,6 @@ function PurpleStudioView({
             ) : null}
             <button
               className={`transport ${audible || playback.playbackState === 'loading' ? 'stop' : 'start'}`}
-              disabled={patternActionLocked && !audible}
               onClick={togglePlayback}
             >
               {transportLabel(playback.playbackState)}
@@ -616,7 +524,6 @@ function PurpleStudioView({
               }
               getActiveSourceRanges={playback.getActiveSourceRanges}
               onCodeChange={commitCode}
-              readOnly={patternLocked}
               wrapLines={isPhoneWidth}
               // Strudel convention: Mod+Enter always (re-)evaluates, so a live
               // edit mid-playback picks up the new pattern instead of stopping.
@@ -630,67 +537,11 @@ function PurpleStudioView({
           ) : null}
         </section>
 
-        <aside className="session-pane">
-          {pane === 'chooser' || (pane === 'auto' && activeProvider === null) ? (
-            <ProviderChooser
-              activeProvider={activeProvider}
-              onChooseGemini={() => {
-                if (agentLink.enabled) {
-                  updateAgentLink({ ...agentLink, enabled: false })
-                }
-                setPane('key')
-              }}
-              onChooseAgent={() => {
-                if (!agentLink.enabled) {
-                  updateAgentLink({ ...agentLink, enabled: true })
-                }
-                setPane('auto')
-              }}
-              onClose={
-                activeProvider !== null ? () => setPane('auto') : undefined
-              }
-            />
-          ) : pane === 'key' ? (
-            <KeyCard
-              byokKey={byokKey}
-              onSave={(key) => {
-                const stored = updateByokKey(key)
-                if (stored) setPane('auto')
-                return stored
-              }}
-              onBack={() => setPane('chooser')}
-              onClose={byokKey ? () => setPane('auto') : undefined}
-            />
-          ) : activeProvider === 'agent' ? (
-            <AgentCard
-              status={agentStatus}
-              settings={agentLink}
-              onChangeMethod={() => setPane('chooser')}
-            />
-          ) : byokKey === null ? null : (
-            <Suspense fallback={<section className="composer" aria-busy="true" />}>
-              <Composer
-                byokKey={byokKey}
-                code={code}
-                customTitle={customTitle}
-                shareId={shareId}
-                sourcePrompt={sourcePrompt}
-                playback={playback}
-                restorePersistedChat={!sharedPattern}
-                setCode={commitGeneratedCode}
-                setRevisionPhase={setRevisionPhase}
-                setRevisionStaged={setRevisionStaged}
-                setPatternProvisional={setPatternProvisional}
-                getCodeRevision={getCodeRevision}
-                getTitleRevision={getTitleRevision}
-                registerGeneratedPatternController={registerGeneratedPatternController}
-                setCustomTitle={setCustomTitle}
-                setShareId={setShareId}
-                setSourcePrompt={setSourcePrompt}
-              />
-            </Suspense>
-          )}
-        </aside>
+        {agentPanelOpen ? (
+          <Suspense fallback={<aside className="session-pane" aria-busy="true" />}>
+            <AgentCard code={agentLink.code} linked={agentLinked} />
+          </Suspense>
+        ) : null}
       </div>
     </main>
   )
@@ -704,188 +555,6 @@ function StatusLed({ state }: { state: 'active' | 'busy' | 'idle' }) {
       role="status"
       className={`status-led ${state}`}
     />
-  )
-}
-
-// Block wordmark for the first-run panel. Rows are fixed width so the
-// letterforms stay aligned in any monospace fallback.
-const PURPLE_WORDMARK = [
-  '███  █  █ ███  ███  █    ████',
-  '█  █ █  █ █  █ █  █ █    █',
-  '███  █  █ ███  ███  █    ███',
-  '█    █  █ █ █  █    █    █',
-  '█     ██  █  █ █    ████ ████',
-].join('\n')
-
-function KeyCard(props: {
-  byokKey: string | null
-  onSave: (key: string | null) => boolean
-  onBack: () => void
-  onClose?: () => void
-}) {
-  const [draft, setDraft] = useState('')
-  const [storageBlocked, setStorageBlocked] = useState(false)
-  const saveDraft = (nextDraft: string) => {
-    const key = nextDraft.trim()
-    if (!key) return
-    setDraft(nextDraft)
-    setStorageBlocked(!props.onSave(key))
-  }
-  return (
-    <section className="key-card">
-      <pre className="key-card-ascii" aria-hidden="true">{PURPLE_WORDMARK}</pre>
-      <h2>YOUR GEMINI KEY</h2>
-      <p>
-        Purple has no accounts. Your Gemini key, chat, and library stay in this browser.
-        Patterns you choose to share publish their title and code for anyone to play.
-      </p>
-      <p>
-        Get a free key from{' '}
-        <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">
-          Google AI Studio
-        </a>{' '}
-        and paste it below. Editing and playback work without one.
-      </p>
-      {storageBlocked ? (
-        <p className="error" role="alert">
-          This browser is blocking local storage, so the key cannot be kept.
-          Allow site data (or leave private browsing) and try again.
-        </p>
-      ) : null}
-      <form
-        onSubmit={(event) => {
-          event.preventDefault()
-          saveDraft(draft)
-        }}
-      >
-        <input
-          type="password"
-          aria-label="Gemini API key"
-          name="gemini-api-key"
-          placeholder={props.byokKey ? 'A key is saved in this browser' : 'AIza…'}
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          onPaste={(event) => {
-            const pastedKey = event.clipboardData.getData('text')
-            if (!pastedKey.trim()) return
-            event.preventDefault()
-            saveDraft(pastedKey)
-          }}
-          autoComplete="off"
-        />
-        <div className="key-card-actions">
-          <button className="primary" disabled={!draft.trim()}>SAVE</button>
-          {props.byokKey ? (
-            <button type="button" className="chrome" onClick={() => props.onSave(null)}>
-              REMOVE KEY
-            </button>
-          ) : null}
-          <button type="button" className="chrome" onClick={props.onBack}>
-            SWITCH
-          </button>
-          {props.onClose ? (
-            <button type="button" className="chrome" onClick={props.onClose}>CLOSE</button>
-          ) : null}
-        </div>
-      </form>
-    </section>
-  )
-}
-
-function ProviderChooser(props: {
-  activeProvider: 'agent' | 'gemini' | null
-  onChooseGemini: () => void
-  onChooseAgent: () => void
-  onClose?: () => void
-}) {
-  return (
-    <section className="key-card chooser-card">
-      <pre className="key-card-ascii" aria-hidden="true">{PURPLE_WORDMARK}</pre>
-      <h2>CHOOSE YOUR AI</h2>
-      <div className="provider-options">
-        <button
-          type="button"
-          className="provider-option"
-          aria-pressed={props.activeProvider === 'gemini'}
-          onClick={props.onChooseGemini}
-        >
-          <strong>
-            GEMINI API KEY
-            {props.activeProvider === 'gemini' ? (
-              <span className="provider-current">CURRENT</span>
-            ) : null}
-          </strong>
-          <span>
-            Free key from Google AI Studio. Chat with the built-in composer.
-          </span>
-        </button>
-        <button
-          type="button"
-          className="provider-option"
-          aria-pressed={props.activeProvider === 'agent'}
-          onClick={props.onChooseAgent}
-        >
-          <strong>
-            YOUR AI AGENT
-            {props.activeProvider === 'agent' ? (
-              <span className="provider-current">CURRENT</span>
-            ) : null}
-          </strong>
-          <span>
-            Claude Code or any MCP agent plays this tab. Nothing to install.
-          </span>
-        </button>
-      </div>
-      {props.onClose ? (
-        <div className="key-card-actions">
-          <button type="button" className="chrome" onClick={props.onClose}>
-            CLOSE
-          </button>
-        </div>
-      ) : null}
-    </section>
-  )
-}
-
-function AgentCard(props: {
-  status: AgentLinkStatus
-  settings: AgentLinkSettings
-  onChangeMethod: () => void
-}) {
-  const [copied, setCopied] = useState(false)
-  const connected = props.status === 'connected'
-  const command = `claude mcp add --transport http purple ${agentMcpUrl(props.settings.code)}`
-  const copyCommand = async () => {
-    try {
-      await navigator.clipboard.writeText(command)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2_000)
-    } catch {
-      // Clipboard blocked; the command stays selectable text.
-    }
-  }
-  return (
-    <section className="key-card agent-card">
-      <pre className="key-card-ascii" aria-hidden="true">{PURPLE_WORDMARK}</pre>
-      <h2>LOCAL AGENT</h2>
-      <p role="status" className={connected ? 'agent-status connected' : 'agent-status'}>
-        {connected ? 'AGENT LINKED' : 'WAITING FOR YOUR AGENT'}
-      </p>
-      <p>Register this tab with your agent. For Claude Code, run once:</p>
-      <pre className="agent-command">{command}</pre>
-      <div className="key-card-actions">
-        <button type="button" className="primary" onClick={copyCommand}>
-          <span aria-live="polite">{copied ? 'COPIED' : 'COPY'}</span>
-        </button>
-        <button type="button" className="chrome" onClick={props.onChangeMethod}>
-          SWITCH
-        </button>
-      </div>
-      <p>
-        The link is this tab&rsquo;s private pairing address. If sound is
-        blocked, press PLAY once.
-      </p>
-    </section>
   )
 }
 
@@ -903,18 +572,11 @@ function usePhoneWidth(): boolean {
   return isPhone
 }
 
-function titleFromPrompt(prompt: string | undefined): string | null {
-  const text = prompt?.trim().replace(/\s+/g, ' ')
-  if (!text) return null
-  return text.length <= 48 ? text : `${text.slice(0, 47).trimEnd()}…`
-}
-
 function loadInitialPattern(sharedPattern?: SharedPattern) {
   if (sharedPattern) {
     return {
       code: sharedPattern.code,
       customTitle: sharedPattern.title,
-      sourcePrompt: undefined,
       shareId: sharedPattern.id,
     }
   }
@@ -927,7 +589,6 @@ function loadInitialPattern(sharedPattern?: SharedPattern) {
   return {
     code: starter.code,
     customTitle: starter.title,
-    sourcePrompt: undefined,
     shareId: null,
   }
 }
@@ -938,6 +599,5 @@ function randomStarter(): ShowcasePattern {
 }
 
 function transportLabel(state: Playback['playbackState']): string {
-  if (state === 'playing' || state === 'loading' || state === 'transitioning') return '■ STOP'
-  return '▶ PLAY'
+  return isTransportActive(state) ? '■ STOP' : '▶ PLAY'
 }

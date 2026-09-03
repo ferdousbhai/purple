@@ -1,6 +1,7 @@
-export const DEFAULT_MANUAL_TRANSITION_CYCLES = 8;
-export const DEFAULT_AUTOPLAY_TRANSITION_CYCLES = 16;
-export const TRANSITION_CYCLE_OPTIONS = [4, 8, 16, 32] as const;
+/** Every crossfade is an agent handing one section of a set to the next, so
+ * the default is a blend (about 32 seconds at Purple's 30 cycles a minute)
+ * rather than a cut. */
+export const DEFAULT_TRANSITION_CYCLES = 16;
 
 const MIN_TRANSITION_LEAD_CYCLES = 0.25;
 

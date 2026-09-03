@@ -101,23 +101,4 @@ describe('usePlayback cancellation in Chromium', () => {
     expect(engine.hushCalls).toBeGreaterThan(0)
     expect(hook.result.current.playbackState).toBe('stopped')
   })
-
-  it('reports musical countdown progress while waiting for progression cycles', async () => {
-    vi.useFakeTimers()
-    const hook = renderHook(() => usePlayback())
-    const progress = vi.fn()
-    let waitPromise!: ReturnType<typeof hook.result.current.waitForCycles>
-
-    act(() => {
-      waitPromise = hook.result.current.waitForCycles(4, undefined, progress)
-    })
-    expect(progress).toHaveBeenLastCalledWith(4, 2)
-
-    engine.cycle = 1
-    await act(async () => vi.advanceTimersByTimeAsync(1_000))
-    expect(progress).toHaveBeenLastCalledWith(3, 2)
-
-    act(() => hook.result.current.stop())
-    await expect(waitPromise).resolves.toEqual({ ok: false, kind: 'cancelled' })
-  })
 })

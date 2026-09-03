@@ -6,10 +6,10 @@ import {
 } from "./agent-tools";
 
 describe("planAgentToolCall", () => {
-  it("plans the reference without a studio round trip", () => {
-    expect(planAgentToolCall("get_strudel_reference", null)).toEqual({
-      kind: "reference",
-    });
+  it("answers the reference itself, without a studio round trip", () => {
+    const plan = planAgentToolCall("get_strudel_reference", null);
+    if (plan.kind !== "text") throw new Error("the reference needs no tab");
+    expect(plan.text).toContain("## Mini-notation");
   });
 
   it("plans parameterless calls with their timeouts", () => {

@@ -1,13 +1,11 @@
 /**
- * Every example shipped in the system prompt must evaluate against the real
- * Strudel engine through Purple's safe expression interpreter, both standalone
- * and spliced into an XFADE transition.
- * A broken example would few-shot-teach Gemini invalid patterns, and a
- * non-expression example would break crossfades.
+ * Every pattern Purple ships must evaluate against the real Strudel engine
+ * through the safe expression interpreter, both standalone and spliced into
+ * an XFADE transition: a starter the studio cannot play would greet a visitor
+ * with silence, and a non-expression one would break every crossfade.
  */
 import { beforeAll, describe, expect, it } from "vitest";
-import { PROMPT_EXAMPLES } from "@purple/core/prompts";
-import { SHOWCASE_PATTERNS } from "@purple/core/recipes";
+import { SHOWCASE_PATTERNS } from "@purple/core/showcase-patterns";
 import { buildTransitionCode } from "@purple/core/transitions";
 import { auditHapSounds, type AuditableHap } from "@purple/core/validation";
 // @strudel/core does not publish declarations for this runtime test surface.
@@ -62,25 +60,7 @@ async function expectPatternEvents(code: string): Promise<void> {
   expect(pattern.queryArc(0, 4).length).toBeGreaterThan(0);
 }
 
-const numberedExamples = PROMPT_EXAMPLES.map(
-  (code, index): [number, string] => [index, code],
-);
-
-describe("PROMPT_EXAMPLES", () => {
-  it.each(numberedExamples)(
-    "example %i evaluates to a pattern with events",
-    async (_index: number, code: string) => {
-      await expectPatternEvents(code);
-    },
-  );
-
-  it("examples stay composable inside an XFADE transition", async () => {
-    const [from, to] = PROMPT_EXAMPLES;
-    if (!from || !to) throw new Error("need at least two prompt examples");
-    const pattern = await evaluatePattern(buildTransitionCode(from, to, 8, 4));
-    expect(pattern.queryArc(0, 4).length).toBeGreaterThan(0);
-  });
-
+describe("crossfades over real patterns", () => {
   it("keeps events flowing with finite gains through the crossfade window", async () => {
     // Regression: signal() hands its callback a Fraction, not a number. The
     // interpreted arrow used to throw on every query, which Strudel swallows
@@ -202,9 +182,9 @@ describe("expanded vocabulary", () => {
 
 describe("auditHapSounds on real evaluated patterns", () => {
   it("sees through stack/cpm/bank to every sound the engine would look up", async () => {
-    const [houseExample] = PROMPT_EXAMPLES;
-    if (!houseExample) throw new Error("need the house prompt example");
-    const pattern = await evaluatePattern(houseExample);
+    const [house] = SHOWCASE_PATTERNS;
+    if (!house) throw new Error("need the house showcase pattern");
+    const pattern = await evaluatePattern(house.code);
     const requested = auditHapSounds(pattern.queryArc(0, 4), () => false);
     expect(requested).toEqual(
       expect.arrayContaining([

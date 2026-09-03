@@ -43,7 +43,6 @@ describe('parseStored', () => {
       parseStored(
         JSON.stringify([
           { ...pattern, code: 'x'.repeat(30_001) },
-          { ...pattern, prompt: 'x'.repeat(4_001) },
           { ...pattern, updatedAt: 'yesterday' },
         ]),
       ),

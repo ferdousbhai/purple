@@ -1,8 +1,8 @@
 /**
- * Browser client for the purple-mcp bridge: connects out to the bridge's
- * 127.0.0.1 WebSocket (a page cannot listen), answers its requests from the
- * studio's handlers, and keeps retrying quietly while agent mode is on so
- * the tab and the bridge can start in either order.
+ * Browser client for the agent link: the tab connects out to the relay (a
+ * page cannot listen), answers the agent's requests from the studio's
+ * handlers, and keeps retrying quietly so the tab and the agent can arrive
+ * in either order.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -10,6 +10,7 @@ import {
   decodeAgentRequest,
   encodeAgentHello,
   encodeAgentResponse,
+  LINK_TAKEN_OVER_CODE,
   type AgentRequest,
   type AgentSessionSnapshot,
   type SetPatternOutcome,
@@ -26,9 +27,8 @@ export interface AgentLinkHandlers {
   stop(): void;
 }
 
-export type AgentLinkStatus = "off" | "connecting" | "connected";
-
-const RECONNECT_DELAY_MS = 2_500;
+const FIRST_RECONNECT_DELAY_MS = 2_500;
+const MAX_RECONNECT_DELAY_MS = 30_000;
 
 /**
  * Answer one bridge frame: the encoded response to send back, or null for
@@ -73,27 +73,43 @@ async function dispatchAgentRequest(
   }
 }
 
+/** True once the agent is linked to this tab. */
 export function useAgentLink(options: {
-  enabled: boolean;
   /** ws:// or wss:// endpoint: the hosted relay, or a local bridge. */
   url: string;
   handlers: AgentLinkHandlers;
-}): AgentLinkStatus {
+}): boolean {
   const [connected, setConnected] = useState(false);
   const handlersRef = useRef(options.handlers);
   handlersRef.current = options.handlers;
 
   useEffect(() => {
-    if (!options.enabled) return;
     let socket: WebSocket | null = null;
     let reconnectTimer: number | undefined;
+    let reconnectDelayMs = FIRST_RECONNECT_DELAY_MS;
     let disposed = false;
+    let dormant = false;
+
+    const retryLater = () => {
+      reconnectTimer = window.setTimeout(connect, reconnectDelayMs);
+      // Back off toward half a minute: nothing is listening for most visits,
+      // and a hosted relay that is down should not be dialled 1,400 times an
+      // hour by every open tab.
+      reconnectDelayMs = Math.min(reconnectDelayMs * 2, MAX_RECONNECT_DELAY_MS);
+    };
 
     const connect = () => {
+      if (document.hidden) {
+        // A background tab cannot be pairing with anyone; wake on focus.
+        dormant = true;
+        return;
+      }
+      dormant = false;
       const candidate = new WebSocket(options.url);
       socket = candidate;
       candidate.onopen = () => {
         candidate.send(encodeAgentHello());
+        reconnectDelayMs = FIRST_RECONNECT_DELAY_MS;
         setConnected(true);
       };
       candidate.onmessage = (event) => {
@@ -105,22 +121,38 @@ export function useAgentLink(options: {
           }
         });
       };
-      candidate.onclose = () => {
+      candidate.onclose = (event) => {
         if (disposed) return;
         setConnected(false);
-        reconnectTimer = window.setTimeout(connect, RECONNECT_DELAY_MS);
+        if (event.code === LINK_TAKEN_OVER_CODE) {
+          // Another tab of this browser claimed the link. Racing it back would
+          // evict that tab in turn, forever; leave this one dormant instead.
+          dormant = true;
+          return;
+        }
+        retryLater();
       };
     };
 
+    const wake = () => {
+      if (disposed || document.hidden || !dormant) return;
+      window.clearTimeout(reconnectTimer);
+      reconnectDelayMs = FIRST_RECONNECT_DELAY_MS;
+      connect();
+    };
+
     connect();
+    document.addEventListener("visibilitychange", wake);
+    window.addEventListener("online", wake);
     return () => {
       disposed = true;
       window.clearTimeout(reconnectTimer);
+      document.removeEventListener("visibilitychange", wake);
+      window.removeEventListener("online", wake);
       setConnected(false);
       socket?.close();
     };
-  }, [options.enabled, options.url]);
+  }, [options.url]);
 
-  if (!options.enabled) return "off";
-  return connected ? "connected" : "connecting";
+  return connected;
 }

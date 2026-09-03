@@ -39,7 +39,7 @@ describe('route shell delivery', () => {
       title: 'Public Strudel Patterns | Purple',
       heading: 'Public Strudel patterns to play, save, and remix',
       description:
-        'Browse, play, save, and remix public Strudel patterns made with Purple. No Gemini key is needed to listen.',
+        'Browse, play, save, and remix public Strudel patterns made with Purple. Listening needs nothing but a browser.',
       url: 'https://soundspurple.com/patterns',
     })
     expect(routeMetadata('/')).toBeNull()

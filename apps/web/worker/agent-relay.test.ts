@@ -44,6 +44,16 @@ describe('handleMcpMessage', () => {
     })
   })
 
+  it('tells the agent how a Purple set works on initialize', async () => {
+    const reply = await handleMcpMessage(rpc('initialize'), neverCalled)
+    // SAFETY: initialize answers with a result envelope carrying the
+    // instructions string; a missing one fails the assertions below.
+    const { instructions } = (reply as { result: { instructions: string } })
+      .result
+    expect(instructions).toContain('get_strudel_reference')
+    expect(instructions).toContain('Purple plays a set, not a pattern.')
+  })
+
   it('falls back to the latest supported version for unknown requests', async () => {
     const reply = await handleMcpMessage(
       rpc('initialize', { protocolVersion: '2099-01-01' }),

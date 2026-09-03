@@ -13,6 +13,7 @@ import {
   decodeAgentHello,
   decodeAgentResponse,
   encodeAgentRequest,
+  LINK_TAKEN_OVER_CODE,
   type AgentCall,
 } from "@purple/core/agent-link";
 import { NOT_CONNECTED_MESSAGE } from "@purple/core/agent-tools";
@@ -62,7 +63,7 @@ export async function createBrowserLink(
 
   server.on("connection", (socket) => {
     if (tab) {
-      tab.close(4000, "Another Purple tab connected.");
+      tab.close(LINK_TAKEN_OVER_CODE, "Another Purple tab connected.");
       dropPending("The Purple tab was replaced by a new connection.");
     }
     tab = socket;

@@ -3,42 +3,18 @@ import { useStrudel, type StrudelAudioOptions } from "./use-strudel";
 import type { PlaybackState, EvalResult } from "@purple/core/types";
 import {
   buildTransitionCode,
-  DEFAULT_MANUAL_TRANSITION_CYCLES,
+  DEFAULT_TRANSITION_CYCLES,
   getTransitionStartCycle,
 } from "@purple/core/transitions";
-import { MAX_PROGRESSION_RUN_DURATION_MS } from "@purple/core/progression-limits";
 
 type AudioActivationResult =
   | { ok: true }
   | { ok: false; kind: "audio"; error: string };
 
-export interface PlaybackAttemptOptions {
-  /** Generated patterns repair evaluation failures out of sight. Audio
-   * failures still surface because asking the model cannot fix them. */
-  reportEvaluationError?: boolean;
-}
-
-export type TransitionResult =
-  | { ok: true }
-  | { ok: false; kind: "audio"; error: string }
-  | { ok: false; kind: "cancelled" }
-  | {
-      ok: false;
-      kind: "evaluation";
-      error: string;
-      source: "candidate" | "transition";
-    };
-
 const DEFAULT_TRANSITION_WAIT_TIMEOUT_MS = 60_000;
 const MIN_TRANSITION_WAIT_TIMEOUT_MS = 30_000;
 const MAX_TRANSITION_WAIT_TIMEOUT_MS = 10 * 60_000;
 const TRANSITION_POLL_MS = 50;
-const DEFAULT_PROGRESSION_POLL_MS = 1_000;
-const PROGRESSION_COUNTDOWN_POLL_MS = 1_000;
-const MIN_PROGRESSION_POLL_MS = 100;
-const MAX_PROGRESSION_POLL_MS = 30_000;
-const MAX_PROGRESSION_WAIT_TIMEOUT_MS =
-  MAX_PROGRESSION_RUN_DURATION_MS + 5 * 60_000;
 
 function cycleDurationMs(
   remainingCycles: number,
@@ -56,10 +32,10 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
 }
 
-function cycleWaitTimeoutMs(
+/** Allow twice the scheduler's expected duration plus startup slack. */
+export function transitionWaitTimeoutMs(
   remainingCycles: number,
   cyclesPerSecond: number,
-  maximum: number,
 ): number {
   const expectedMs = cycleDurationMs(remainingCycles, cyclesPerSecond);
   return expectedMs === null
@@ -67,71 +43,12 @@ function cycleWaitTimeoutMs(
     : clamp(
         expectedMs * 2 + 10_000,
         MIN_TRANSITION_WAIT_TIMEOUT_MS,
-        maximum,
+        MAX_TRANSITION_WAIT_TIMEOUT_MS,
       );
-}
-
-/** Allow twice the scheduler's expected duration plus startup slack. */
-export function transitionWaitTimeoutMs(
-  remainingCycles: number,
-  cyclesPerSecond: number,
-): number {
-  return cycleWaitTimeoutMs(
-    remainingCycles,
-    cyclesPerSecond,
-    MAX_TRANSITION_WAIT_TIMEOUT_MS,
-  );
-}
-
-/** Sleep near the musical wake instead of polling throughout a long pattern. */
-export function progressionWaitPollMs(
-  remainingCycles: number,
-  cyclesPerSecond: number,
-): number {
-  const expectedMs = cycleDurationMs(remainingCycles, cyclesPerSecond);
-  if (expectedMs === null) {
-    return DEFAULT_PROGRESSION_POLL_MS;
-  }
-  return clamp(
-    expectedMs,
-    MIN_PROGRESSION_POLL_MS,
-    MAX_PROGRESSION_POLL_MS,
-  );
-}
-
-/** Give slow musical plans headroom while still detecting a stalled scheduler. */
-export function progressionWaitTimeoutMs(
-  remainingCycles: number,
-  cyclesPerSecond: number,
-): number {
-  return cycleWaitTimeoutMs(
-    remainingCycles,
-    cyclesPerSecond,
-    MAX_PROGRESSION_WAIT_TIMEOUT_MS,
-  );
-}
-
-function classifyTransitionResult(
-  result: EvalResult,
-  source: "candidate" | "transition",
-): TransitionResult {
-  if (result.ok || result.kind === "cancelled") return result;
-  if (result.kind === "audio") {
-    return { ok: false, kind: "audio", error: result.error };
-  }
-  return { ok: false, kind: "evaluation", error: result.error, source };
 }
 
 interface PlaybackQueue {
   current: Promise<void>;
-}
-
-interface CycleWaitOptions {
-  signal?: AbortSignal;
-  pollMs?: (remainingCycles: number, cyclesPerSecond: number) => number;
-  onProgress?: (remainingCycles: number, cyclesPerSecond: number) => void;
-  timeoutMs?: (remainingCycles: number, cyclesPerSecond: number) => number;
-  timeoutError?: string;
 }
 
 /** Serialize scheduler replacements so an overtaken evaluation cannot land late. */
@@ -144,6 +61,22 @@ async function waitForPlaybackTurn(queue: PlaybackQueue): Promise<() => void> {
   queue.current = turn;
   await previousTurn;
   return release;
+}
+
+/** The transport is doing something the STOP control should interrupt. */
+export function isTransportActive(state: PlaybackState): boolean {
+  return (
+    state === "playing" || state === "loading" || state === "transitioning"
+  );
+}
+
+/** The editor holds a change the listener has not applied to live playback. */
+export function hasUnappliedEditorChanges(
+  playbackState: PlaybackState,
+  editorCode: string,
+  activeCode: string,
+): boolean {
+  return playbackState === "playing" && editorCode !== activeCode;
 }
 
 export function usePlayback(options: StrudelAudioOptions = {}) {
@@ -159,7 +92,6 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
   const [state, dispatch] = useReducer(playbackReducer, INITIAL_PLAYBACK_STATE);
   const stateRef = useRef(state);
   const operationRef = useRef(0);
-  const stopTokenRef = useRef(0);
   const playQueueRef = useRef<Promise<void>>(Promise.resolve());
   const cancelCycleWaitRef = useRef<(() => void) | null>(null);
   stateRef.current = state;
@@ -190,14 +122,6 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
     }
   }, [activate]);
 
-  /** Start engine initialization from the Send gesture so generated-pattern
-   * validation can run before the visitor explicitly starts playback. */
-  const prepareValidation = useCallback(async (): Promise<EvalResult> => {
-    const result = await activateAudio();
-    if (!result.ok) dispatch({ type: "error", error: result.error });
-    return result;
-  }, [activateAudio]);
-
   const activateOperation = useCallback(
     async (operation: number): Promise<EvalResult> => {
       if (operation !== operationRef.current) {
@@ -223,23 +147,14 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
   );
 
   const commitCandidateResult = useCallback(
-    (
-      result: EvalResult,
-      code: string,
-      attemptOptions: PlaybackAttemptOptions,
-    ): void => {
+    (result: EvalResult, code: string): void => {
       if (result.ok) {
         dispatch({ type: "playing", code });
         return;
       }
       if (result.kind === "cancelled") return;
       hush();
-      dispatch(
-        attemptOptions.reportEvaluationError === false &&
-          result.kind === "evaluation"
-          ? { type: "stopped" }
-          : { type: "error", error: result.error },
-      );
+      dispatch({ type: "error", error: result.error });
     },
     [hush],
   );
@@ -248,31 +163,27 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
     async (
       code: string,
       operation: number,
-      attemptOptions: PlaybackAttemptOptions,
       evaluateOptions?: { hushBefore?: boolean },
     ): Promise<EvalResult> => {
       const result = await evaluate(code, evaluateOptions);
       if (discardOvertakenEvaluation(operation)) {
         return { ok: false, kind: "cancelled" };
       }
-      commitCandidateResult(result, code, attemptOptions);
+      commitCandidateResult(result, code);
       return result;
     },
     [commitCandidateResult, discardOvertakenEvaluation, evaluate],
   );
 
   const play = useCallback(
-    async (
-      code: string,
-      attemptOptions: PlaybackAttemptOptions = {},
-    ): Promise<EvalResult> => {
+    async (code: string): Promise<EvalResult> => {
       const { operation, release } = await beginOperation("loading");
 
       try {
         const activation = await activateOperation(operation);
         if (!activation.ok) return activation;
 
-        return evaluateCandidate(code, operation, attemptOptions);
+        return evaluateCandidate(code, operation);
       } finally {
         release();
       }
@@ -285,11 +196,7 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
   );
 
   const waitForCycle = useCallback(
-    (
-      targetCycle: number,
-      operation: number,
-      waitOptions: CycleWaitOptions = {},
-    ): Promise<EvalResult> =>
+    (targetCycle: number, operation: number): Promise<EvalResult> =>
       new Promise((resolve) => {
         let timeoutId: number | undefined;
         let deadlineId: number | undefined;
@@ -303,7 +210,6 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
           if (cancelCycleWaitRef.current === cancel) {
             cancelCycleWaitRef.current = null;
           }
-          waitOptions.signal?.removeEventListener("abort", cancel);
           resolve(result);
         };
 
@@ -314,16 +220,11 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
             return;
           }
 
-          let pollMs = TRANSITION_POLL_MS;
           try {
-            const position = getSchedulerPosition();
-            const remainingCycles = targetCycle - position.cycle;
-            waitOptions.onProgress?.(Math.max(0, remainingCycles), position.cps);
-            if (remainingCycles <= 0) {
+            if (targetCycle - getSchedulerPosition().cycle <= 0) {
               finish({ ok: true });
               return;
             }
-            pollMs = waitOptions.pollMs?.(remainingCycles, position.cps) ?? pollMs;
           } catch (timingError) {
             const message =
               timingError instanceof Error
@@ -333,23 +234,15 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
             return;
           }
 
-          timeoutId = window.setTimeout(poll, pollMs);
+          timeoutId = window.setTimeout(poll, TRANSITION_POLL_MS);
         };
 
         cancelCycleWaitRef.current = cancel;
-        if (waitOptions.signal?.aborted) {
-          cancel();
-          return;
-        }
-        waitOptions.signal?.addEventListener("abort", cancel, { once: true });
         let deadlineMs = DEFAULT_TRANSITION_WAIT_TIMEOUT_MS;
         try {
           const position = getSchedulerPosition();
           const remainingCycles = Math.max(0, targetCycle - position.cycle);
-          deadlineMs = (waitOptions.timeoutMs ?? transitionWaitTimeoutMs)(
-            remainingCycles,
-            position.cps,
-          );
+          deadlineMs = transitionWaitTimeoutMs(remainingCycles, position.cps);
         } catch {
           // The first poll below reports the scheduler error immediately.
         }
@@ -358,9 +251,7 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
             finish({
               ok: false,
               kind: "evaluation",
-              error:
-                waitOptions.timeoutError ??
-                "The crossfade did not finish before its timing deadline.",
+              error: "The crossfade did not finish before its timing deadline.",
             }),
           deadlineMs,
         );
@@ -369,66 +260,14 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
     [getSchedulerPosition],
   );
 
-  const waitForCycles = useCallback(
-    (
-      cycles: number,
-      signal?: AbortSignal,
-      onProgress?: (remainingCycles: number, cyclesPerSecond: number) => void,
-    ): Promise<EvalResult> => {
-      if (!Number.isInteger(cycles) || cycles <= 0) {
-        return Promise.resolve({
-          ok: false,
-          kind: "evaluation",
-          error: "The progression wait must use a positive whole number of cycles.",
-        });
-      }
-
-      let startCycle: number;
-      try {
-        startCycle = getSchedulerPosition().cycle;
-      } catch (timingError) {
-        return Promise.resolve({
-          ok: false,
-          kind: "evaluation",
-          error:
-            timingError instanceof Error
-              ? timingError.message
-              : String(timingError),
-        });
-      }
-
-      return waitForCycle(startCycle + cycles, operationRef.current, {
-        signal,
-        onProgress,
-        pollMs: (remainingCycles, cyclesPerSecond) => {
-          const musicalPollMs = progressionWaitPollMs(
-            remainingCycles,
-            cyclesPerSecond,
-          );
-          return onProgress
-            ? Math.min(musicalPollMs, PROGRESSION_COUNTDOWN_POLL_MS)
-            : musicalPollMs;
-        },
-        timeoutMs: progressionWaitTimeoutMs,
-        timeoutError:
-          "The progression wait did not finish before its timing deadline.",
-      });
-    },
-    [getSchedulerPosition, waitForCycle],
-  );
-
   const transition = useCallback(
     async (
       nextCode: string,
-      durationCycles = DEFAULT_MANUAL_TRANSITION_CYCLES,
-      attemptOptions: PlaybackAttemptOptions = {},
-    ): Promise<TransitionResult> => {
+      durationCycles = DEFAULT_TRANSITION_CYCLES,
+    ): Promise<EvalResult> => {
       const current = stateRef.current;
       if (current.playbackState !== "playing" || !current.activeCode) {
-        return classifyTransitionResult(
-          await play(nextCode, attemptOptions),
-          "candidate",
-        );
+        return play(nextCode);
       }
 
       const fromCode = current.activeCode;
@@ -436,7 +275,7 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
 
       try {
         const activation = await activateOperation(operation);
-        if (!activation.ok) return classifyTransitionResult(activation, "candidate");
+        if (!activation.ok) return activation;
 
         let startCycle: number;
         let transitionCode: string;
@@ -455,12 +294,8 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
             timingError instanceof Error
               ? timingError.message
               : String(timingError);
-          if (attemptOptions.reportEvaluationError === false) {
-            dispatch({ type: "transitionRestored", code: fromCode });
-          } else {
-            dispatch({ type: "transitionFailed", code: fromCode, error });
-          }
-          return { ok: false, kind: "evaluation", error, source: "transition" };
+          dispatch({ type: "transitionFailed", code: fromCode, error });
+          return { ok: false, kind: "evaluation", error };
         }
 
         const transitionResult = await evaluate(transitionCode, {
@@ -473,27 +308,14 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
           if (transitionResult.kind === "cancelled") return transitionResult;
           if (transitionResult.kind === "audio") {
             dispatch({ type: "error", error: transitionResult.error });
-            return {
-              ok: false,
-              kind: "audio",
-              error: transitionResult.error,
-            };
+            return transitionResult;
           }
-          dispatch(
-            attemptOptions.reportEvaluationError === false
-              ? { type: "transitionRestored", code: fromCode }
-              : {
-                  type: "transitionFailed",
-                  code: fromCode,
-                  error: transitionResult.error,
-                },
-          );
-          return {
-            ok: false,
-            kind: "evaluation",
+          dispatch({
+            type: "transitionFailed",
+            code: fromCode,
             error: transitionResult.error,
-            source: "transition",
-          };
+          });
+          return transitionResult;
         }
 
         const waitResult = await waitForCycle(
@@ -503,22 +325,12 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
         if (!waitResult.ok) {
           if (waitResult.kind !== "cancelled") {
             hush();
-            dispatch(
-              attemptOptions.reportEvaluationError === false
-                ? { type: "stopped" }
-                : { type: "error", error: waitResult.error },
-            );
+            dispatch({ type: "error", error: waitResult.error });
           }
-          return classifyTransitionResult(waitResult, "transition");
+          return waitResult;
         }
 
-        const finalResult = await evaluateCandidate(
-          nextCode,
-          operation,
-          attemptOptions,
-          { hushBefore: false },
-        );
-        return classifyTransitionResult(finalResult, "candidate");
+        return evaluateCandidate(nextCode, operation, { hushBefore: false });
       } finally {
         release();
       }
@@ -537,26 +349,19 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
   );
 
   const stop = useCallback(() => {
-    stopTokenRef.current++;
     ++operationRef.current;
     cancelCycleWait();
     hush();
     dispatch({ type: "stopped" });
   }, [cancelCycleWait, hush]);
 
-  const getStopToken = useCallback(() => stopTokenRef.current, []);
-
   useEffect(() => cancelCycleWait, [cancelCycleWait]);
 
   return {
     ...state,
-    prepareValidation,
     play,
     transition,
-    waitForCycles,
     stop,
-    /** Changes only for an explicit Stop action, not an internal eval failure. */
-    getStopToken,
     validatePattern: validate,
     getActiveSourceRanges,
     getOutputAnalyser,
@@ -573,7 +378,6 @@ type PlaybackAction =
   | { type: "loading" }
   | { type: "transitioning" }
   | { type: "playing"; code: string }
-  | { type: "transitionRestored"; code: string }
   | { type: "transitionFailed"; code: string; error: string }
   | { type: "error"; error: string }
   | { type: "stopped" };
@@ -609,8 +413,6 @@ function playbackReducer(
       };
     case "transitionFailed":
       return playingSnapshot(action.code, action.error);
-    case "transitionRestored":
-      return playingSnapshot(action.code);
     case "error":
       return {
         ...INITIAL_PLAYBACK_STATE,

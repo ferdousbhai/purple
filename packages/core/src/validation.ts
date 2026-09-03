@@ -112,21 +112,6 @@ export function closestSoundNames(
   return ranked.slice(0, limit).map((entry) => entry.candidate);
 }
 
-export function buildValidationRetryMessage(
-  code: string,
-  problems: readonly ValidationProblem[],
-): string {
-  const lines = problems.map(
-    (problem) => `- ${describeValidationProblem(problem)}`,
-  );
-  return `Repair this pattern to resolve these validation problems:
-${lines.join("\n")}
-Original pattern:
-\`\`\`strudel
-${code}
-\`\`\``;
-}
-
 export function describeValidationProblem(problem: ValidationProblem): string {
   switch (problem.kind) {
     case "evaluation":

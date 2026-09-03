@@ -17,12 +17,12 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { AGENT_LINK_DEFAULT_PORT } from "@purple/core/agent-link";
 import {
+  AGENT_INSTRUCTIONS,
   AGENT_TOOLS,
   formatAgentToolResult,
   planAgentToolCall,
 } from "@purple/core/agent-tools";
 import { parseJsonMembers } from "@purple/core/json";
-import { STRUDEL_REFERENCE } from "@purple/core/prompts";
 import { createBrowserLink, type BrowserLink } from "./browser-link.ts";
 
 const TOOLS: Tool[] = AGENT_TOOLS;
@@ -33,7 +33,7 @@ async function callTool(
   argsText: string,
 ): Promise<string> {
   const plan = planAgentToolCall(name, parseJsonMembers(argsText));
-  if (plan.kind === "reference") return STRUDEL_REFERENCE;
+  if (plan.kind === "text") return plan.text;
   const result = await link.call(plan.call, plan.timeoutMs);
   return formatAgentToolResult(plan.call, result);
 }
@@ -66,7 +66,7 @@ export async function main(): Promise<void> {
 
   const server = new Server(
     { name: "purple", version: "0.1.0" },
-    { capabilities: { tools: {} } },
+    { capabilities: { tools: {} }, instructions: AGENT_INSTRUCTIONS },
   );
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
   server.setRequestHandler(CallToolRequestSchema, async (request) => {

@@ -1,5 +1,5 @@
 /**
- * Every value `JSON.parse` can produce. Model responses are decoded into this
+ * Every value `JSON.parse` can produce. Untrusted JSON is decoded into this
  * shape once, at the I/O boundary, so the parsers branch on JSON values
  * instead of re-probing raw representations.
  */

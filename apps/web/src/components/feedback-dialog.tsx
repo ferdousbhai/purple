@@ -85,7 +85,7 @@ export function FeedbackDialog({ onClose }: { onClose: () => void }) {
       ) : (
         <form className="feedback-form" onSubmit={submit}>
           <p id="feedback-privacy" className="feedback-privacy">
-            Only this form is sent to Purple. Do not include your Gemini key, prompts,
+            Only this form is sent to Purple. Do not include your pairing link,
             pattern code, or other private information.
           </p>
 

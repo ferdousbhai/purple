@@ -13,10 +13,39 @@ import {
   jsonText,
   type JsonValue,
 } from "./json.ts";
+import { STRUDEL_REFERENCE } from "./strudel-reference.ts";
+import { DEFAULT_TRANSITION_CYCLES } from "./transitions.ts";
+
+/**
+ * What the MCP client is told about Purple before it calls anything. Purple
+ * has no model of its own, so the studio cannot ask for the next section on
+ * its own behalf: the agent holding these tools is the composer, and a set
+ * only keeps evolving because these instructions say to keep it evolving.
+ */
+export const AGENT_INSTRUCTIONS =
+  "Purple is a Strudel live-coding studio running in a browser tab the " +
+  "listener has open. You are its composer: the tab writes no music on its " +
+  "own.\n\n" +
+  "Read get_strudel_reference before your first pattern. Purple only accepts " +
+  "the notation and names listed there, and an unknown sound name is not an " +
+  "error - it plays silence.\n\n" +
+  "One section is two calls: set_pattern, then play.\n\n" +
+  "Purple plays a set, not a pattern. Once something is playing, keep " +
+  "composing: let the section run, then write the next one and play it to " +
+  "crossfade in. Each section keeps the identity, groove, and tempo of the " +
+  "one before it while the arrangement moves - a layer added or dropped, a " +
+  "filter opened, a new section of the form. At the reference's 30 cycles a " +
+  "minute, a four-minute section is about 120 cycles. Pace yourself so a " +
+  "section plays for minutes rather than seconds; if you can sleep between " +
+  "sections, sleep. Keep going until the listener stops you, and read " +
+  "get_session when you are unsure whether the tab is still playing what you " +
+  "last sent.\n\n" +
+  "Browsers only allow sound after a click, so the first play after a page " +
+  "load may need the listener to press PLAY in the tab once.";
 
 export const NOT_CONNECTED_MESSAGE =
-  "No Purple tab is connected. Ask the user to open Purple in their browser, " +
-  "choose LOCAL AGENT on the session panel, and keep the tab open.";
+  "No Purple tab is connected. Ask the listener to open their Purple tab " +
+  "and leave it open.";
 
 /** play waits out a full crossfade; the others answer within one evaluation. */
 export const AGENT_CALL_TIMEOUTS_MS = {
@@ -89,20 +118,19 @@ export const AGENT_TOOLS: AgentToolDefinition[] = [
     name: "play",
     description:
       "Play the pattern currently in the Purple editor. If music is already " +
-      "playing, Purple crossfades to the new pattern. Browsers only allow " +
-      "sound after a click, so the first play after a page load may ask the " +
-      "user to press PLAY in the tab once.",
+      `playing, Purple crossfades to it over ${DEFAULT_TRANSITION_CYCLES} ` +
+      "cycles and only returns once the crossfade has landed.",
     inputSchema: NO_INPUT,
   },
   {
     name: "stop",
-    description: "Stop Purple playback.",
+    description: "Stop Purple playback and end the set.",
     inputSchema: NO_INPUT,
   },
 ];
 
 export type AgentToolPlan =
-  | { kind: "reference" }
+  | { kind: "text"; text: string }
   | { kind: "call"; call: AgentCall; timeoutMs: number };
 
 /**
@@ -115,7 +143,7 @@ export function planAgentToolCall(
 ): AgentToolPlan {
   switch (name) {
     case "get_strudel_reference":
-      return { kind: "reference" };
+      return { kind: "text", text: STRUDEL_REFERENCE };
     case "get_session":
     case "play":
     case "stop":

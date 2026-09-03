@@ -17,6 +17,9 @@ import {
 } from "./json.ts";
 
 export const AGENT_LINK_PROTOCOL = 1;
+/** Close code the relay uses when a newer tab claims the same pairing code.
+ * The evicted tab must not race back, or two tabs evict each other forever. */
+export const LINK_TAKEN_OVER_CODE = 4000;
 export const AGENT_LINK_DEFAULT_PORT = 7723;
 
 /** A request minus its correlation id; what the bridge's callers supply. */

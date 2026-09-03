@@ -19,7 +19,6 @@ export interface SavedPattern {
   id: string
   title: string
   code: string
-  prompt?: string
   shareId?: string
   createdAt: number
   updatedAt: number
@@ -65,7 +64,6 @@ function parsePattern(value: JsonValue): SavedPattern | null {
   const id = fields?.get('id')
   const title = fields?.get('title')
   const code = fields?.get('code')
-  const prompt = fields?.get('prompt')
   const shareId = fields?.get('shareId')
   const createdAt = fields?.get('createdAt')
   const updatedAt = fields?.get('updatedAt')
@@ -77,8 +75,6 @@ function parsePattern(value: JsonValue): SavedPattern | null {
     !isJsonString(code) ||
     code.length === 0 ||
     code.length > MAX_PATTERN_LENGTH ||
-    (prompt !== undefined &&
-      (!isJsonString(prompt) || prompt.length > 4_000)) ||
     (shareId !== undefined && (!isJsonString(shareId) || !isShareId(shareId))) ||
     !isJsonNumber(createdAt) ||
     !isJsonNumber(updatedAt)
@@ -92,7 +88,6 @@ function parsePattern(value: JsonValue): SavedPattern | null {
     createdAt,
     updatedAt,
   }
-  if (isJsonString(prompt)) pattern.prompt = prompt
   if (isJsonString(shareId)) pattern.shareId = shareId
   return pattern
 }
@@ -103,7 +98,6 @@ function normalizePattern(pattern: SavedPattern): SavedPattern | null {
     pattern.title.length > 60 ||
     pattern.code.length === 0 ||
     pattern.code.length > MAX_PATTERN_LENGTH ||
-    (pattern.prompt !== undefined && pattern.prompt.length > 4_000) ||
     (pattern.shareId !== undefined && !isShareId(pattern.shareId)) ||
     !Number.isFinite(pattern.createdAt) ||
     !Number.isFinite(pattern.updatedAt)
@@ -117,7 +111,6 @@ function normalizePattern(pattern: SavedPattern): SavedPattern | null {
     createdAt: pattern.createdAt,
     updatedAt: pattern.updatedAt,
   }
-  if (pattern.prompt !== undefined) normalized.prompt = pattern.prompt
   if (pattern.shareId !== undefined) normalized.shareId = pattern.shareId
   return normalized
 }
@@ -216,9 +209,9 @@ export function usePatterns(): SavedPattern[] {
 }
 
 /**
- * The pattern the visitor was last working on. The chat transcript already
- * survives reloads; the editor restores alongside it instead of resetting to
- * a starter pattern. Validation and bounds live in the shared store.
+ * The pattern the visitor was last working on, so a reload restores the
+ * session instead of resetting to a starter. Validation and bounds live in
+ * the shared store.
  */
 const sessionPatternStore = createPatternStore()
 

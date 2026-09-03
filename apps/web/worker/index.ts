@@ -31,7 +31,7 @@ const STUDIO_PRELOAD_SELECTOR = 'link[data-purple-studio-preload]'
 const PATTERNS_PRELOAD_ATTRIBUTE = 'data-purple-patterns-preload'
 const PATTERNS_PRELOAD_SELECTOR = `template[${PATTERNS_PRELOAD_ATTRIBUTE}]`
 const PATTERNS_DESCRIPTION =
-  'Browse, play, save, and remix public Strudel patterns made with Purple. No Gemini key is needed to listen.'
+  'Browse, play, save, and remix public Strudel patterns made with Purple. Listening needs nothing but a browser.'
 
 const CATEGORY_LABELS = {
   bug: 'Something is broken',

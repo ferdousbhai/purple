@@ -13,11 +13,11 @@ pnpm run dev
 
 Run `pnpm run check` before opening a pull request. It covers linting, unit
 tests, TypeScript, and the production browser build. Run `pnpm run test:browser`
-when changing playback, persistence, chat, or other user flows.
+when changing playback, persistence, the agent link, or other user flows.
 
 ## Layout
 
-- `apps/web` is the browser application and browser-to-Gemini transport.
+- `apps/web` is the browser application and the hosted MCP relay.
 - `packages/core` holds dependency-free product logic.
 - `packages/ui` holds shared React, CodeMirror, and Strudel modules.
 - `apps/web/vite` holds web build checks and the same-origin AudioWorklet plugin.
