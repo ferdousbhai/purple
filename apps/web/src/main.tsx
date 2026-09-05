@@ -1,10 +1,12 @@
 import { Component, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { installChunkReloadRecovery } from '#/lib/chunk-reload'
+import { purgeLegacyLocalStorage } from '#/lib/legacy-storage'
 import { PurpleApp } from '#/purple-app'
 import './styles.css'
 
 installChunkReloadRecovery()
+purgeLegacyLocalStorage()
 
 interface CrashScreenState {
   error: Error | null
