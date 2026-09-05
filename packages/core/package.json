@@ -9,6 +9,7 @@
     "./error": "./src/error.ts",
     "./json": "./src/json.ts",
     "./pattern": "./src/pattern.ts",
+    "./seed-patterns": "./src/seed-patterns.ts",
     "./shared-pattern": "./src/shared-pattern.ts",
     "./showcase-patterns": "./src/showcase-patterns.ts",
     "./strudel-reference": "./src/strudel-reference.ts",

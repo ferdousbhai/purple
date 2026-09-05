@@ -5,6 +5,7 @@
  * with silence, and a non-expression one would break every crossfade.
  */
 import { beforeAll, describe, expect, it } from "vitest";
+import { SEED_PATTERNS } from "@purple/core/seed-patterns";
 import { SHOWCASE_PATTERNS } from "@purple/core/showcase-patterns";
 import { buildTransitionCode } from "@purple/core/transitions";
 import { auditHapSounds, type AuditableHap } from "@purple/core/validation";
@@ -120,6 +121,24 @@ describe("SHOWCASE_PATTERNS", () => {
       await expectPatternEvents(buildTransitionCode(code, 's("bd*4")', 8, 4));
     },
   );
+});
+
+describe("SEED_PATTERNS", () => {
+  it.each(SEED_PATTERNS)("$title evaluates to a pattern with events", async ({ code }) => {
+    await expectPatternEvents(code);
+  });
+
+  it.each(SEED_PATTERNS)(
+    "$title stays composable when a visitor crossfades from it",
+    async ({ code }) => {
+      await expectPatternEvents(buildTransitionCode(code, 's("bd*4")', 8, 4));
+    },
+  );
+
+  it("uses distinct gallery-ready titles", () => {
+    expect(new Set(SEED_PATTERNS.map(({ title }) => title)).size).toBe(SEED_PATTERNS.length);
+    for (const { title } of SEED_PATTERNS) expect(title.length).toBeLessThanOrEqual(60);
+  });
 });
 
 describe("expanded vocabulary", () => {
