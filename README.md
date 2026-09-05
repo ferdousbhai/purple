@@ -6,9 +6,10 @@ and save every one.
 
 Use the hosted app at [soundspurple.com](https://soundspurple.com), or run it
 locally. Purple has no accounts and no server-side inference. Your saved
-patterns and the tab's pairing code stay in your browser. Patterns you
-explicitly share publish their title and Strudel code through Cloudflare D1 so
-anyone can play them. If you deliberately submit the feedback form, its
+patterns and the tab's pairing code stay in your browser. Patterns you share,
+from the SHARE button or through your agent's `share_pattern` tool, publish
+their title, Strudel code, and optional handle through Cloudflare D1 so anyone
+can play them. If you deliberately submit the feedback form, its
 category, message, and optional reply address are sent through a
 Turnstile-protected Cloudflare Worker to the maintainer's inbox.
 
@@ -79,11 +80,13 @@ pnpm run deploy        # Build, migrate remote D1, and deploy with Wrangler
 - `apps/web/vite` contains build checks and the plugin that serves Strudel's
   AudioWorklet from the application's own origin.
 
-Cloudflare Workers serves the static application assets, the `/mcp/<code>` and
-`/link/<code>` pairing endpoints, a stateless `/api/feedback` route, and the
-public pattern API. Feedback validates Cloudflare Turnstile and uses a
-fixed-destination email binding without storing submissions. Explicitly shared
-pattern titles and code, plus anonymous votes, are stored in D1. Cloudflare
+Cloudflare Workers serves the static application assets, the `/mcp` MCP
+endpoint with its OAuth surface (`/authorize`, `/oauth/*`, `/.well-known/*`),
+the `/mcp/<code>` and `/link/<code>` pairing endpoints, `/llms.txt`, a
+stateless `/api/feedback` route, and the public pattern API. Feedback validates
+Cloudflare Turnstile and uses a fixed-destination email binding without storing
+submissions. Shared pattern titles, code, and handles, plus anonymous votes,
+are stored in D1; OAuth tokens are signed with `TOKEN_SECRET` and never stored. Cloudflare
 Workers Builds deploys the site on pushes to `master` after running
 `pnpm run check`.
 
