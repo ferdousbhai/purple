@@ -3,6 +3,7 @@ import type { JsonValue } from '@purple/core/json'
 import {
   agentLinkCodeFromPath,
   handleMcpMessage,
+  mcpEndpointHelp,
   type AgentCaller,
 } from './agent-relay'
 
@@ -24,6 +25,26 @@ describe('agentLinkCodeFromPath', () => {
     expect(agentLinkCodeFromPath('/mcp/short', '/mcp/')).toBeNull()
     expect(agentLinkCodeFromPath('/mcp/../etc/passwd', '/mcp/')).toBeNull()
     expect(agentLinkCodeFromPath('/mcp/', '/mcp/')).toBeNull()
+  })
+})
+
+describe('mcpEndpointHelp', () => {
+  it('tells a guessing agent where the pairing code comes from', async () => {
+    const response = mcpEndpointHelp(new Request('https://soundspurple.com/mcp'), null)
+    expect(response.status).toBe(404)
+    expect(response.headers.get('Content-Type')).toContain('text/plain')
+    const text = await response.text()
+    expect(text).toContain('press AGENT')
+    expect(text).toContain('claude mcp add --transport http purple https://soundspurple.com/mcp/<pairing-code>')
+    expect(text).toContain('https://soundspurple.com/llms.txt')
+  })
+
+  it('answers a GET on a real endpoint with 405 and the same help', async () => {
+    const request = new Request('https://soundspurple.com/mcp/0f7c2d91aa34bb56cc78')
+    const response = mcpEndpointHelp(request, '0f7c2d91aa34bb56cc78')
+    expect(response.status).toBe(405)
+    expect(response.headers.get('Allow')).toBe('POST')
+    expect(await response.text()).toContain('press AGENT')
   })
 })
 
@@ -51,7 +72,7 @@ describe('handleMcpMessage', () => {
     const { instructions } = (reply as { result: { instructions: string } })
       .result
     expect(instructions).toContain('get_strudel_reference')
-    expect(instructions).toContain('Purple plays a set, not a pattern.')
+    expect(instructions).toContain('Play a set, not a loop')
   })
 
   it('falls back to the latest supported version for unknown requests', async () => {
@@ -117,7 +138,7 @@ describe('handleMcpMessage', () => {
     expect(reply).toMatchObject({
       result: {
         isError: false,
-        content: [{ type: 'text', text: expect.stringContaining('play to hear') }],
+        content: [{ type: 'text', text: expect.stringContaining('Call play') }],
       },
     })
   })

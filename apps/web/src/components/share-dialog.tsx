@@ -1,4 +1,5 @@
 import { MAX_SHARED_TITLE_LENGTH } from '@purple/core/shared-pattern'
+import { useClipboardCopy } from '@purple/ui/use-clipboard-copy'
 import { useCallback, useState, type FormEvent } from 'react'
 import {
   createSharedPattern,
@@ -22,7 +23,7 @@ export function ShareDialog(props: {
   const [resetKey, setResetKey] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
+  const clipboard = useClipboardCopy()
 
   const acceptToken = useCallback((token: string) => {
     setTurnstileToken(token)
@@ -56,10 +57,7 @@ export function ShareDialog(props: {
 
   const copyLink = async () => {
     if (!sharedId) return
-    try {
-      await navigator.clipboard.writeText(sharedPatternUrl(sharedId))
-      setCopied(true)
-    } catch {
+    if (!(await clipboard.copy(sharedPatternUrl(sharedId)))) {
       setError('Copy was blocked. Select the link and copy it manually.')
     }
   }
@@ -83,7 +81,7 @@ export function ShareDialog(props: {
           <div className="share-link-row">
             <input aria-label="Shared pattern link" readOnly value={url} onFocus={(event) => event.currentTarget.select()} />
             <button type="button" className="primary" onClick={copyLink}>
-              {copied ? 'COPIED ✓' : 'COPY LINK'}
+              {clipboard.copied ? 'COPIED' : 'COPY LINK'}
             </button>
           </div>
           {error ? <p className="error" role="alert">{error}</p> : null}

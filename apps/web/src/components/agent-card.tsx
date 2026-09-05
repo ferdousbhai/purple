@@ -2,6 +2,8 @@
  * The pairing panel: Purple's first-run surface. It hands the visitor the one
  * address their agent needs, in whatever form their client expects.
  */
+import { AGENT_CLIENTS } from '@purple/core/agent-tools'
+import { useClipboardCopy } from '@purple/ui/use-clipboard-copy'
 import { useState } from 'react'
 import { agentMcpUrl } from '#/lib/agent-link-storage'
 
@@ -15,44 +17,19 @@ const PURPLE_WORDMARK = [
   '█     ██  █  █ █    ████ ████',
 ].join('\n')
 
-/** Every client speaks the same Streamable HTTP MCP endpoint; only the way
- * they are told about it differs, so the raw URL is always an option. */
-const AGENT_CLIENTS = [
-  {
-    id: 'claude',
-    label: 'CLAUDE CODE',
-    command: (url: string) => `claude mcp add --transport http purple ${url}`,
-  },
-  {
-    id: 'codex',
-    label: 'CODEX',
-    command: (url: string) => `codex mcp add purple --url ${url}`,
-  },
-  {
-    id: 'other',
-    label: 'OTHER',
-    command: (url: string) => url,
-  },
-] as const
-
 type AgentClientId = (typeof AGENT_CLIENTS)[number]['id']
 
-export function AgentCard(props: { code: string; linked: boolean }) {
+export function AgentCard(props: {
+  code: string
+  linked: boolean
+  onClose: () => void
+}) {
   const [clientId, setClientId] = useState<AgentClientId>('claude')
-  const [copied, setCopied] = useState(false)
+  const clipboard = useClipboardCopy()
   const url = agentMcpUrl(props.code)
   const client =
     AGENT_CLIENTS.find(({ id }) => id === clientId) ?? AGENT_CLIENTS[0]
   const command = client.command(url)
-  const copyCommand = async () => {
-    try {
-      await navigator.clipboard.writeText(command)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2_000)
-    } catch {
-      // Clipboard blocked; the command stays selectable text.
-    }
-  }
   return (
     <aside className="session-pane agent-card">
       <pre className="agent-card-ascii" aria-hidden="true">{PURPLE_WORDMARK}</pre>
@@ -70,7 +47,7 @@ export function AgentCard(props: { code: string; linked: boolean }) {
             aria-pressed={option.id === clientId}
             onClick={() => {
               setClientId(option.id)
-              setCopied(false)
+              clipboard.reset()
             }}
           >
             {option.label}
@@ -79,8 +56,16 @@ export function AgentCard(props: { code: string; linked: boolean }) {
       </div>
       <pre className="agent-command">{command}</pre>
       <div className="agent-card-actions">
-        <button type="button" className="primary" onClick={copyCommand}>
-          <span aria-live="polite">{copied ? 'COPIED' : 'COPY'}</span>
+        <button
+          type="button"
+          className="primary"
+          // A blocked clipboard is not an error here: the command stays selectable.
+          onClick={() => void clipboard.copy(command)}
+        >
+          <span aria-live="polite">{clipboard.copied ? 'COPIED' : 'COPY'}</span>
+        </button>
+        <button type="button" className="chrome" onClick={props.onClose}>
+          CLOSE
         </button>
       </div>
       <p>

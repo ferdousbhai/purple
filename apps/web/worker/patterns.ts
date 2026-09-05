@@ -311,7 +311,7 @@ async function voteOnPattern(
   }, 200)
 }
 
-export function voteRateLimitKey(request: Request, voterId: string): string {
+function voteRateLimitKey(request: Request, voterId: string): string {
   const connectingIp = request.headers.get('CF-Connecting-IP')?.trim()
   return connectingIp ? `ip:${connectingIp}` : `voter:${voterId}`
 }

@@ -3,7 +3,9 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { PatternsPage } from './patterns-page'
+import { PatternsPage as GalleryPage, type PatternsPageProps } from './patterns-page'
+import { usePlayback } from '@purple/ui/use-playback'
+import { WEB_AUDIO_OPTIONS } from '#/lib/playback'
 
 const gallery = vi.hoisted(() => ({
   activeCode: '',
@@ -127,6 +129,11 @@ function savedAcidPattern() {
   }
 }
 
+/** The route owns playback in the app; here the mocked hook stands in. */
+function PatternsPage(props: Omit<PatternsPageProps, 'playback'>) {
+  return <GalleryPage {...props} playback={usePlayback(WEB_AUDIO_OPTIONS)} />
+}
+
 describe('public pattern gallery', () => {
   it('plays a card and makes Like update the library and public vote', async () => {
     gallery.activeCode = 's("hh*4")'
@@ -140,7 +147,7 @@ describe('public pattern gallery', () => {
       name: 'PUBLIC PATTERNS',
     })).toBeVisible()
     expect(screen.getByText(
-      'No key needed to listen. Vote for keepers, open any pattern in the studio.',
+      'Listen in any browser. Vote for keepers, open any pattern in the studio.',
     )).toBeVisible()
     expect(screen.queryByRole('button', { name: 'STOP AUDIO' })).toBeNull()
     expect(screen.getByRole('link', { name: 'BACK TO STUDIO' })).toHaveClass(

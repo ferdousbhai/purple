@@ -26,7 +26,7 @@ export function spectrumLevels(bins: Uint8Array, bars: number): number[] {
 
 const MIN_SCALE = 0.15;
 
-export interface SpectrumBarsProps {
+interface SpectrumBarsProps {
   /** Polled once on mount; return null to keep the host's CSS fallback. */
   getAnalyser: () => AnalyserNode | null;
   bars?: number;

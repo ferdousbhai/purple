@@ -18,7 +18,7 @@ import {
 import { errorMessage } from "@purple/core/error";
 import type { JsonValue } from "@purple/core/json";
 
-export type AgentPlayOutcome = { ok: true } | { ok: false; error: string };
+type AgentPlayOutcome = { ok: true } | { ok: false; error: string };
 
 export interface AgentLinkHandlers {
   getSession(): AgentSessionSnapshot;

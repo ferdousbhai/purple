@@ -28,7 +28,7 @@ function interpretPattern(
   return safeStrudel.isQueryablePattern<StrudelPattern>(pattern) ? pattern : null;
 }
 
-export interface SchedulerPosition {
+interface SchedulerPosition {
   cycle: number;
   cps: number;
 }

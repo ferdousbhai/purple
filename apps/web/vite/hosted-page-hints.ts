@@ -15,12 +15,12 @@ export interface HostedChunkInput {
   modules: Readonly<Record<string, { renderedLength: number }>>
 }
 
-export interface HostedStyleInput {
+interface HostedStyleInput {
   fileName: string
   source: string | Uint8Array
 }
 
-export interface InlinedStylesheet {
+interface InlinedStylesheet {
   fileName: string
   html: string
 }

@@ -14,11 +14,11 @@ import { fetchSharedPattern } from '#/lib/public-patterns'
 
 const PurpleStudio = lazy(async () => {
   const studio = await import('#/components/purple-studio')
-  return { default: studio.PersistentPurpleStudio }
+  return { default: studio.PurpleStudio }
 })
 const PatternsPage = lazy(async () => {
   const patterns = await import('#/components/patterns-page')
-  return { default: patterns.PersistentPatternsPage }
+  return { default: patterns.PatternsPage }
 })
 
 function StudioRoute(props: {

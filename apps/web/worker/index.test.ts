@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { handleFeedbackRequest } from './feedback'
 import {
   handleAssetRequest,
-  handleFeedbackRequest,
   redirectToCanonicalOrigin,
   routeMetadata,
 } from './index'

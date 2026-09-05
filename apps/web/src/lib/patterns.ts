@@ -15,7 +15,7 @@ import {
 } from '@purple/core/json'
 import { createPatternStore } from '@purple/ui/session-store'
 
-export interface SavedPattern {
+interface SavedPattern {
   id: string
   title: string
   code: string

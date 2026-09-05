@@ -6,7 +6,7 @@
  * UI layer supplies the registry lookups, keeping this module dependency-free.
  */
 
-export interface UnknownSound {
+interface UnknownSound {
   name: string;
   suggestions: readonly string[];
 }

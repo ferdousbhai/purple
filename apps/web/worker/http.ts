@@ -39,6 +39,11 @@ export function hasContentType(request: Request, expected: string): boolean {
   return mediaType?.trim().toLowerCase() === expected
 }
 
+const UNCACHED_HEADERS = {
+  'Cache-Control': 'no-store',
+  'X-Content-Type-Options': 'nosniff',
+}
+
 export function jsonResponse(
   body: JsonValue,
   status: number,
@@ -47,9 +52,23 @@ export function jsonResponse(
   return Response.json(body, {
     status,
     headers: {
-      'Cache-Control': 'no-store',
+      ...UNCACHED_HEADERS,
       'Content-Type': 'application/json; charset=utf-8',
-      'X-Content-Type-Options': 'nosniff',
+      ...extraHeaders,
+    },
+  })
+}
+
+export function textResponse(
+  body: string,
+  status: number,
+  extraHeaders: Record<string, string> = {},
+): Response {
+  return new Response(body, {
+    status,
+    headers: {
+      ...UNCACHED_HEADERS,
+      'Content-Type': 'text/plain; charset=utf-8',
       ...extraHeaders,
     },
   })

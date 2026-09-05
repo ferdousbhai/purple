@@ -26,13 +26,9 @@ import {
 import { PurpleMark } from '@purple/ui/purple-mark'
 import { useAgentLink } from '@purple/ui/use-agent-link'
 import { SpectrumBars } from '@purple/ui/spectrum-bars'
-import {
-  hasUnappliedEditorChanges,
-  isTransportActive,
-  usePlayback,
-} from '@purple/ui/use-playback'
+import { hasUnappliedEditorChanges, isTransportActive } from '@purple/ui/use-playback'
 import type { PatternEditorProps } from '@purple/ui/pattern-editor'
-import { WEB_AUDIO_OPTIONS, type WebPlayback } from '#/lib/playback'
+import type { WebPlayback } from '#/lib/playback'
 
 const PatternEditor = lazy(async () => {
   const editor = await import('@purple/ui/pattern-editor')
@@ -76,31 +72,20 @@ function DeferredPatternEditor(props: PatternEditorProps) {
   )
 }
 
-type Playback = WebPlayback
-
-interface PurpleStudioProps {
+export interface PurpleStudioProps {
   focusOnMount?: boolean
   navigate?: NavigateInApp
+  /** Owned by the route so audio survives navigation between pages. */
+  playback: WebPlayback
   sharedPattern?: SharedPattern
 }
 
-export function PurpleStudio(props: PurpleStudioProps) {
-  const playback = usePlayback(WEB_AUDIO_OPTIONS)
-  return <PurpleStudioView {...props} playback={playback} />
-}
-
-export function PersistentPurpleStudio(
-  props: PurpleStudioProps & { playback: WebPlayback },
-) {
-  return <PurpleStudioView {...props} />
-}
-
-function PurpleStudioView({
+export function PurpleStudio({
   focusOnMount,
   navigate,
   playback,
   sharedPattern,
-}: PurpleStudioProps & { playback: WebPlayback }) {
+}: PurpleStudioProps) {
   const [agentLink] = useState<AgentLinkSettings>(loadAgentLinkSettings)
   // The pairing panel is the whole session pane. It steps aside once an agent
   // is actually driving the tab, and the topbar badge brings it back.
@@ -539,7 +524,11 @@ function PurpleStudioView({
 
         {agentPanelOpen ? (
           <Suspense fallback={<aside className="session-pane" aria-busy="true" />}>
-            <AgentCard code={agentLink.code} linked={agentLinked} />
+            <AgentCard
+              code={agentLink.code}
+              linked={agentLinked}
+              onClose={() => setAgentPanelOpen(false)}
+            />
           </Suspense>
         ) : null}
       </div>
@@ -598,6 +587,6 @@ function randomStarter(): ShowcasePattern {
   return SHOWCASE_PATTERNS[random % SHOWCASE_PATTERNS.length] ?? SHOWCASE_PATTERNS[0]
 }
 
-function transportLabel(state: Playback['playbackState']): string {
+function transportLabel(state: WebPlayback['playbackState']): string {
   return isTransportActive(state) ? '■ STOP' : '▶ PLAY'
 }

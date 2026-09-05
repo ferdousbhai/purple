@@ -243,7 +243,7 @@ const SAFE_MEMBERS = new Set([
   "within",
 ]);
 
-export type SafeStrudelValue =
+type SafeStrudelValue =
   | object
   | string
   | number
@@ -252,7 +252,7 @@ export type SafeStrudelValue =
   | undefined;
 export type SafeStrudelScope = Readonly<Record<string, SafeStrudelValue>>;
 
-export interface QueryablePattern<Hap> {
+interface QueryablePattern<Hap> {
   queryArc(begin: number, end: number): Hap[];
 }
 

@@ -10,7 +10,7 @@ export interface BundleChunkInput {
   modules: Readonly<Record<string, { renderedLength: number }>>
 }
 
-export interface InitialBundleReport {
+interface InitialBundleReport {
   gzipBytes: number
   initialFiles: readonly string[]
   largestModules: readonly { id: string; renderedBytes: number }[]

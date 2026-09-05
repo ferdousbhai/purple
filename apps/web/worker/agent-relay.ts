@@ -20,6 +20,7 @@ import {
   AGENT_TOOLS,
   formatAgentToolResult,
   NOT_CONNECTED_MESSAGE,
+  pairingGuide,
   planAgentToolCall,
 } from '@purple/core/agent-tools'
 import { errorMessage } from '@purple/core/error'
@@ -31,7 +32,7 @@ import {
   parseJsonMembers,
   type JsonValue,
 } from '@purple/core/json'
-import { hasContentType, jsonResponse, readBoundedBody } from './http'
+import { hasContentType, jsonResponse, readBoundedBody, textResponse } from './http'
 
 /** Codes are minted by the studio (20 hex chars); accept a little latitude. */
 const CODE_PATTERN = /^[A-Za-z0-9_-]{12,64}$/
@@ -43,7 +44,7 @@ const MAX_RELAY_TIMEOUT_MS = 180_000
 /** Workers WebSocket readyState for an open socket. */
 const SOCKET_OPEN = 1
 
-export type AgentCallOutcome =
+type AgentCallOutcome =
   | { ok: true; result: JsonValue }
   | { ok: false; error: string }
 
@@ -76,16 +77,30 @@ export async function handleAgentLinkUpgrade(
   return stub.fetch(new Request('https://agent-link/connect', request))
 }
 
+/**
+ * What an agent that guessed the URL, or a person reading its error, sees:
+ * where the endpoint is and that the code only comes from an open tab.
+ * 404 without a usable code; 405 for anything but POST with one, since the
+ * relay opens no server-initiated stream and keeps no session to delete.
+ */
+export function mcpEndpointHelp(request: Request, code: string | null): Response {
+  const origin = new URL(request.url).origin
+  const guessing = code === null
+  return textResponse(
+    `Purple MCP endpoint.\n\n${pairingGuide(origin)}\n\nMore: ${origin}/llms.txt\n`,
+    guessing ? 404 : 405,
+    guessing ? {} : { Allow: 'POST' },
+  )
+}
+
 /** The agent side: one Streamable HTTP MCP endpoint per pairing code. */
 export async function handleMcpRequest(
   request: Request,
   env: RelayEnv,
   code: string | null,
 ): Promise<Response> {
-  if (code === null) return jsonResponse({ error: 'Invalid link code.' }, 404)
-  if (request.method !== 'POST') {
-    // No server-initiated stream and no session state to delete.
-    return jsonResponse({ error: 'Method not allowed.' }, 405, { Allow: 'POST' })
+  if (code === null || request.method !== 'POST') {
+    return mcpEndpointHelp(request, code)
   }
   if (!hasContentType(request, 'application/json')) {
     return jsonResponse({ error: 'Unsupported request format.' }, 415)

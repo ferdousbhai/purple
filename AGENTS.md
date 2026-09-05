@@ -8,7 +8,7 @@ Local-first browser studio where the visitor's own MCP agent writes and plays St
 - `apps/web/src/lib/agent-link-storage.ts`: the tab's pairing code and relay endpoints
 - `apps/web/src/lib/media-channel.ts` and `apps/web/src/lib/playback.ts`: browser audio ownership and activation
 - `apps/web/src/lib/patterns.ts` and `apps/web/src/lib/public-patterns.ts`: private library and explicit public sharing
-- `apps/web/worker/index.ts`, `apps/web/worker/http.ts`, and `apps/web/worker/patterns.ts`: Worker routing, feedback, public patterns, and votes
+- `apps/web/worker/index.ts`, `apps/web/worker/http.ts`, `apps/web/worker/feedback.ts`, and `apps/web/worker/patterns.ts`: Worker routing, feedback, public patterns, and votes
 - `apps/web/vite/superdough-worklet.ts`: same-origin AudioWorklet emission
 - `packages/core/src/`: dependency-free Strudel reference, showcase patterns, parsing, validation, and transitions
 - `packages/core/src/agent-link.ts` and `packages/core/src/agent-tools.ts`: agent wire protocol, the shared MCP tool surface, and the instructions that teach a continuous set

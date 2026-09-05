@@ -6,7 +6,9 @@ import { page } from 'vitest/browser'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import '#/styles.css'
-import { PurpleStudio } from './purple-studio'
+import { PurpleStudio as StudioPage, type PurpleStudioProps } from './purple-studio'
+import { usePlayback } from '@purple/ui/use-playback'
+import { WEB_AUDIO_OPTIONS } from '#/lib/playback'
 import { SHOWCASE_PATTERNS } from '@purple/core/showcase-patterns'
 import type { AgentLinkHandlers } from '@purple/ui/use-agent-link'
 import type { EvalResult, PlaybackState } from '@purple/core/types'
@@ -285,6 +287,11 @@ function publicPattern(viewerVote: -1 | 0 | 1 = 0) {
   }
 }
 
+/** The route owns playback in the app; here the mocked hook stands in. */
+function PurpleStudio(props: Omit<PurpleStudioProps, 'playback'>) {
+  return <StudioPage {...props} playback={usePlayback(WEB_AUDIO_OPTIONS)} />
+}
+
 describe('Purple studio browser flow', () => {
   it('opens a fresh session on a titled showcase without autoplaying it', async () => {
     render(<PurpleStudio />)
@@ -418,6 +425,17 @@ describe('agent pairing panel', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'OTHER' }))
     expect(command()).toBe(endpoint)
+  })
+
+  it('closes from inside the panel once the command is copied', async () => {
+    const { container } = render(<PurpleStudio />)
+    await screen.findByText('WAITING FOR YOUR AGENT')
+
+    await userEvent.click(screen.getByRole('button', { name: 'CLOSE' }))
+
+    expect(container.querySelector('.session-pane')).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: /AGENT/ }))
+    expect(await screen.findByText('WAITING FOR YOUR AGENT')).toBeVisible()
   })
 
   it('hands the room back to the editor once an agent answers', async () => {

@@ -23,32 +23,79 @@ import { DEFAULT_TRANSITION_CYCLES } from "./transitions.ts";
  * only keeps evolving because these instructions say to keep it evolving.
  */
 export const AGENT_INSTRUCTIONS =
-  "Purple is a Strudel live-coding studio running in a browser tab the " +
-  "listener has open. You are its composer: the tab writes no music on its " +
-  "own.\n\n" +
-  "Read get_strudel_reference before your first pattern. Purple only accepts " +
-  "the notation and names listed there, and an unknown sound name is not an " +
-  "error - it plays silence.\n\n" +
-  "One section is two calls: set_pattern, then play.\n\n" +
-  "Purple plays a set, not a pattern. Once something is playing, keep " +
-  "composing: let the section run, then write the next one and play it to " +
-  "crossfade in. Each section keeps the identity, groove, and tempo of the " +
-  "one before it while the arrangement moves - a layer added or dropped, a " +
-  "filter opened, a new section of the form. At the reference's 30 cycles a " +
-  "minute, a four-minute section is about 120 cycles. Pace yourself so a " +
-  "section plays for minutes rather than seconds; if you can sleep between " +
-  "sections, sleep. Keep going until the listener stops you, and read " +
-  "get_session when you are unsure whether the tab is still playing what you " +
-  "last sent.\n\n" +
-  "Browsers only allow sound after a click, so the first play after a page " +
-  "load may need the listener to press PLAY in the tab once.";
+  "Purple is a Strudel studio in the listener's browser tab. You compose; " +
+  "the tab only plays.\n\n" +
+  "Read get_strudel_reference first: only the names listed there work, and " +
+  "an unknown sound plays silence with no error.\n\n" +
+  "A section is set_pattern, then play. Play a set, not a loop: once music " +
+  "is playing, keep writing the next section and play it to crossfade in, " +
+  "keeping one tempo (a crossfade plays both sections at once) and the " +
+  "groove while the arrangement moves. Let each " +
+  "section run for minutes (at 30 cpm, four minutes is about 120 cycles), " +
+  "sleep between sections if you can, and continue until the listener stops " +
+  "you. get_session shows what the tab is playing.\n\n" +
+  "If the first play is blocked, the listener must press PLAY in the tab once.";
+
+/** How each client registers the endpoint; the raw URL always works too. */
+export const AGENT_CLIENTS = [
+  {
+    id: "claude",
+    label: "CLAUDE CODE",
+    command: (url: string) => `claude mcp add --transport http purple ${url}`,
+  },
+  {
+    id: "codex",
+    label: "CODEX",
+    command: (url: string) => `codex mcp add purple --url ${url}`,
+  },
+  { id: "other", label: "OTHER", command: (url: string) => url },
+] as const;
+
+/** Where the pairing code comes from and how to register it. */
+export function pairingGuide(origin: string): string {
+  const url = `${origin}/mcp/<pairing-code>`;
+  return [
+    "Each open Purple tab mints a private pairing code, shown under AGENT. " +
+      `Ask the person to open ${origin}, press AGENT, and give you the code. ` +
+      "Register once:",
+    "",
+    ...AGENT_CLIENTS.flatMap(({ command }) =>
+      command(url) === url ? [] : [`    ${command(url)}`],
+    ),
+    "",
+    "Streamable HTTP MCP, POST only. Any MCP client can use the URL.",
+  ].join("\n");
+}
+
+/** The site's llms.txt: everything an agent needs before it has a tab. */
+export function agentGuide(origin: string): string {
+  return [
+    "# Purple",
+    "",
+    "Strudel live-coding studio in the browser. Your MCP agent composes; the " +
+      "tab plays. Nothing runs server-side.",
+    "",
+    "## Connect",
+    "",
+    pairingGuide(origin),
+    "",
+    "## Tools",
+    "",
+    `${AGENT_TOOLS.map(({ name }) => name).join(", ")}.`,
+    "",
+    AGENT_INSTRUCTIONS,
+    "",
+    `Public patterns: ${origin}/patterns`,
+    "Source and offline bridge: https://github.com/ferdousbhai/purple",
+    "",
+  ].join("\n");
+}
 
 export const NOT_CONNECTED_MESSAGE =
-  "No Purple tab is connected. Ask the listener to open their Purple tab " +
-  "and leave it open.";
+  "No Purple tab is connected. Ask the listener to open Purple and keep the tab open.";
 
 /** play waits out a full crossfade; the others answer within one evaluation. */
-export const AGENT_CALL_TIMEOUTS_MS = {
+const AGENT_CALL_TIMEOUTS_MS = {
   get_session: 10_000,
   set_pattern: 30_000,
   play: 120_000,
@@ -62,7 +109,7 @@ type AgentToolProperty = {
   description: string;
 };
 
-export type AgentToolDefinition = {
+type AgentToolDefinition = {
   name: string;
   description: string;
   inputSchema: {
@@ -82,33 +129,29 @@ export const AGENT_TOOLS: AgentToolDefinition[] = [
   {
     name: "get_strudel_reference",
     description:
-      "The Strudel notation and function reference Purple patterns must stay " +
-      "within. Read this before writing your first pattern.",
+      "The notation and names Purple accepts. Read before your first pattern.",
     inputSchema: NO_INPUT,
   },
   {
     name: "get_session",
-    description:
-      "Read the Purple studio session: the pattern code in the editor, its " +
-      "title, and the playback state.",
+    description: "Editor code, title, and playback state.",
     inputSchema: NO_INPUT,
   },
   {
     name: "set_pattern",
     description:
-      "Replace the pattern in the Purple editor. The studio validates the " +
-      "code against its sound registry first; if problems come back, revise " +
-      "and call set_pattern again. Call play afterwards to hear it.",
+      "Replace the editor pattern. Validated against the sound registry; " +
+      "on problems, fix and retry. Then call play.",
     inputSchema: {
       type: "object",
       properties: {
         code: {
           type: "string",
-          description: "A complete Strudel pattern expression.",
+          description: "One complete Strudel expression.",
         },
         title: {
           type: "string",
-          description: "Optional title for the pattern, at most 60 characters.",
+          description: "Optional, at most 60 characters.",
         },
       },
       required: ["code"],
@@ -117,19 +160,18 @@ export const AGENT_TOOLS: AgentToolDefinition[] = [
   {
     name: "play",
     description:
-      "Play the pattern currently in the Purple editor. If music is already " +
-      `playing, Purple crossfades to it over ${DEFAULT_TRANSITION_CYCLES} ` +
-      "cycles and only returns once the crossfade has landed.",
+      "Play the editor pattern. If music is playing, crossfades over " +
+      `${DEFAULT_TRANSITION_CYCLES} cycles and returns when done.`,
     inputSchema: NO_INPUT,
   },
   {
     name: "stop",
-    description: "Stop Purple playback and end the set.",
+    description: "Stop playback.",
     inputSchema: NO_INPUT,
   },
 ];
 
-export type AgentToolPlan =
+type AgentToolPlan =
   | { kind: "text"; text: string }
   | { kind: "call"; call: AgentCall; timeoutMs: number };
 
@@ -187,12 +229,12 @@ export function formatAgentToolResult(
 function describeSetPatternOutcome(outcome: JsonValue): string {
   const fields = jsonMembers(outcome);
   if (fields?.get("committed") === true) {
-    return "Pattern applied to the editor. Call play to hear it.";
+    return "Applied. Call play.";
   }
   const problems = fields?.get("problems");
   const lines = Array.isArray(problems) ? problems.filter(isJsonString) : [];
   return [
-    "The studio rejected the pattern. Fix these problems and call set_pattern again:",
+    "Purple rejected the pattern. Fix these and call set_pattern again:",
     ...lines.map((line) => `- ${line}`),
   ].join("\n");
 }

@@ -21,7 +21,7 @@ import type { JsonValue } from "@purple/core/json";
 
 export { NOT_CONNECTED_MESSAGE };
 
-export interface BrowserLinkOptions {
+interface BrowserLinkOptions {
   /** 0 asks the OS for a free port; read the actual one from the result. */
   port: number;
   log?: (line: string) => void;

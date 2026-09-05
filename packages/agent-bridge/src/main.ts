@@ -38,7 +38,7 @@ async function callTool(
   return formatAgentToolResult(plan.call, result);
 }
 
-export function resolvePort(
+function resolvePort(
   argv: readonly string[],
   envPort: string | undefined,
 ): number {

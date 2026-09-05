@@ -10,6 +10,7 @@
     "./spectrum-bars": "./src/spectrum-bars.tsx",
     "./testing": "./src/testing.ts",
     "./use-agent-link": "./src/use-agent-link.ts",
+    "./use-clipboard-copy": "./src/use-clipboard-copy.ts",
     "./use-playback": "./src/use-playback.ts",
     "./use-strudel": "./src/use-strudel.ts"
   },

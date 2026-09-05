@@ -9,7 +9,7 @@
     <meta name="robots" content="index, follow, max-image-preview:large" />
     <meta
       name="description"
-      content="Create, edit, and play AI-generated Strudel music in your browser. Purple is local-first: your coding agent writes the patterns, and your projects stay on your device."
+      content="Create, edit, and play AI-generated Strudel music in your browser. Your coding agent connects over MCP with a pairing command from the studio, and your projects stay on your device."
     />
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="en_US" />
@@ -17,7 +17,7 @@
     <meta property="og:title" content="Purple: AI Music Production with Strudel" />
     <meta
       property="og:description"
-      content="Create, edit, and play AI-generated Strudel music in your browser. Purple is local-first: your coding agent writes the patterns, and your projects stay on your device."
+      content="Create, edit, and play AI-generated Strudel music in your browser. Your coding agent connects over MCP with a pairing command from the studio, and your projects stay on your device."
     />
     <meta property="og:url" content="https://soundspurple.com/" />
     <meta property="og:image" content="https://soundspurple.com/icon-512.png" />
@@ -74,6 +74,16 @@
       <main class="boot-shell">
         <h1>Purple</h1>
         <p>Create, edit, and play AI-generated Strudel music in your browser.</p>
+        <p>
+          Agents: Purple is an MCP server. Ask the person to open this page,
+          press AGENT, and give you the pairing code, then register once:
+        </p>
+        <pre>claude mcp add --transport http purple https://soundspurple.com/mcp/&lt;pairing-code&gt;
+codex mcp add purple --url https://soundspurple.com/mcp/&lt;pairing-code&gt;</pre>
+        <p>
+          Any Streamable HTTP MCP client can use that URL. More:
+          https://soundspurple.com/llms.txt
+        </p>
       </main>
     </div>
     <script type="module" src="/src/main.tsx"></script>

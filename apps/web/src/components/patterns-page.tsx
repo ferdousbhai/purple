@@ -5,7 +5,6 @@ import type {
   SharedPattern,
 } from '@purple/core/shared-pattern'
 import { PurpleMark } from '@purple/ui/purple-mark'
-import { usePlayback } from '@purple/ui/use-playback'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { InternalLink, type NavigateInApp } from './internal-link'
 import { unlockMediaChannel } from '#/lib/media-channel'
@@ -15,7 +14,7 @@ import {
   upsertPattern,
   usePatterns,
 } from '#/lib/patterns'
-import { WEB_AUDIO_OPTIONS, type WebPlayback } from '#/lib/playback'
+import type { WebPlayback } from '#/lib/playback'
 import { fetchPatternPage, voteForPattern } from '#/lib/public-patterns'
 
 const PATTERN_DATE_FORMAT = new Intl.DateTimeFormat(undefined, {
@@ -23,27 +22,14 @@ const PATTERN_DATE_FORMAT = new Intl.DateTimeFormat(undefined, {
   month: 'short',
 })
 
-interface PatternsPageProps {
+export interface PatternsPageProps {
   focusOnMount?: boolean
   navigate?: NavigateInApp
+  /** Owned by the route so audio survives navigation between pages. */
+  playback: WebPlayback
 }
 
-export function PatternsPage(props: PatternsPageProps) {
-  const playback = usePlayback(WEB_AUDIO_OPTIONS)
-  return <PatternsPageView {...props} playback={playback} />
-}
-
-export function PersistentPatternsPage(
-  props: PatternsPageProps & { playback: WebPlayback },
-) {
-  return <PatternsPageView {...props} />
-}
-
-function PatternsPageView({
-  focusOnMount,
-  navigate,
-  playback,
-}: PatternsPageProps & { playback: WebPlayback }) {
+export function PatternsPage({ focusOnMount, navigate, playback }: PatternsPageProps) {
   const [sort, setSort] = useState<PatternSort>('fresh')
   const [patterns, setPatterns] = useState<SharedPattern[]>([])
   const [nextCursor, setNextCursor] = useState<string | null>(null)
@@ -247,7 +233,7 @@ function PatternsPageView({
         <header className="patterns-intro">
           <div className="patterns-intro-copy">
             <h1>PUBLIC PATTERNS</h1>
-            <p>No key needed to listen. Vote for keepers, open any pattern in the studio.</p>
+            <p>Listen in any browser. Vote for keepers, open any pattern in the studio.</p>
           </div>
           <div className="pattern-sort" role="group" aria-label="Sort patterns">
             <button

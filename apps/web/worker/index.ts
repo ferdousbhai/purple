@@ -3,28 +3,19 @@ import {
   handleAgentLinkUpgrade,
   handleMcpRequest,
 } from './agent-relay'
-import { hasContentType, jsonResponse, readBoundedBody } from './http'
+import { agentGuide } from '@purple/core/agent-tools'
+import { handleFeedbackRequest } from './feedback'
+import { textResponse } from './http'
 import { handlePatternRequest } from './patterns'
 
 export { AgentLinkSession } from './agent-relay'
-import {
-  type SiteverifyFetch,
-  turnstileFailureResponse,
-  verifyTurnstile,
-} from './turnstile'
 
 const FEEDBACK_PATH = '/api/feedback'
+const AGENT_GUIDE_PATH = '/llms.txt'
 const MCP_PREFIX = '/mcp/'
 const LINK_PREFIX = '/link/'
 const CANONICAL_HOST = 'soundspurple.com'
 const WWW_HOST = `www.${CANONICAL_HOST}`
-const FEEDBACK_SENDER = 'feedback@soundspurple.com'
-const FEEDBACK_RECIPIENT = 'ferdous@hey.com'
-const TURNSTILE_ACTION = 'purple_feedback'
-const MAX_REQUEST_BYTES = 12_000
-const MAX_MESSAGE_LENGTH = 5_000
-const MAX_EMAIL_LENGTH = 254
-const MAX_TURNSTILE_TOKEN_LENGTH = 2_048
 const STUDIO_PATH = '/'
 const PATTERNS_PATH = '/patterns'
 const STUDIO_PRELOAD_SELECTOR = 'link[data-purple-studio-preload]'
@@ -33,15 +24,6 @@ const PATTERNS_PRELOAD_SELECTOR = `template[${PATTERNS_PRELOAD_ATTRIBUTE}]`
 const PATTERNS_DESCRIPTION =
   'Browse, play, save, and remix public Strudel patterns made with Purple. Listening needs nothing but a browser.'
 
-const CATEGORY_LABELS = {
-  bug: 'Something is broken',
-  idea: 'Idea or request',
-  music: 'Music quality',
-  other: 'Something else',
-} as const
-
-type FeedbackCategory = keyof typeof CATEGORY_LABELS
-type FeedbackEnv = Pick<Env, 'FEEDBACK_EMAIL' | 'TURNSTILE_SECRET'>
 type AssetFetcher = Pick<Fetcher, 'fetch'>
 type HtmlTransformer = (response: Response, pathname: string) => Response
 export default {
@@ -50,7 +32,8 @@ export default {
     if (redirect) return redirect
 
     const url = new URL(request.url)
-    if (url.pathname.startsWith(MCP_PREFIX)) {
+    // A bare /mcp is an agent guessing; the help there says where the code comes from.
+    if (url.pathname === '/mcp' || url.pathname.startsWith(MCP_PREFIX)) {
       return handleMcpRequest(
         request,
         env,
@@ -63,6 +46,9 @@ export default {
         env,
         agentLinkCodeFromPath(url.pathname, LINK_PREFIX),
       )
+    }
+    if (url.pathname === AGENT_GUIDE_PATH) {
+      return textResponse(agentGuide(url.origin), 200)
     }
     if (url.pathname === FEEDBACK_PATH) {
       return handleFeedbackRequest(request, env)
@@ -218,112 +204,4 @@ export function redirectToCanonicalOrigin(request: Request): Response | null {
   // A permanent method-preserving redirect also keeps API requests safe while
   // collapsing HTTP and www traffic to the same origin in one round trip.
   return Response.redirect(url.toString(), 308)
-}
-
-export async function handleFeedbackRequest(
-  request: Request,
-  env: FeedbackEnv,
-  siteverifyFetch: SiteverifyFetch = fetch,
-): Promise<Response> {
-  if (request.method !== 'POST') {
-    return jsonResponse({ error: 'Method not allowed.' }, 405, { Allow: 'POST' })
-  }
-
-  const url = new URL(request.url)
-  if (request.headers.get('Origin') !== url.origin) {
-    return jsonResponse({ error: 'Cross-origin submissions are not allowed.' }, 403)
-  }
-
-  if (!hasContentType(request, 'application/x-www-form-urlencoded')) {
-    return jsonResponse({ error: 'Unsupported request format.' }, 415)
-  }
-
-  const bodyResult = await readBoundedBody(request, MAX_REQUEST_BYTES)
-  if (!bodyResult.ok) {
-    return jsonResponse({ error: 'Feedback is too large.' }, 413)
-  }
-
-  const form = new URLSearchParams(bodyResult.body)
-  if (form.get('website')) {
-    // A hidden-field hit is acknowledged without revealing that it was discarded.
-    return jsonResponse({ ok: true }, 200)
-  }
-
-  const category = form.get('category') ?? ''
-  const email = (form.get('email') ?? '').trim()
-  const message = (form.get('message') ?? '').trim()
-  const turnstileToken = form.get('turnstileToken') ?? ''
-
-  if (
-    !isFeedbackCategory(category) ||
-    message.length < 3 ||
-    message.length > MAX_MESSAGE_LENGTH ||
-    email.length > MAX_EMAIL_LENGTH ||
-    (email.length > 0 && !isEmailAddress(email)) ||
-    turnstileToken.length < 1 ||
-    turnstileToken.length > MAX_TURNSTILE_TOKEN_LENGTH
-  ) {
-    return jsonResponse({ error: 'Invalid feedback fields.' }, 400)
-  }
-
-  const requestId = crypto.randomUUID()
-  const turnstile = await verifyTurnstile(
-    turnstileToken,
-    TURNSTILE_ACTION,
-    url.hostname,
-    request.headers.get('CF-Connecting-IP'),
-    env.TURNSTILE_SECRET,
-    siteverifyFetch,
-    requestId,
-  )
-  const verificationFailure = turnstileFailureResponse(turnstile)
-  if (verificationFailure) return verificationFailure
-
-  const emailMessage: EmailMessageBuilder = {
-    to: FEEDBACK_RECIPIENT,
-    from: { email: FEEDBACK_SENDER, name: 'Purple Feedback' },
-    subject: `[Purple feedback] ${CATEGORY_LABELS[category]}`,
-    text: formatEmail(category, email, message, requestId),
-  }
-  if (email) emailMessage.replyTo = email
-
-  try {
-    await env.FEEDBACK_EMAIL.send(emailMessage)
-  } catch (error) {
-    console.error(JSON.stringify({
-      event: 'feedback_email_failed',
-      requestId,
-      errorName: error instanceof Error ? error.name : 'NonError',
-    }))
-    return jsonResponse({ error: 'Feedback could not be delivered.' }, 503)
-  }
-
-  console.log(JSON.stringify({ event: 'feedback_email_sent', requestId, category }))
-  return jsonResponse({ ok: true, requestId }, 200)
-}
-
-function isFeedbackCategory(value: string): value is FeedbackCategory {
-  return Object.hasOwn(CATEGORY_LABELS, value)
-}
-
-function isEmailAddress(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
-}
-
-function formatEmail(
-  category: FeedbackCategory,
-  email: string,
-  message: string,
-  requestId: string,
-): string {
-  return [
-    'New feedback from soundspurple.com',
-    '',
-    `Category: ${CATEGORY_LABELS[category]}`,
-    `Reply email: ${email || 'Not provided'}`,
-    `Received: ${new Date().toISOString()}`,
-    `Reference: ${requestId}`,
-    '',
-    message,
-  ].join('\n')
 }

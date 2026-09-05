@@ -1,6 +1,6 @@
 type StorageSubset = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
-export interface LocalStorageStub {
+interface LocalStorageStub {
   values: Map<string, string>;
   window: { localStorage: StorageSubset };
 }

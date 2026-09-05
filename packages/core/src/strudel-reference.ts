@@ -13,7 +13,7 @@ export const STRUDEL_REFERENCE = `## Mini-notation (inside the quoted strings)
 space sequence within one cycle | "~" or "-" rest | "[a b]" subsequence (nestable) | "<a b>" one per cycle | "a*2" faster (floats ok) | "[a b]/2" slower across cycles | "a@3" elongate | "a!2" replicate | "a,b" parallel | "a:2" sample index | "a?" 50% drop chance ("a?0.2" = 20%) | "a|b" random choice per cycle | "bd(3,8)" euclidean, "bd(3,8,2)" with offset | "{a b c, x y}%4" polymeter at 4 steps/cycle | "a b . c d e" feet grouping (each dot-group gets equal time) | "0 .. 7" numeric range | backticks for multiline
 
 ## Tempo
-Default is 30 cycles per minute (1 cycle = 2s). Set tempo with the .cpm() method: .cpm(bpm/4) puts 4 beats in a cycle. Never use setcpm() - statements are forbidden.
+Default 30 cycles per minute (1 cycle = 2s). .cpm(bpm/4) puts 4 beats in a cycle.
 
 ## Drums
 .bank(machine) prefixes sample names, giving every part: bd sd hh oh cp rim rd cr lt mt ht cb sh tb perc fx misc (some machines lack some parts). Machines: RolandTR808 RolandTR909 RolandTR707 RolandTR727 RolandTR606 RolandTR626 RolandTR505 RolandCompurhythm78 RolandCompurhythm1000 RolandR8 RolandMC303 LinnDrum LinnLM1 LinnLM2 Linn9000 AkaiLinn AkaiMPC60 AkaiXR10 MPC1000 OberheimDMX EmuSP12 EmuDrumulator AlesisHR16 AlesisSR16 BossDR110 BossDR220 BossDR55 BossDR550 CasioRZ1 CasioSK1 CasioVL1 KorgDDM110 KorgKPR77 KorgKR55 KorgM1 KorgMinipops KorgPoly800 KorgT3 YamahaRX5 YamahaRX21 YamahaRY30 YamahaRM50 RhythmAce SequentialCircuitsDrumtracks SequentialCircuitsTom SimmonsSDS5 ViscoSpaceDrum MFB512.
@@ -27,7 +27,7 @@ Without a bank, only these bare drum names exist: bd sd sn hh oh cp clap rim cr 
 sine sawtooth square triangle (default when note() has no .sound()) pulse supersaw sbd (synth kick), noise: white pink brown crackle (.density(n)), chiptune zzfx: z_sawtooth z_sine z_square z_triangle z_tan z_noise. Add .noise(0.1..0.5) to any oscillator for breath. FM: .fm(n) depth, .fmh(n) harmonic ratio, .fmenv(n) depth envelope, .fmwave("sine"). Vibrato: .vib("4:.1") (speed:depth). Shape supersaw with .detune(0..1) .unison(voices) .spread(0..1); shape pulse with .pw(0..1) width, .pwrate(hz)/.pwsweep(n) PWM.
 
 ## Sampled melodic sounds
-piano is a commit-pinned multisample. Dirt-Samples also provides gtr, sax, trump, sitar, pluck, bass0, bass1, bass2, bass3, moog, pad and padlong. General MIDI gm_* soundfonts are intentionally unavailable because their upstream loader executes remotely fetched JavaScript.
+piano is a commit-pinned multisample. Dirt-Samples also provides gtr, sax, trump, sitar, pluck, bass0, bass1, bass2, bass3, moog, pad and padlong. General MIDI gm_* soundfonts are unavailable.
 
 ## Pitch & harmony
 note("c e g b") letters (eb/c# accidentals, octaves c2..b5) or MIDI numbers (48=c3, decimals ok). n("0 2 4").scale("C:minor") = scale degrees, always in key; scales: major minor dorian mixolydian lydian phrygian locrian melodic/harmonic minor, :pentatonic variants; root can carry octave (A2:minor); the scale is patternable: .scale("<C:minor F:major>/4"). n vs note: n picks indices (scale degree or sample number), note is absolute pitch. Chords: chord("<Cm7 F7 Bb^7>").voicing() plays smooth voicings; .voicing().arp("0 2 1 3") arpeggiates them; .rootNotes(2) for a bassline from the same symbols. Pitch math: "..".add("<0 12>") or .add("0,7") (stacked interval), .transpose(semitones), .scaleTranspose(steps). Scale-degree arpeggio: "0".off(1/3, add(2)).off(1/2, add(4)).n().scale("C:minor").
@@ -43,6 +43,9 @@ sine saw tri square rand perlin irand(n) brand (random 0/1) brandBy(p) (also sin
 
 ## Idioms
 Dynamic hats: s("hh*16").gain("[.25 1]*4"). Noise hats: s("white*8").decay(.04).sustain(0). Breaks: s("breaks165").fit().chop(16), or n("0 1 2 3".add("<0 4 8 12>")).s("amencutup").cut(1).rarely(ply("2")) (amencutup = 32 sequential amen-break slices). Chorus: .add(note("0,.1")). Tape warble: .add(note(perlin.range(0,.5))). Layered synth: .s("sawtooth, square:0:.5") (name:index:gain). Polymeter groove: s("<bd rim, hh hh oh>*4").bank("RolandTR808"). House: s("bd*4, [~ cp]*2, [~ hh]*4").bank("RolandTR909"). Break variation: s("breaks165").fit().scramble(8). Riser: .djf(saw.slow(8).range(.5, .9)). Supersaw lead: note("<c4 eb4>").s("supersaw").detune(.4).unison(5).spread(.7).
+
+## Taste
+Few strong layers beat many weak ones: give each its own register and .gain(.5-.8) so the stack keeps headroom. Hats and percussion carry the groove - vary velocity, .cut(1) hats, .swingBy for feel. Sections must be audibly different yet share kit, key, and tempo. Shape an arc across the set: sparse opening, build, breakdown, peak, release. Move one or two things per section (a filter sweep, a layer in or out, a new voicing) rather than everything.
 
 ## Hard rules
 - Unknown sound names play SILENCE (no error) - only use names listed above.

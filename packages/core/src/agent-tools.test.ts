@@ -1,9 +1,24 @@
 import { describe, expect, it } from "vitest";
 import {
   AGENT_TOOLS,
+  agentGuide,
   formatAgentToolResult,
   planAgentToolCall,
 } from "./agent-tools";
+
+describe("agentGuide", () => {
+  it("carries every client command, tool name, and the instructions", () => {
+    const guide = agentGuide("https://soundspurple.com");
+    expect(guide).toContain(
+      "claude mcp add --transport http purple https://soundspurple.com/mcp/<pairing-code>",
+    );
+    expect(guide).toContain(
+      "codex mcp add purple --url https://soundspurple.com/mcp/<pairing-code>",
+    );
+    for (const { name } of AGENT_TOOLS) expect(guide).toContain(name);
+    expect(guide).toContain("Play a set, not a loop");
+  });
+});
 
 describe("planAgentToolCall", () => {
   it("answers the reference itself, without a studio round trip", () => {
@@ -61,7 +76,7 @@ describe("formatAgentToolResult", () => {
         { method: "set_pattern", code: "s()", title: null },
         { committed: true },
       ),
-    ).toContain("Call play to hear it");
+    ).toContain("Call play");
   });
 
   it("lists rejection problems for the agent to revise against", () => {

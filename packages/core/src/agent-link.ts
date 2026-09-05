@@ -31,8 +31,6 @@ export type AgentCall =
 
 export type AgentRequest = AgentCall & { id: string };
 
-export type AgentMethod = AgentCall["method"];
-
 export type AgentResponse =
   | { id: string; ok: true; result: JsonValue }
   | { id: string; ok: false; error: string };

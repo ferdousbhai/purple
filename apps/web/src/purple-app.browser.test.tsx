@@ -53,7 +53,7 @@ interface RoutePlayback {
 vi.mock('#/components/purple-studio', async () => {
   const React = await import('react')
   return {
-    PersistentPurpleStudio(props: {
+    PurpleStudio(props: {
       navigate(href: string): void
       playback: RoutePlayback
       sharedPattern?: { title: string }
@@ -77,7 +77,7 @@ vi.mock('#/components/purple-studio', async () => {
 vi.mock('#/components/patterns-page', async () => {
   const React = await import('react')
   return {
-    PersistentPatternsPage(props: {
+    PatternsPage(props: {
       navigate(href: string): void
       playback: RoutePlayback
     }) {

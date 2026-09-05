@@ -11,7 +11,7 @@ import { isJsonString, jsonMembers, type JsonValue } from "@purple/core/json";
  * the library's hard bounds; the title clamps instead of rejecting so an
  * over-long one never blocks persisting the pattern itself.
  */
-export interface SessionPattern {
+interface SessionPattern {
   code: string;
   customTitle: string | null;
   shareId?: string;
@@ -62,7 +62,7 @@ function normalizeSessionPattern(pattern: SessionPattern): SessionPattern | null
  * debounce keeps typing from issuing a synchronous storage write per keystroke. */
 const PATTERN_SAVE_DEBOUNCE_MS = 300;
 
-export interface PatternStore {
+interface PatternStore {
   load(): SessionPattern | null;
   save(pattern: SessionPattern): void;
 }
