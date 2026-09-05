@@ -33,6 +33,8 @@ const MAX_REDIRECT_URIS = 10
 const CODE_TTL_SECONDS = 5 * 60
 const ACCESS_TTL_SECONDS = 30 * 24 * 60 * 60
 const PKCE_CHALLENGE = /^[A-Za-z0-9_-]{43,128}$/
+/** RFC 7636 verifiers use the unreserved set, so "." and "~" are legal. */
+const PKCE_VERIFIER = /^[A-Za-z0-9._~-]{43,128}$/
 const DEFAULT_CLIENT_NAME = 'An MCP client'
 
 export type OAuthEnv = Pick<Env, 'TOKEN_SECRET'>
@@ -225,7 +227,7 @@ async function issueToken(request: Request, env: OAuthEnv): Promise<Response> {
     !isFresh(grant) ||
     grant.get('client') !== await sha256Hex(form.get('client_id') ?? '') ||
     grant.get('redirect_uri') !== (form.get('redirect_uri') ?? '') ||
-    !PKCE_CHALLENGE.test(verifier) ||
+    !PKCE_VERIFIER.test(verifier) ||
     grant.get('challenge') !== await pkceChallenge(verifier)
   ) {
     return oauthError('invalid_grant', 'The authorization code is invalid or expired.')

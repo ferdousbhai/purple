@@ -11,7 +11,9 @@ const env = { TOKEN_SECRET: 'test-secret' }
 const ORIGIN = 'https://soundspurple.com'
 const PAIRING_CODE = '0f7c2d91aa34bb56cc78'
 const REDIRECT = 'http://localhost:53000/callback'
-const VERIFIER = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk'
+// Deliberately uses "." and "~": the MCP SDK draws verifiers from the full
+// RFC 7636 unreserved set, not just the base64url alphabet.
+const VERIFIER = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk.~x'
 
 type JsonBody = { [key: string]: string | string[] | null }
 
