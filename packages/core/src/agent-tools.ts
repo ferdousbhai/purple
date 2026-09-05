@@ -36,34 +36,51 @@ export const AGENT_INSTRUCTIONS =
   "you. get_session shows what the tab is playing.\n\n" +
   "If the first play is blocked, the listener must press PLAY in the tab once.";
 
-/** How each client registers the endpoint; the raw URL always works too. */
+/**
+ * How each client registers Purple. Clients that speak MCP authorization
+ * take the bare endpoint and get their pairing code from an Allow click in
+ * the person's browser; the rest need the code in the URL.
+ */
 export const AGENT_CLIENTS = [
   {
     id: "claude",
     label: "CLAUDE CODE",
+    needsPairingCode: false,
     command: (url: string) => `claude mcp add --transport http purple ${url}`,
   },
   {
     id: "codex",
     label: "CODEX",
+    needsPairingCode: false,
     command: (url: string) => `codex mcp add purple --url ${url}`,
   },
-  { id: "other", label: "OTHER", command: (url: string) => url },
+  {
+    id: "other",
+    label: "OTHER",
+    needsPairingCode: true,
+    command: (url: string) => url,
+  },
 ] as const;
 
-/** Where the pairing code comes from and how to register it. */
+export function agentEndpoint(origin: string, pairingCode: string | null): string {
+  return pairingCode === null ? `${origin}/mcp` : `${origin}/mcp/${pairingCode}`;
+}
+
+/** How to register, for an agent that has no tab yet. */
 export function pairingGuide(origin: string): string {
-  const url = `${origin}/mcp/<pairing-code>`;
+  const endpoint = agentEndpoint(origin, null);
   return [
-    "Each open Purple tab mints a private pairing code, shown under AGENT. " +
-      `Ask the person to open ${origin}, press AGENT, and give you the code. ` +
-      "Register once:",
+    "Register once. The client opens this site in the person's browser for " +
+      "one Allow click, which pairs it with that browser's Purple tab:",
     "",
-    ...AGENT_CLIENTS.flatMap(({ command }) =>
-      command(url) === url ? [] : [`    ${command(url)}`],
+    ...AGENT_CLIENTS.flatMap(({ command, needsPairingCode }) =>
+      needsPairingCode ? [] : [`    ${command(endpoint)}`],
     ),
     "",
-    "Streamable HTTP MCP, POST only. Any MCP client can use the URL.",
+    "Streamable HTTP MCP with OAuth (dynamic registration, PKCE). A client " +
+      "without OAuth support uses the pairing URL instead: the person opens " +
+      `${origin}, presses AGENT then OTHER, and gives you ` +
+      `${agentEndpoint(origin, "<pairing-code>")}.`,
   ].join("\n");
 }
 

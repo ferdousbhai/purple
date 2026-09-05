@@ -26,10 +26,11 @@ export function AgentCard(props: {
 }) {
   const [clientId, setClientId] = useState<AgentClientId>('claude')
   const clipboard = useClipboardCopy()
-  const url = agentMcpUrl(props.code)
   const client =
     AGENT_CLIENTS.find(({ id }) => id === clientId) ?? AGENT_CLIENTS[0]
-  const command = client.command(url)
+  const command = client.command(
+    agentMcpUrl(client.needsPairingCode ? props.code : null),
+  )
   return (
     <aside className="session-pane agent-card">
       <pre className="agent-card-ascii" aria-hidden="true">{PURPLE_WORDMARK}</pre>
@@ -37,7 +38,7 @@ export function AgentCard(props: {
       <p role="status" className={props.linked ? 'agent-status linked' : 'agent-status'}>
         {props.linked ? 'AGENT LINKED' : 'WAITING FOR YOUR AGENT'}
       </p>
-      <p>Register this tab with your agent, once:</p>
+      <p>Register Purple with your agent, once:</p>
       <div className="agent-clients" role="group" aria-label="Agent">
         {AGENT_CLIENTS.map((option) => (
           <button
@@ -69,14 +70,11 @@ export function AgentCard(props: {
         </button>
       </div>
       <p>
-        {clientId === 'other'
-          ? 'Any MCP client that speaks Streamable HTTP can use this endpoint.'
-          : 'Then ask it for music. It writes the patterns; this tab plays them.'}
+        {client.needsPairingCode
+          ? 'This is this browser\u2019s private pairing address for any Streamable HTTP MCP client.'
+          : 'It opens this browser once to ask for approval. Then ask it for music; this tab plays it.'}
       </p>
-      <p>
-        The link is this tab&rsquo;s private pairing address. If sound is
-        blocked, press PLAY once.
-      </p>
+      <p>If sound is blocked, press PLAY once.</p>
     </aside>
   )
 }

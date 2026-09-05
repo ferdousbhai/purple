@@ -72,6 +72,10 @@ button:focus-visible, a:focus-visible, select:focus-visible {
 .route-message { min-height: 100vh; display: grid; place-content: center; gap: 10px; text-align: center; }
 .route-message h1, .route-message p { margin: 0; }
 .route-message h1, .route-message a { color: var(--accent); }
+.route-message.authorize { gap: 14px; padding: 0 20px; text-align: center; }
+.route-message.authorize p { max-width: 420px; margin: 0 auto; }
+.route-message.authorize strong { color: var(--text); }
+.authorize-actions { display: flex; justify-content: center; gap: 8px; margin-top: 6px; }
 
 .studio-shell {
   height: 100vh;

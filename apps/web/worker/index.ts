@@ -6,6 +6,14 @@ import {
 import { agentGuide } from '@purple/core/agent-tools'
 import { handleFeedbackRequest } from './feedback'
 import { textResponse } from './http'
+import {
+  AUTHORIZE_PATH,
+  bearerPairingCode,
+  handleOAuthRequest,
+  isOAuthPath,
+  MCP_PATH,
+  unauthorizedResponse,
+} from './oauth'
 import { handlePatternRequest } from './patterns'
 
 export { AgentLinkSession } from './agent-relay'
@@ -18,6 +26,8 @@ const CANONICAL_HOST = 'soundspurple.com'
 const WWW_HOST = `www.${CANONICAL_HOST}`
 const STUDIO_PATH = '/'
 const PATTERNS_PATH = '/patterns'
+/** Client-rendered routes served from the studio entry HTML. */
+const APP_ROUTES = new Set([PATTERNS_PATH, AUTHORIZE_PATH])
 const STUDIO_PRELOAD_SELECTOR = 'link[data-purple-studio-preload]'
 const PATTERNS_PRELOAD_ATTRIBUTE = 'data-purple-patterns-preload'
 const PATTERNS_PRELOAD_SELECTOR = `template[${PATTERNS_PRELOAD_ATTRIBUTE}]`
@@ -32,13 +42,24 @@ export default {
     if (redirect) return redirect
 
     const url = new URL(request.url)
-    // A bare /mcp is an agent guessing; the help there says where the code comes from.
-    if (url.pathname === '/mcp' || url.pathname.startsWith(MCP_PREFIX)) {
+    if (url.pathname === MCP_PATH) {
+      // The OAuth endpoint: a bearer token carries the pairing code. Anything
+      // else is an agent that has not authorized yet, or a person reading.
+      if (request.method !== 'POST') return handleMcpRequest(request, env, null)
+      const code = await bearerPairingCode(request, env)
+      return code === null
+        ? unauthorizedResponse(request)
+        : handleMcpRequest(request, env, code)
+    }
+    if (url.pathname.startsWith(MCP_PREFIX)) {
       return handleMcpRequest(
         request,
         env,
         agentLinkCodeFromPath(url.pathname, MCP_PREFIX),
       )
+    }
+    if (isOAuthPath(url.pathname) && !(url.pathname === AUTHORIZE_PATH && request.method === 'GET')) {
+      return handleOAuthRequest(request, env)
     }
     if (url.pathname.startsWith(LINK_PREFIX)) {
       return handleAgentLinkUpgrade(
@@ -67,7 +88,7 @@ export async function handleAssetRequest(
 ): Promise<Response> {
   const pathname = new URL(request.url).pathname
   if (
-    pathname === PATTERNS_PATH &&
+    APP_ROUTES.has(pathname) &&
     (request.method === 'GET' || request.method === 'HEAD')
   ) {
     const entryUrl = new URL(STUDIO_PATH, request.url)

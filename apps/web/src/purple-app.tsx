@@ -20,6 +20,10 @@ const PatternsPage = lazy(async () => {
   const patterns = await import('#/components/patterns-page')
   return { default: patterns.PatternsPage }
 })
+const AgentAuthorize = lazy(async () => {
+  const authorize = await import('#/components/agent-authorize')
+  return { default: authorize.AgentAuthorize }
+})
 
 function StudioRoute(props: {
   id: string | null
@@ -116,6 +120,17 @@ function AppRoute(props: {
       />
     )
   }
+  if (props.route.pathname === '/authorize') {
+    return (
+      <Suspense fallback={(
+        <main autoFocus className="boot-shell" tabIndex={-1}>
+          LOADING…
+        </main>
+      )}>
+        <AgentAuthorize search={props.route.search} />
+      </Suspense>
+    )
+  }
   if (props.route.pathname === '/patterns') {
     return (
       <Suspense fallback={(
@@ -183,6 +198,7 @@ function browserRouteLabel(route: BrowserRoute): string {
       : 'Purple studio'
   }
   if (route.pathname === '/patterns') return 'Public patterns'
+  if (route.pathname === '/authorize') return 'Approve an agent'
   return 'Page not found'
 }
 
@@ -193,5 +209,6 @@ function browserRouteTitle(route: BrowserRoute): string {
       : 'Purple: AI Music Production with Strudel'
   }
   if (route.pathname === '/patterns') return 'Public Strudel Patterns | Purple'
+  if (route.pathname === '/authorize') return 'Approve an Agent | Purple'
   return 'Page Not Found | Purple'
 }

@@ -34,8 +34,8 @@ describe('mcpEndpointHelp', () => {
     expect(response.status).toBe(404)
     expect(response.headers.get('Content-Type')).toContain('text/plain')
     const text = await response.text()
-    expect(text).toContain('press AGENT')
-    expect(text).toContain('claude mcp add --transport http purple https://soundspurple.com/mcp/<pairing-code>')
+    expect(text).toContain('Allow')
+    expect(text).toContain('claude mcp add --transport http purple https://soundspurple.com/mcp\n')
     expect(text).toContain('https://soundspurple.com/llms.txt')
   })
 
@@ -44,7 +44,7 @@ describe('mcpEndpointHelp', () => {
     const response = mcpEndpointHelp(request, '0f7c2d91aa34bb56cc78')
     expect(response.status).toBe(405)
     expect(response.headers.get('Allow')).toBe('POST')
-    expect(await response.text()).toContain('press AGENT')
+    expect(await response.text()).toContain('Allow')
   })
 })
 

@@ -55,12 +55,16 @@ export type AgentCaller = (
 
 type RelayEnv = Pick<Env, 'AGENT_LINK'>
 
+export function isPairingCode(value: string): boolean {
+  return CODE_PATTERN.test(value)
+}
+
 export function agentLinkCodeFromPath(
   pathname: string,
   prefix: string,
 ): string | null {
   const code = pathname.slice(prefix.length)
-  return CODE_PATTERN.test(code) ? code : null
+  return isPairingCode(code) ? code : null
 }
 
 /** The tab side: upgrade the studio's WebSocket into the code's session. */

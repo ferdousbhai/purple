@@ -13,6 +13,7 @@ Local-first browser studio where the visitor's own MCP agent writes and plays St
 - `packages/core/src/`: dependency-free Strudel reference, showcase patterns, parsing, validation, and transitions
 - `packages/core/src/agent-link.ts` and `packages/core/src/agent-tools.ts`: agent wire protocol, the shared MCP tool surface, and the instructions that teach a continuous set
 - `apps/web/worker/agent-relay.ts`: hosted MCP endpoint and the Durable Object pairing an agent with its tab
+- `apps/web/worker/oauth.ts` and `apps/web/src/components/agent-authorize.tsx`: MCP authorization with the browser as the authenticator, and the Allow page
 - `packages/agent-bridge/src/`: purple-mcp, the optional fully offline stdio bridge
 - `packages/ui/src/use-agent-link.ts`: browser WebSocket client answering agent requests
 - `packages/ui/src/safe-strudel.ts`: allowlisted Strudel interpreter
@@ -23,7 +24,7 @@ Local-first browser studio where the visitor's own MCP agent writes and plays St
 
 ## Boundaries
 
-- Purple runs no inference. The agent is the composer; the studio validates, plays, and stores. A browser-minted pairing code is the only way an agent reaches a tab, and the relay (or the offline purple-mcp bridge) carries nothing but session state and pattern code.
+- Purple runs no inference. The agent is the composer; the studio validates, plays, and stores. A browser-minted pairing code is the only way an agent reaches a tab: it travels either inside a token the person's own browser approved on `/authorize`, or pasted as `/mcp/<code>`. The Worker keeps no accounts and no token tables; every OAuth artifact is a signed payload. The relay (or the offline purple-mcp bridge) carries nothing but session state and pattern code.
 - The personal library and the working pattern stay in the browser. Only an explicit share may publish a pattern title and code to D1.
 - A set keeps evolving because `AGENT_INSTRUCTIONS` says so: both MCP front ends advertise them on initialize, and the studio holds no autoplay loop of its own.
 - Keep browser composition in `apps/web`, dependency-free product logic in `packages/core`, and React, editor, Strudel, playback, and persistence modules in `packages/ui`.

@@ -6,6 +6,7 @@
  */
 
 import { AGENT_LINK_DEFAULT_PORT } from '@purple/core/agent-link'
+import { agentEndpoint } from '@purple/core/agent-tools'
 import { jsonText, parseJsonMembers } from '@purple/core/json'
 
 const STORAGE_KEY = 'purple-agent-link'
@@ -62,6 +63,7 @@ export function agentLinkSocketUrl(settings: AgentLinkSettings): string {
   return `${wsProtocol}//${window.location.host}/link/${settings.code}`
 }
 
-export function agentMcpUrl(code: string): string {
-  return `${window.location.origin}/mcp/${code}`
+/** The endpoint to register: bare for clients that authorize in the browser. */
+export function agentMcpUrl(pairingCode: string | null): string {
+  return agentEndpoint(window.location.origin, pairingCode)
 }

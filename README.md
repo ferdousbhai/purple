@@ -20,22 +20,27 @@ Turnstile-protected Cloudflare Worker to the maintainer's inbox.
 
 ## Connecting your agent
 
-Open Purple. The agent panel shows a registration command carrying this tab's
-private pairing address, which is a Streamable HTTP MCP endpoint:
+Register Purple's Streamable HTTP MCP endpoint once:
 
 ```bash
-claude mcp add --transport http purple https://soundspurple.com/mcp/<pairing-code>
-codex mcp add purple --url https://soundspurple.com/mcp/<pairing-code>
+claude mcp add --transport http purple https://soundspurple.com/mcp
+codex mcp add purple --url https://soundspurple.com/mcp
 ```
 
-Any other MCP client can use the same URL. Then ask your agent for music. It
-reads Purple's Strudel reference, writes a pattern, plays it, and keeps the set
-evolving by crossfading into each next section. Keep the tab open; if sound is
-blocked, press `PLAY` once so the browser unlocks Web Audio.
+The client opens Purple in your browser and asks for one Allow click. That
+pairs it with the studio tab in that browser, and no code is ever typed. Then
+ask your agent for music. It reads Purple's Strudel reference, writes a
+pattern, plays it, and keeps the set evolving by crossfading into each next
+section. Keep the tab open; if sound is blocked, press `PLAY` once so the
+browser unlocks Web Audio.
 
-The pairing code is minted in your browser and is the only way an agent reaches
-your tab. `packages/agent-bridge` is a fully offline alternative that runs the
-same tool surface over 127.0.0.1.
+Clients without MCP authorization support use the pairing URL shown under
+AGENT, then OTHER, in the studio: `https://soundspurple.com/mcp/<pairing-code>`.
+
+Either way, the pairing code is minted in your browser and is the only way an
+agent reaches your tab; the Allow click puts it inside a signed token. The
+Worker signs those tokens with the `TOKEN_SECRET` secret. `packages/agent-bridge`
+is a fully offline alternative that runs the same tool surface over 127.0.0.1.
 
 ## Development
 

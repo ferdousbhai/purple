@@ -14,7 +14,7 @@ import {
   jsonText,
   type JsonValue,
 } from '@purple/core/json'
-import { hasContentType, jsonResponse, readBoundedBody } from './http'
+import { base64url, hasContentType, jsonResponse, readBoundedBody } from './http'
 import {
   type SiteverifyFetch,
   turnstileFailureResponse,
@@ -446,10 +446,7 @@ function mutationRequestFailure(request: Request, url: URL): Response | null {
 }
 
 function randomShareId(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(9))
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '')
+  return base64url(crypto.getRandomValues(new Uint8Array(9)))
 }
 
 async function getVoter(request: Request): Promise<Voter> {

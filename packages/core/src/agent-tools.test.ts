@@ -10,11 +10,10 @@ describe("agentGuide", () => {
   it("carries every client command, tool name, and the instructions", () => {
     const guide = agentGuide("https://soundspurple.com");
     expect(guide).toContain(
-      "claude mcp add --transport http purple https://soundspurple.com/mcp/<pairing-code>",
+      "claude mcp add --transport http purple https://soundspurple.com/mcp\n",
     );
-    expect(guide).toContain(
-      "codex mcp add purple --url https://soundspurple.com/mcp/<pairing-code>",
-    );
+    expect(guide).toContain("codex mcp add purple --url https://soundspurple.com/mcp\n");
+    expect(guide).toContain("https://soundspurple.com/mcp/<pairing-code>");
     for (const { name } of AGENT_TOOLS) expect(guide).toContain(name);
     expect(guide).toContain("Play a set, not a loop");
   });

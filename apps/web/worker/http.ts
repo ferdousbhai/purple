@@ -34,6 +34,13 @@ export async function readBoundedBody(
   }
 }
 
+/** Unpadded base64url, the alphabet share ids and signed tokens share. */
+export function base64url(bytes: Uint8Array): string {
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '')
+}
+
 export function hasContentType(request: Request, expected: string): boolean {
   const mediaType = request.headers.get('Content-Type')?.split(';', 1)[0]
   return mediaType?.trim().toLowerCase() === expected

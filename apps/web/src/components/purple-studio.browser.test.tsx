@@ -415,16 +415,18 @@ describe('agent pairing panel', () => {
 
     expect(await screen.findByText('WAITING FOR YOUR AGENT')).toBeVisible()
     const pairingCode = studio.agentUrl.split('/link/')[1]
-    const endpoint = `${window.location.origin}/mcp/${pairingCode}`
+    const endpoint = `${window.location.origin}/mcp`
     const command = () => container.querySelector('.agent-command')?.textContent
 
+    // OAuth-capable clients register the bare endpoint and get the code from
+    // the Allow page; only OTHER carries the pairing code in the URL.
     expect(command()).toBe(`claude mcp add --transport http purple ${endpoint}`)
 
     await userEvent.click(screen.getByRole('button', { name: 'CODEX' }))
     expect(command()).toBe(`codex mcp add purple --url ${endpoint}`)
 
     await userEvent.click(screen.getByRole('button', { name: 'OTHER' }))
-    expect(command()).toBe(endpoint)
+    expect(command()).toBe(`${endpoint}/${pairingCode}`)
   })
 
   it('closes from inside the panel once the command is copied', async () => {

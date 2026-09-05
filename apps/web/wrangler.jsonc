@@ -14,7 +14,7 @@
     "not_found_handling": "404-page",
     // Run only app documents and APIs through Worker logic. Matching static
     // assets and the standalone 404 page stay on Cloudflare's asset fast path.
-    "run_worker_first": ["/", "/patterns", "/llms.txt", "/api/*", "/mcp", "/mcp/*", "/link/*"]
+    "run_worker_first": ["/", "/patterns", "/authorize", "/llms.txt", "/.well-known/*", "/oauth/*", "/api/*", "/mcp", "/mcp/*", "/link/*"]
   },
   "durable_objects": {
     "bindings": [
@@ -57,7 +57,7 @@
     }
   ],
   "secrets": {
-    "required": ["TURNSTILE_SECRET"]
+    "required": ["TURNSTILE_SECRET", "TOKEN_SECRET"]
   },
   "observability": {
     "enabled": true,
