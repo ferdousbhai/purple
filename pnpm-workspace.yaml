@@ -7,3 +7,7 @@ allowBuilds:
   lightningcss: true
   sharp: true
   workerd: true
+
+# Security fix: qs 6.16.0 patches two advisories and is younger than the release-age wait.
+minimumReleaseAgeExclude:
+  - qs
