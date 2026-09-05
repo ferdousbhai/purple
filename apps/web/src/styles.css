@@ -512,8 +512,13 @@ button:focus-visible, a:focus-visible, select:focus-visible {
   min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   color: var(--text); font: 600 15px var(--font-display);
 }
-.pattern-card time {
-  flex: none; color: var(--text-faint); font: 500 9px var(--font-mono); text-transform: uppercase;
+.pattern-byline {
+  flex: none; display: flex; align-items: baseline; gap: 8px; margin: 0;
+  color: var(--text-faint); font: 500 9px var(--font-mono); text-transform: uppercase;
+}
+.pattern-byline span {
+  max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--text-dim);
 }
 .pattern-card pre {
   min-height: 108px; max-height: 196px; margin: 13px 0 9px; overflow: hidden;

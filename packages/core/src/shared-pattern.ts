@@ -8,6 +8,9 @@ import {
 import { MAX_PATTERN_LENGTH } from "./pattern";
 
 export const MAX_SHARED_TITLE_LENGTH = 60;
+/** Poster names are 4chan-style: free text, no account, Anonymous by default. */
+export const MAX_HANDLE_LENGTH = 24;
+export const DEFAULT_HANDLE = "Anonymous";
 export const PATTERN_PAGE_SIZE = 12;
 
 export type PatternSort = "fresh" | "top";
@@ -16,6 +19,7 @@ export type PatternVote = -1 | 0 | 1;
 export interface SharedPatternDraft {
   title: string;
   code: string;
+  handle: string | null;
 }
 
 export interface SharedPattern extends SharedPatternDraft {
@@ -59,14 +63,26 @@ function parseDraftMembers(
 ): SharedPatternDraft | null {
   const title = jsonText(fields.get("title"))?.trim();
   const code = jsonText(fields.get("code"))?.trim();
+  const handle = parseHandle(fields.get("handle"));
   if (
     !title ||
     title.length > MAX_SHARED_TITLE_LENGTH ||
     title.includes("\n") ||
     !code ||
-    code.length > MAX_PATTERN_LENGTH
+    code.length > MAX_PATTERN_LENGTH ||
+    handle === undefined
   ) return null;
-  return { title, code };
+  return { title, code, handle };
+}
+
+/** A missing or blank handle is anonymous (null); undefined marks an unusable one. */
+export function parseHandle(value: JsonValue | undefined): string | null | undefined {
+  if (value === undefined || value === null) return null;
+  const handle = jsonText(value)?.trim();
+  if (handle === undefined || handle.length > MAX_HANDLE_LENGTH || /[\n\r]/.test(handle)) {
+    return undefined;
+  }
+  return handle || null;
 }
 
 export function parseSharedPattern(value: JsonValue): SharedPattern | null {

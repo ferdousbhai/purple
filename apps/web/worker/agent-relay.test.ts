@@ -5,6 +5,7 @@ import {
   handleMcpMessage,
   mcpEndpointHelp,
   type AgentCaller,
+  type PatternPublisher,
 } from './agent-relay'
 
 const neverCalled: AgentCaller = () => {
@@ -104,6 +105,7 @@ describe('handleMcpMessage', () => {
           { name: 'set_pattern' },
           { name: 'play' },
           { name: 'stop' },
+          { name: 'share_pattern' },
         ],
       },
     })
@@ -139,6 +141,47 @@ describe('handleMcpMessage', () => {
       result: {
         isError: false,
         content: [{ type: 'text', text: expect.stringContaining('Call play') }],
+      },
+    })
+  })
+
+  it('publishes the session pattern through the relay under a handle', async () => {
+    const callAgent = vi.fn<AgentCaller>().mockResolvedValue({
+      ok: true,
+      result: { code: 's("bd*4")', title: 'Night Shift', playbackState: 'playing' },
+    })
+    const publish = vi.fn<PatternPublisher>().mockResolvedValue({
+      ok: true,
+      url: 'https://soundspurple.com/?s=Abc_123-xYz9',
+    })
+    const reply = await handleMcpMessage(
+      rpc('tools/call', { name: 'share_pattern', arguments: { handle: 'dj_anon' } }),
+      callAgent,
+      publish,
+    )
+    expect(callAgent).toHaveBeenCalledWith({ method: 'get_session' }, 10_000)
+    expect(publish).toHaveBeenCalledWith({
+      title: 'Night Shift',
+      code: 's("bd*4")',
+      handle: 'dj_anon',
+    })
+    expect(reply).toMatchObject({
+      result: {
+        isError: false,
+        content: [{ type: 'text', text: expect.stringContaining('/?s=Abc_123-xYz9') }],
+      },
+    })
+  })
+
+  it('refuses to share where no publisher exists', async () => {
+    const reply = await handleMcpMessage(
+      rpc('tools/call', { name: 'share_pattern' }),
+      neverCalled,
+    )
+    expect(reply).toMatchObject({
+      result: {
+        isError: true,
+        content: [{ type: 'text', text: expect.stringContaining('hosted relay') }],
       },
     })
   })

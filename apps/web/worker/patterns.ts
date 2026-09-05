@@ -6,6 +6,7 @@ import {
   PATTERN_PAGE_SIZE,
   type PatternSort,
   type SharedPattern,
+  type SharedPatternDraft,
 } from '@purple/core/shared-pattern'
 import {
   isJsonNumber,
@@ -38,6 +39,7 @@ interface PatternRow {
   id: string
   title: string
   code: string
+  handle: string | null
   createdAt: number
   likes: number
   dislikes: number
@@ -160,27 +162,37 @@ async function createShare(
   const verificationFailure = turnstileFailureResponse(turnstile)
   if (verificationFailure) return verificationFailure
 
+  const id = await publishSharedPattern(env, draft, requestId)
+  return jsonResponse(
+    { id },
+    201,
+    { Location: `/?s=${id}` },
+  )
+}
+
+/** Insert one validated draft under a fresh short id; the caller has already
+ * proven a person is behind it (Turnstile, or an agent paired to a tab). */
+export async function publishSharedPattern(
+  env: Pick<Env, 'PATTERNS_DB'>,
+  draft: SharedPatternDraft,
+  requestId: string,
+): Promise<string> {
   const createdAt = Date.now()
   let id = ''
   for (let attempt = 0; attempt < 3; attempt++) {
     id = randomShareId()
     try {
       await env.PATTERNS_DB.prepare(
-        `INSERT INTO shared_patterns (id, title, code, created_at)
-         VALUES (?, ?, ?, ?)`,
-      ).bind(id, draft.title, draft.code, createdAt).run()
+        `INSERT INTO shared_patterns (id, title, code, handle, created_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      ).bind(id, draft.title, draft.code, draft.handle, createdAt).run()
       break
     } catch (error) {
       if (attempt === 2) throw error
     }
   }
-
   console.log(JSON.stringify({ event: 'pattern_shared', requestId, id }))
-  return jsonResponse(
-    { id },
-    201,
-    { Location: `/?s=${id}` },
-  )
+  return id
 }
 
 async function getPattern(
@@ -320,6 +332,7 @@ const PATTERN_SELECT = `SELECT
   p.id,
   p.title,
   p.code,
+  p.handle,
   p.created_at AS createdAt,
   p.likes,
   p.dislikes,
@@ -532,6 +545,7 @@ function parsePatternRow(row: PatternRow): SharedPattern | null {
     id: row.id,
     title: row.title,
     code: row.code,
+    handle: row.handle,
     createdAt: row.createdAt,
     likes: row.likes,
     dislikes: row.dislikes,

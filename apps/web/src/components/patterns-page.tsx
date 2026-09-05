@@ -1,8 +1,9 @@
-import type {
-  PatternSort,
-  PatternVote,
-  PatternVoteResult,
-  SharedPattern,
+import {
+  DEFAULT_HANDLE,
+  type PatternSort,
+  type PatternVote,
+  type PatternVoteResult,
+  type SharedPattern,
 } from '@purple/core/shared-pattern'
 import { PurpleMark } from '@purple/ui/purple-mark'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -289,9 +290,12 @@ export function PatternsPage({ focusOnMount, navigate, playback }: PatternsPageP
                   <div className="pattern-card-preview">
                     <header>
                       <h2>{pattern.title}</h2>
-                      <time dateTime={new Date(pattern.createdAt).toISOString()}>
-                        {formatDate(pattern.createdAt)}
-                      </time>
+                      <p className="pattern-byline">
+                        <span>{pattern.handle ?? DEFAULT_HANDLE}</span>
+                        <time dateTime={new Date(pattern.createdAt).toISOString()}>
+                          {formatDate(pattern.createdAt)}
+                        </time>
+                      </p>
                     </header>
                     <pre>{pattern.code}</pre>
                   </div>

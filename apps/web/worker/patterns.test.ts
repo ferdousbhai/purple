@@ -9,6 +9,7 @@ describe('public pattern Worker', () => {
       jsonRequest('/api/shares', 'POST', {
         title: 'Acid rain',
         code: 's("bd*4")',
+        handle: ' dj_anon ',
         turnstileToken: 'verified',
       }),
       patternEnv(db),
@@ -22,6 +23,7 @@ describe('public pattern Worker', () => {
     expect(db.patterns.get(body.id)).toMatchObject({
       title: 'Acid rain',
       code: 's("bd*4")',
+      handle: 'dj_anon',
     })
   })
 
@@ -134,6 +136,7 @@ interface StoredPattern {
   id: string
   title: string
   code: string
+  handle?: string | null
   createdAt: number
   likes: number
   dislikes: number
@@ -189,9 +192,10 @@ class PatternStatement {
 
   async run(): Promise<D1Result> {
     if (this.query.includes('INSERT INTO shared_patterns')) {
-      const [id, title, code, createdAt] = this.values as [string, string, string, number]
+      const [id, title, code, handle, createdAt] =
+        this.values as [string, string, string, string | null, number]
       this.db.patterns.set(id, {
-        id, title, code, createdAt, likes: 0, dislikes: 0, score: 0,
+        id, title, code, handle, createdAt, likes: 0, dislikes: 0, score: 0,
       })
     } else if (this.query.includes('INSERT INTO pattern_votes')) {
       const [id, voterHash, value] = this.values as [string, string, number]

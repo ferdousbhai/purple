@@ -22,8 +22,13 @@ import {
   NOT_CONNECTED_MESSAGE,
   pairingGuide,
   planAgentToolCall,
+  SHARE_NEEDS_RELAY_MESSAGE,
 } from '@purple/core/agent-tools'
 import { errorMessage } from '@purple/core/error'
+import {
+  parseSharedPatternDraft,
+  type SharedPatternDraft,
+} from '@purple/core/shared-pattern'
 import {
   isJsonNumber,
   isJsonString,
@@ -33,6 +38,7 @@ import {
   type JsonValue,
 } from '@purple/core/json'
 import { hasContentType, jsonResponse, readBoundedBody, textResponse } from './http'
+import { publishSharedPattern } from './patterns'
 
 /** Codes are minted by the studio (20 hex chars); accept a little latitude. */
 const CODE_PATTERN = /^[A-Za-z0-9_-]{12,64}$/
@@ -53,7 +59,11 @@ export type AgentCaller = (
   timeoutMs: number,
 ) => Promise<AgentCallOutcome>
 
-type RelayEnv = Pick<Env, 'AGENT_LINK'>
+export type PatternPublisher = (
+  draft: SharedPatternDraft,
+) => Promise<{ ok: true; url: string } | { ok: false; error: string }>
+
+type RelayEnv = Pick<Env, 'AGENT_LINK' | 'PATTERNS_DB' | 'SHARE_RATE_LIMITER'>
 
 export function isPairingCode(value: string): boolean {
   return CODE_PATTERN.test(value)
@@ -119,8 +129,10 @@ export async function handleMcpRequest(
     return jsonResponse(rpcError(null, -32700, 'Parse error'), 200)
   }
 
-  const reply = await handleMcpMessage(message, (call, timeoutMs) =>
-    relayAgentCall(env, code, call, timeoutMs),
+  const reply = await handleMcpMessage(
+    message,
+    (call, timeoutMs) => relayAgentCall(env, code, call, timeoutMs),
+    (draft) => publishForTab(env, code, new URL(request.url).origin, draft),
   )
   return reply === null
     ? new Response(null, { status: 202 })
@@ -135,6 +147,7 @@ export async function handleMcpRequest(
 export async function handleMcpMessage(
   message: JsonValue,
   callAgent: AgentCaller,
+  publish: PatternPublisher | null = null,
 ): Promise<JsonValue | null> {
   const fields = jsonMembers(message)
   if (!fields || fields.get('jsonrpc') !== '2.0') {
@@ -163,7 +176,7 @@ export async function handleMcpMessage(
     case 'tools/list':
       return rpcResult(id, { tools: AGENT_TOOLS })
     case 'tools/call':
-      return callTool(id, params, callAgent)
+      return callTool(id, params, callAgent, publish)
     default:
       return rpcError(id, -32601, `Method not found: ${method}`)
   }
@@ -173,6 +186,7 @@ async function callTool(
   id: JsonValue,
   params: ReadonlyMap<string, JsonValue> | null,
   callAgent: AgentCaller,
+  publish: PatternPublisher | null,
 ): Promise<JsonValue> {
   const name = jsonText(params?.get('name'))
   if (name === null || !AGENT_TOOLS.some((tool) => tool.name === name)) {
@@ -182,6 +196,28 @@ async function callTool(
   try {
     const plan = planAgentToolCall(name, args)
     if (plan.kind === 'text') return toolText(id, plan.text)
+    if (plan.kind === 'share') {
+      if (publish === null) return toolText(id, SHARE_NEEDS_RELAY_MESSAGE, true)
+      const session = await callAgent(plan.call, plan.timeoutMs)
+      if (!session.ok) return toolText(id, session.error, true)
+      const fields = jsonMembers(session.result)
+      const draft = parseSharedPatternDraft({
+        title: plan.title ?? jsonText(fields?.get('title')),
+        code: jsonText(fields?.get('code')),
+        handle: plan.handle,
+      })
+      if (draft === null) {
+        return toolText(
+          id,
+          'Nothing publishable in the editor, or the title or handle is too long.',
+          true,
+        )
+      }
+      const published = await publish(draft)
+      return published.ok
+        ? toolText(id, `Published to the public feed: ${published.url}`)
+        : toolText(id, published.error, true)
+    }
     const outcome = await callAgent(plan.call, plan.timeoutMs)
     return outcome.ok
       ? toolText(id, formatAgentToolResult(plan.call, outcome.result))
@@ -236,6 +272,22 @@ async function relayAgentCall(
   }
   const error = jsonText(fields?.get('error'))
   return { ok: false, error: error ?? 'The relay returned an unusable answer.' }
+}
+
+/** An agent publishes on behalf of the tab it is paired with, so the tab's
+ * pairing code is the rate-limit key: a real browser minted it. */
+async function publishForTab(
+  env: RelayEnv,
+  code: string,
+  origin: string,
+  draft: SharedPatternDraft,
+): ReturnType<PatternPublisher> {
+  const rateLimit = await env.SHARE_RATE_LIMITER.limit({ key: `pair:${code}` })
+  if (!rateLimit.success) {
+    return { ok: false, error: 'Too many shares from this tab. Wait a minute.' }
+  }
+  const id = await publishSharedPattern(env, draft, crypto.randomUUID())
+  return { ok: true, url: `${origin}/?s=${id}` }
 }
 
 /**

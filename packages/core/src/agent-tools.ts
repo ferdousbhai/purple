@@ -8,6 +8,11 @@
 
 import type { AgentCall } from "./agent-link.ts";
 import {
+  DEFAULT_HANDLE,
+  MAX_HANDLE_LENGTH,
+  MAX_SHARED_TITLE_LENGTH,
+} from "./shared-pattern.ts";
+import {
   isJsonString,
   jsonMembers,
   jsonText,
@@ -33,7 +38,9 @@ export const AGENT_INSTRUCTIONS =
   "groove while the arrangement moves. Let each " +
   "section run for minutes (at 30 cpm, four minutes is about 120 cycles), " +
   "sleep between sections if you can, and continue until the listener stops " +
-  "you. get_session shows what the tab is playing.\n\n" +
+  "you. get_session shows what the tab is playing. When a section is a " +
+  "keeper, share_pattern posts it to the public feed under your handle; " +
+  "share the best ones, not every one.\n\n" +
   "If the first play is blocked, the listener must press PLAY in the tab once.";
 
 /**
@@ -186,11 +193,40 @@ export const AGENT_TOOLS: AgentToolDefinition[] = [
     description: "Stop playback.",
     inputSchema: NO_INPUT,
   },
+  {
+    name: "share_pattern",
+    description:
+      "Publish the editor pattern to the public feed at /patterns. Returns its link.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: {
+          type: "string",
+          description: `Defaults to the editor title; at most ${MAX_SHARED_TITLE_LENGTH} characters.`,
+        },
+        handle: {
+          type: "string",
+          description:
+            `Poster name shown on the feed, at most ${MAX_HANDLE_LENGTH} characters; ` +
+            `${DEFAULT_HANDLE} by default.`,
+        },
+      },
+      required: [],
+    },
+  },
 ];
 
 type AgentToolPlan =
   | { kind: "text"; text: string }
-  | { kind: "call"; call: AgentCall; timeoutMs: number };
+  | { kind: "call"; call: AgentCall; timeoutMs: number }
+  /** Read the session from the tab, then publish it; only the hosted relay can. */
+  | {
+      kind: "share";
+      call: { method: "get_session" };
+      timeoutMs: number;
+      title: string | null;
+      handle: string | null;
+    };
 
 /**
  * Decode one tool invocation into what to do with it. Throws with an
@@ -211,6 +247,14 @@ export function planAgentToolCall(
         call: { method: name },
         timeoutMs: AGENT_CALL_TIMEOUTS_MS[name],
       };
+    case "share_pattern":
+      return {
+        kind: "share",
+        call: { method: "get_session" },
+        timeoutMs: AGENT_CALL_TIMEOUTS_MS.get_session,
+        title: jsonText(args?.get("title")),
+        handle: jsonText(args?.get("handle")),
+      };
     case "set_pattern": {
       const code = jsonText(args?.get("code"));
       if (code === null) throw new Error("set_pattern requires a code string.");
@@ -225,6 +269,9 @@ export function planAgentToolCall(
       throw new Error(`Unknown tool: ${name}`);
   }
 }
+
+export const SHARE_NEEDS_RELAY_MESSAGE =
+  "Sharing publishes through the hosted relay at soundspurple.com; the offline bridge cannot.";
 
 /** Turn a studio response into the text the agent reads. */
 export function formatAgentToolResult(

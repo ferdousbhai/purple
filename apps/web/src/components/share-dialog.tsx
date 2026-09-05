@@ -1,4 +1,4 @@
-import { MAX_SHARED_TITLE_LENGTH } from '@purple/core/shared-pattern'
+import { DEFAULT_HANDLE, MAX_HANDLE_LENGTH, MAX_SHARED_TITLE_LENGTH } from '@purple/core/shared-pattern'
 import { useClipboardCopy } from '@purple/ui/use-clipboard-copy'
 import { useCallback, useState, type FormEvent } from 'react'
 import {
@@ -18,6 +18,7 @@ export function ShareDialog(props: {
   title: string
 }) {
   const [title, setTitle] = useState(props.title)
+  const [handle, setHandle] = useState(loadHandle)
   const [sharedId, setSharedId] = useState(props.existingId)
   const [turnstileToken, setTurnstileToken] = useState('')
   const [resetKey, setResetKey] = useState(0)
@@ -41,9 +42,10 @@ export function ShareDialog(props: {
     setError(null)
     try {
       const id = await createSharedPattern(
-        { title: title.trim(), code: props.code },
+        { title: title.trim(), code: props.code, handle: handle.trim() || null },
         turnstileToken,
       )
+      saveHandle(handle.trim())
       setSharedId(id)
       props.onShared(id, title.trim())
     } catch {
@@ -108,6 +110,15 @@ export function ShareDialog(props: {
               maxLength={MAX_SHARED_TITLE_LENGTH}
             />
           </label>
+          <label>
+            <span>HANDLE <small>OPTIONAL</small></span>
+            <input
+              value={handle}
+              onChange={(event) => setHandle(event.target.value)}
+              maxLength={MAX_HANDLE_LENGTH}
+              placeholder={DEFAULT_HANDLE}
+            />
+          </label>
           <TurnstileFormEnd
             action="purple_share"
             resetKey={resetKey}
@@ -127,4 +138,23 @@ export function ShareDialog(props: {
       )}
     </ModalDialog>
   )
+}
+
+const HANDLE_KEY = 'purple-handle'
+
+function loadHandle(): string {
+  try {
+    return localStorage.getItem(HANDLE_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+function saveHandle(handle: string): void {
+  try {
+    if (handle) localStorage.setItem(HANDLE_KEY, handle)
+    else localStorage.removeItem(HANDLE_KEY)
+  } catch {
+    // Remembering the handle is a convenience only.
+  }
 }

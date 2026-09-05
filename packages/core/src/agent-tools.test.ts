@@ -51,6 +51,18 @@ describe("planAgentToolCall", () => {
     expect(() => planAgentToolCall("make_coffee", null)).toThrow("Unknown tool");
   });
 
+  it("plans share_pattern as a session read followed by a publish", () => {
+    expect(
+      planAgentToolCall("share_pattern", new Map([["handle", "dj_anon"]])),
+    ).toEqual({
+      kind: "share",
+      call: { method: "get_session" },
+      timeoutMs: 10_000,
+      title: null,
+      handle: "dj_anon",
+    });
+  });
+
   it("covers every tool in the catalog", () => {
     for (const tool of AGENT_TOOLS) {
       const args =

@@ -45,6 +45,7 @@ vi.mock('#/lib/public-patterns', () => ({
         dislikes: 1,
         score: 1,
         viewerVote: gallery.viewerVote,
+        handle: null,
       }],
       nextCursor: gallery.nextCursor,
     }

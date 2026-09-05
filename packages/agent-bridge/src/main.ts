@@ -21,6 +21,7 @@ import {
   AGENT_TOOLS,
   formatAgentToolResult,
   planAgentToolCall,
+  SHARE_NEEDS_RELAY_MESSAGE,
 } from "@purple/core/agent-tools";
 import { parseJsonMembers } from "@purple/core/json";
 import { createBrowserLink, type BrowserLink } from "./browser-link.ts";
@@ -34,6 +35,7 @@ async function callTool(
 ): Promise<string> {
   const plan = planAgentToolCall(name, parseJsonMembers(argsText));
   if (plan.kind === "text") return plan.text;
+  if (plan.kind === "share") throw new Error(SHARE_NEEDS_RELAY_MESSAGE);
   const result = await link.call(plan.call, plan.timeoutMs);
   return formatAgentToolResult(plan.call, result);
 }

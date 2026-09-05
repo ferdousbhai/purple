@@ -15,6 +15,7 @@ const pattern = {
   dislikes: 1,
   score: 3,
   viewerVote: 1,
+  handle: null,
 };
 
 describe("shared pattern parsing", () => {
@@ -22,7 +23,17 @@ describe("shared pattern parsing", () => {
     expect(parseSharedPatternDraft({
       title: "  Acid rain  ",
       code: '  s("bd*4")  ',
-    })).toEqual({ title: "Acid rain", code: 's("bd*4")' });
+    })).toEqual({ title: "Acid rain", code: 's("bd*4")', handle: null });
+    expect(parseSharedPatternDraft({
+      title: "Acid rain",
+      code: 's("bd*4")',
+      handle: "  dj_anon ",
+    })).toEqual({ title: "Acid rain", code: 's("bd*4")', handle: "dj_anon" });
+    expect(parseSharedPatternDraft({
+      title: "Acid rain",
+      code: 's("bd*4")',
+      handle: "x".repeat(25),
+    })).toBeNull();
   });
 
   it("rejects malformed identifiers, votes and oversized code", () => {

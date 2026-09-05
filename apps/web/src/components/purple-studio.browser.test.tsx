@@ -284,6 +284,7 @@ function publicPattern(viewerVote: -1 | 0 | 1 = 0) {
     dislikes: 1,
     score: 3,
     viewerVote,
+    handle: null,
   }
 }
 

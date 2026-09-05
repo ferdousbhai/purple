@@ -19,9 +19,9 @@ function sql(value) {
 const rows = SEED_PATTERNS.map(({ title, code }, index) => {
   // Array order is gallery order under FRESH: the first entry is the newest.
   const createdAt = now - index * MINUTE_MS;
-  return `(${[shareId(title), title, code, createdAt].map(sql).join(", ")})`;
+  return `(${[shareId(title), title, code, "Purple", createdAt].map(sql).join(", ")})`;
 });
 
 process.stdout.write(
-  `INSERT OR IGNORE INTO shared_patterns (id, title, code, created_at) VALUES\n${rows.join(",\n")};\n`,
+  `INSERT OR IGNORE INTO shared_patterns (id, title, code, handle, created_at) VALUES\n${rows.join(",\n")};\n`,
 );
