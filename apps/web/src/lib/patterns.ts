@@ -67,29 +67,18 @@ function parsePattern(value: JsonValue): SavedPattern | null {
   const shareId = fields?.get('shareId')
   const createdAt = fields?.get('createdAt')
   const updatedAt = fields?.get('updatedAt')
+  if (shareId !== undefined && !isJsonString(shareId)) return null
   if (
     !isJsonString(id) ||
     !isJsonString(title) ||
-    title.length === 0 ||
-    title.length > 60 ||
     !isJsonString(code) ||
-    code.length === 0 ||
-    code.length > MAX_PATTERN_LENGTH ||
-    (shareId !== undefined && (!isJsonString(shareId) || !isShareId(shareId))) ||
     !isJsonNumber(createdAt) ||
     !isJsonNumber(updatedAt)
   ) {
     return null
   }
-  const pattern: SavedPattern = {
-    id,
-    title,
-    code,
-    createdAt,
-    updatedAt,
-  }
-  if (isJsonString(shareId)) pattern.shareId = shareId
-  return pattern
+  // Narrowing only; normalizePattern owns the bounds for both entry points.
+  return normalizePattern({ id, title, code, shareId, createdAt, updatedAt })
 }
 
 function normalizePattern(pattern: SavedPattern): SavedPattern | null {
