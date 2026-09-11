@@ -914,6 +914,27 @@ function interpretCall(
   if (typeof callable !== "function") {
     throw new UnsafePatternError("The selected Strudel value is not callable.", node);
   }
+  if (callName && EVENT_MULTIPLIER_CALLS.has(callName)) {
+    // shuffle/striate/echoWith and friends allocate eagerly inside Strudel, so
+    // the limit has to hold before the call, not after it. The branch bounds
+    // known now can only grow during the call (arrow callbacks fill theirs in
+    // while running), so this rejects nothing the accounting below would allow;
+    // a throwaway budget keeps the live one unmutated for that accounting.
+    consumeEventMultiplier(
+      {
+        eventMultiplier: combineCallEventBounds(
+          callName,
+          interpretedArgs.budgets,
+          node,
+          owner === undefined ? undefined : ownerEventMultiplier,
+        ),
+        nodes: budget.nodes,
+      },
+      eventMultiplierArgument(interpretedArgs.values[0], node.arguments[0], node),
+      node,
+      `${callName}()`,
+    );
+  }
   const result = Reflect.apply(callable, owner, interpretedArgs.values);
   budget.eventMultiplier = combineCallEventBounds(
     callName,

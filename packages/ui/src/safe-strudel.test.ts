@@ -12,6 +12,7 @@ interface FakePattern {
   gain(value: number): FakePattern;
   jux(transform: (value: FakePattern) => FakePattern): FakePattern;
   layer(...transforms: Array<(value: FakePattern) => FakePattern>): FakePattern;
+  shuffle(value: number): FakePattern;
   struct(value: string): FakePattern;
 }
 
@@ -22,6 +23,7 @@ interface NumericCycle {
 function scope() {
   const gain = vi.fn<(value: number) => FakePattern>();
   const jux = vi.fn<(transform: (value: FakePattern) => FakePattern) => FakePattern>();
+  const shuffle = vi.fn<(value: number) => FakePattern>();
   const pattern: FakePattern = {
     fast: () => pattern,
     gain: (value) => {
@@ -36,11 +38,16 @@ function scope() {
       transforms.forEach((transform) => transform(pattern));
       return pattern;
     },
+    shuffle: (value) => {
+      shuffle(value);
+      return pattern;
+    },
     struct: () => pattern,
   };
   return {
     gain,
     pattern,
+    shuffle,
     scope: createSafeStrudelScope({
       Math: Object.freeze({ max: Math.max, min: Math.min }),
       cat: vi.fn(() => pattern),
@@ -144,6 +151,14 @@ describe("evaluateSafeStrudelExpression", () => {
         fixture.scope,
       ),
     ).toThrow("cumulative event multiplier");
+  });
+
+  it("refuses an event-expanding call before the engine allocates", () => {
+    const fixture = scope();
+    expect(() =>
+      evaluateSafeStrudelExpression('s("bd").shuffle(1000000)', fixture.scope),
+    ).toThrow("cumulative event multiplier");
+    expect(fixture.shuffle).not.toHaveBeenCalled();
   });
 
   it("accounts for nested and parallel mini-notation structure", () => {
