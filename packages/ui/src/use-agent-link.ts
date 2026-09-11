@@ -89,6 +89,7 @@ export function useAgentLink(options: {
     let reconnectDelayMs = FIRST_RECONNECT_DELAY_MS;
     let disposed = false;
     let dormant = false;
+    let takenOver = false;
 
     const retryLater = () => {
       reconnectTimer = window.setTimeout(connect, reconnectDelayMs);
@@ -126,8 +127,9 @@ export function useAgentLink(options: {
         setConnected(false);
         if (event.code === LINK_TAKEN_OVER_CODE) {
           // Another tab of this browser claimed the link. Racing it back would
-          // evict that tab in turn, forever; leave this one dormant instead.
-          dormant = true;
+          // evict that tab in turn, forever; stand down permanently instead.
+          // This is not `dormant`: a wake on focus must not dial the link back.
+          takenOver = true;
           return;
         }
         retryLater();
@@ -135,7 +137,7 @@ export function useAgentLink(options: {
     };
 
     const wake = () => {
-      if (disposed || document.hidden || !dormant) return;
+      if (disposed || takenOver || document.hidden || !dormant) return;
       window.clearTimeout(reconnectTimer);
       reconnectDelayMs = FIRST_RECONNECT_DELAY_MS;
       connect();
