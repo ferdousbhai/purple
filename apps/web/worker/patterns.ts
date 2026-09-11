@@ -178,19 +178,11 @@ export async function publishSharedPattern(
   requestId: string,
 ): Promise<string> {
   const createdAt = Date.now()
-  let id = ''
-  for (let attempt = 0; attempt < 3; attempt++) {
-    id = randomShareId()
-    try {
-      await env.PATTERNS_DB.prepare(
-        `INSERT INTO shared_patterns (id, title, code, handle, created_at)
-         VALUES (?, ?, ?, ?, ?)`,
-      ).bind(id, draft.title, draft.code, draft.handle, createdAt).run()
-      break
-    } catch (error) {
-      if (attempt === 2) throw error
-    }
-  }
+  const id = randomShareId()
+  await env.PATTERNS_DB.prepare(
+    `INSERT INTO shared_patterns (id, title, code, handle, created_at)
+     VALUES (?, ?, ?, ?, ?)`,
+  ).bind(id, draft.title, draft.code, draft.handle, createdAt).run()
   console.log(JSON.stringify({ event: 'pattern_shared', requestId, id }))
   return id
 }
