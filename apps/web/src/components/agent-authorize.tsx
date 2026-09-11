@@ -102,7 +102,13 @@ export function AgentAuthorize(props: {
 function clientDisplayName(clientId: string): string {
   try {
     const body = clientId.split('.', 1)[0] ?? ''
-    const fields = parseJsonMembers(atob(body.replaceAll('-', '+').replaceAll('_', '/')))
+    // atob yields one Latin-1 char per byte; the Worker minted the payload as
+    // UTF-8, so decode the bytes back or a non-ASCII client name renders as
+    // mojibake on the one screen where the visitor decides to trust it.
+    const binary = atob(body.replaceAll('-', '+').replaceAll('_', '/'))
+    const fields = parseJsonMembers(
+      new TextDecoder().decode(Uint8Array.from(binary, (char) => char.charCodeAt(0))),
+    )
     const name = jsonText(fields?.get('name'))?.trim()
     if (name) return name
   } catch {
