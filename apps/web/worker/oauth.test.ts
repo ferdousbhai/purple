@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   bearerPairingCode,
-  clientDisplayName,
   computePkceChallenge,
   handleOAuthRequest,
   unauthorizedResponse,
@@ -31,6 +30,15 @@ function form(path: string, fields: Record<string, string>): Request {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams(fields),
   })
+}
+
+/** The unverified payload a client id carries, as the Allow page reads it. */
+function clientIdPayload(clientId: string): { name?: string } {
+  const encoded = clientId.split('.', 1)[0] ?? ''
+  const binary = atob(encoded.replaceAll('-', '+').replaceAll('_', '/'))
+  return JSON.parse(
+    new TextDecoder().decode(Uint8Array.from(binary, (char) => char.charCodeAt(0))),
+  )
 }
 
 async function register(): Promise<{ client_id: string }> {
@@ -95,7 +103,7 @@ describe('metadata', () => {
 describe('registration', () => {
   it('issues a client id that carries its own name and redirect URIs', async () => {
     const client = await register()
-    expect(clientDisplayName(client.client_id)).toBe('Claude Code')
+    expect(clientIdPayload(client.client_id).name).toBe('Claude Code')
   })
 
   it('rejects redirect URIs that are neither https nor local http', async () => {
