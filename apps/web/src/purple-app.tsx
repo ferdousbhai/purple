@@ -58,18 +58,10 @@ function StudioRoute(props: {
     )
   }
   if (id && !pattern) {
-    return (
-      <main autoFocus className="boot-shell" tabIndex={-1}>
-        LOADING PATTERN…
-      </main>
-    )
+    return <BootShell label="LOADING PATTERN…" />
   }
   return (
-    <Suspense fallback={(
-      <main autoFocus className="boot-shell" tabIndex={-1}>
-        LOADING STUDIO…
-      </main>
-    )}>
+    <Suspense fallback={<BootShell label="LOADING STUDIO…" />}>
       <PurpleStudio
         focusOnMount
         navigate={props.navigate}
@@ -77,6 +69,14 @@ function StudioRoute(props: {
         sharedPattern={pattern ?? undefined}
       />
     </Suspense>
+  )
+}
+
+function BootShell(props: { label: string }) {
+  return (
+    <main autoFocus className="boot-shell" tabIndex={-1}>
+      {props.label}
+    </main>
   )
 }
 
@@ -122,22 +122,14 @@ function AppRoute(props: {
   }
   if (props.route.pathname === '/authorize') {
     return (
-      <Suspense fallback={(
-        <main autoFocus className="boot-shell" tabIndex={-1}>
-          LOADING…
-        </main>
-      )}>
+      <Suspense fallback={<BootShell label="LOADING…" />}>
         <AgentAuthorize search={props.route.search} />
       </Suspense>
     )
   }
   if (props.route.pathname === '/patterns') {
     return (
-      <Suspense fallback={(
-        <main autoFocus className="boot-shell" tabIndex={-1}>
-          LOADING PATTERNS…
-        </main>
-      )}>
+      <Suspense fallback={<BootShell label="LOADING PATTERNS…" />}>
         <PatternsPage
           focusOnMount
           navigate={props.navigate}
