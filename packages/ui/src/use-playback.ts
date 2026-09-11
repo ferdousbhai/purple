@@ -307,6 +307,11 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
         if (!transitionResult.ok) {
           if (transitionResult.kind === "cancelled") return transitionResult;
           if (transitionResult.kind === "audio") {
+            // The evaluation bailed before touching the scheduler, so the REPL
+            // still holds the previous pattern while the transport resets to
+            // an inactive error state. Drop it, or a recovering AudioContext
+            // resumes music the studio shows nothing to stop.
+            hush();
             dispatch({ type: "error", error: transitionResult.error });
             return transitionResult;
           }
