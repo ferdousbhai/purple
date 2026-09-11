@@ -87,5 +87,13 @@ export async function main(): Promise<void> {
     }
   });
 
+  // The stdio transport never watches for stdin EOF, and the listening
+  // WebSocket server keeps the event loop alive, so a client that dies without
+  // signalling its child would leave an orphan holding the port and every later
+  // launch would fail with EADDRINUSE. Close the link and exit on EOF instead.
+  process.stdin.once("end", () => {
+    void link.close().finally(() => process.exit(0));
+  });
+
   await server.connect(new StdioServerTransport());
 }
