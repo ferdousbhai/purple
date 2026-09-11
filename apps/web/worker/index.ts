@@ -58,7 +58,13 @@ export default {
         agentLinkCodeFromPath(url.pathname, MCP_PREFIX),
       )
     }
-    if (isOAuthPath(url.pathname) && !(url.pathname === AUTHORIZE_PATH && request.method === 'GET')) {
+    if (
+      isOAuthPath(url.pathname) &&
+      !(
+        url.pathname === AUTHORIZE_PATH &&
+        (request.method === 'GET' || request.method === 'HEAD')
+      )
+    ) {
       return handleOAuthRequest(request, env)
     }
     if (url.pathname.startsWith(LINK_PREFIX)) {
