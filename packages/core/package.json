@@ -12,7 +12,6 @@
     "./seed-patterns": "./src/seed-patterns.ts",
     "./shared-pattern": "./src/shared-pattern.ts",
     "./showcase-patterns": "./src/showcase-patterns.ts",
-    "./strudel-reference": "./src/strudel-reference.ts",
     "./transitions": "./src/transitions.ts",
     "./types": "./src/types.ts",
     "./validation": "./src/validation.ts"

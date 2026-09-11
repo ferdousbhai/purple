@@ -22,7 +22,6 @@
   },
   "devDependencies": {
     "@oxlint/plugins": "1.78.0",
-    "@types/react": "^19.2.14",
     "jscpd": "4.0.5",
     "oxlint": "1.78.0",
     "typescript": "^6.0.3",
