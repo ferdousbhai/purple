@@ -34,7 +34,10 @@ describe("loadPinnedSamples", () => {
   it.each([
     { bd: ["https://attacker.invalid/audio.wav"] },
     { bd: ["../audio.wav"] },
-    { __proto__: ["audio.wav"] },
+    // Computed so the member is a real own property: a literal `__proto__:`
+    // key would invoke the prototype setter and serialize as `{}`, which the
+    // empty-manifest branch would reject before the deny-list is reached.
+    { ["__proto__"]: ["audio.wav"] },
   ])("rejects unsafe manifest data", async (manifest) => {
     vi.stubGlobal(
       "fetch",
@@ -45,7 +48,7 @@ describe("loadPinnedSamples", () => {
         samples: vi.fn().mockResolvedValue(undefined),
         aliasBank: vi.fn().mockResolvedValue(undefined),
       }),
-    ).rejects.toThrow(/invalid|unsafe|empty/);
+    ).rejects.toThrow(/invalid|unsafe/);
   });
 
   it("aborts manifest requests that do not settle", async () => {
