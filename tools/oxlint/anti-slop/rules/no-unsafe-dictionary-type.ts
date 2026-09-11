@@ -10,48 +10,16 @@ import {
 
 import type { ESTree } from "@oxlint/plugins";
 
-const typeNodeKinds: ReadonlySet<string> = new Set([
-	"JSDocNonNullableType",
-	"JSDocNullableType",
-	"JSDocUnknownType",
-	"TSAnyKeyword",
-	"TSArrayType",
-	"TSBigIntKeyword",
-	"TSBooleanKeyword",
-	"TSConditionalType",
-	"TSConstructorType",
-	"TSFunctionType",
-	"TSImportType",
-	"TSIndexedAccessType",
-	"TSInferType",
-	"TSIntersectionType",
-	"TSIntrinsicKeyword",
-	"TSLiteralType",
+const dictionaryShapeKinds: ReadonlySet<string> = new Set([
 	"TSMappedType",
-	"TSNamedTupleMember",
-	"TSNeverKeyword",
-	"TSNullKeyword",
-	"TSNumberKeyword",
-	"TSObjectKeyword",
 	"TSParenthesizedType",
-	"TSStringKeyword",
-	"TSSymbolKeyword",
-	"TSTemplateLiteralType",
-	"TSThisType",
-	"TSTupleType",
 	"TSTypeLiteral",
 	"TSTypeOperator",
-	"TSTypePredicate",
-	"TSTypeQuery",
 	"TSTypeReference",
-	"TSUndefinedKeyword",
-	"TSUnionType",
-	"TSUnknownKeyword",
-	"TSVoidKeyword",
 ]);
 
-function isTypeNode(node: ESTree.Node): node is ESTree.TSType {
-	return typeNodeKinds.has(node.type);
+function isDictionaryShapeNode(node: ESTree.Node): node is ESTree.TSType {
+	return dictionaryShapeKinds.has(node.type);
 }
 
 function isInsideTypeAliasDeclaration(node: ESTree.Node): boolean {
@@ -74,7 +42,7 @@ function shouldReportType(node: ESTree.TSType, environment: TypeEnvironment): bo
 	if (classifyUnsafeDictionary(node, environment) === null) return false;
 	let current: ESTree.Node | null = node.parent;
 	while (current !== null && current.type !== "Program") {
-		if (isTypeNode(current) && classifyUnsafeDictionary(current, environment) !== null)
+		if (isDictionaryShapeNode(current) && classifyUnsafeDictionary(current, environment) !== null)
 			return false;
 		current = current.parent;
 	}
@@ -102,7 +70,7 @@ export const noUnsafeDictionaryTypeRule = defineRule({
 			if (environment === null || !shouldReportType(node, environment)) return;
 			const unsafe = classifyUnsafeDictionary(node, environment);
 			if (unsafe === null) return;
-			report(node, unsafe.unsafeValue);
+			report(node, unsafe);
 		};
 
 		return {
@@ -123,7 +91,7 @@ export const noUnsafeDictionaryTypeRule = defineRule({
 					node.typeAnnotation.typeAnnotation,
 					environment,
 				);
-				if (unsafe !== null) report(node, unsafe.unsafeValue);
+				if (unsafe !== null) report(node, unsafe);
 			},
 		};
 	},
