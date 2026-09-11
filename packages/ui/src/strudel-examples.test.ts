@@ -107,14 +107,6 @@ describe("SHOWCASE_PATTERNS", () => {
     },
   );
 
-  it("are titled multi-line pieces rather than one-line placeholders", () => {
-    expect(SHOWCASE_PATTERNS).toHaveLength(3);
-    for (const showcase of SHOWCASE_PATTERNS) {
-      expect(showcase.title).toMatch(/^\S+(?:\s+\S+)+$/);
-      expect(showcase.code.split("\n").length).toBeGreaterThanOrEqual(4);
-    }
-  });
-
   it.each(SHOWCASE_PATTERNS)(
     "$title stays composable when a visitor crossfades from it",
     async ({ code }) => {

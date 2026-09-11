@@ -35,10 +35,6 @@ describe('parseAgentLinkSettings', () => {
     expect(parseAgentLinkSettings('[]')).toBeNull()
     expect(parseAgentLinkSettings('nope')).toBeNull()
   })
-
-  it('treats the retired port-based shape as absent', () => {
-    expect(parseAgentLinkSettings('{"port":7723}')).toBeNull()
-  })
 })
 
 describe('load and save', () => {

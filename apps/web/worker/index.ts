@@ -201,7 +201,7 @@ function rewriteRoutePreloads(response: Response, pathname: string): Response {
   return rewriter.transform(response)
 }
 
-export function routeMetadata(pathname: string): {
+function routeMetadata(pathname: string): {
   title: string
   heading: string
   description: string

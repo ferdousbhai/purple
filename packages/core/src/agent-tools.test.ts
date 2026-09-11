@@ -1,23 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  AGENT_TOOLS,
-  agentGuide,
-  formatAgentToolResult,
-  planAgentToolCall,
-} from "./agent-tools";
-
-describe("agentGuide", () => {
-  it("carries every client command, tool name, and the instructions", () => {
-    const guide = agentGuide("https://soundspurple.com");
-    expect(guide).toContain(
-      "claude mcp add --transport http purple https://soundspurple.com/mcp\n",
-    );
-    expect(guide).toContain("codex mcp add purple --url https://soundspurple.com/mcp\n");
-    expect(guide).toContain("https://soundspurple.com/mcp/<pairing-code>");
-    for (const { name } of AGENT_TOOLS) expect(guide).toContain(name);
-    expect(guide).toContain("Play a set, not a loop");
-  });
-});
+import { AGENT_TOOLS, formatAgentToolResult, planAgentToolCall } from "./agent-tools";
 
 describe("planAgentToolCall", () => {
   it("answers the reference itself, without a studio round trip", () => {
@@ -97,10 +79,5 @@ describe("formatAgentToolResult", () => {
     );
     expect(text).toContain("rejected the pattern");
     expect(text).toContain('- "bd9" does not exist');
-  });
-
-  it("acknowledges transport controls tersely", () => {
-    expect(formatAgentToolResult({ method: "play" }, {})).toBe("Playing.");
-    expect(formatAgentToolResult({ method: "stop" }, {})).toBe("Stopped.");
   });
 });

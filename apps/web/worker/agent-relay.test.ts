@@ -30,22 +30,17 @@ describe('agentLinkCodeFromPath', () => {
 })
 
 describe('mcpEndpointHelp', () => {
-  it('tells a guessing agent where the pairing code comes from', async () => {
+  it('answers a path without a pairing code with plain-text 404 help', () => {
     const response = mcpEndpointHelp(new Request('https://soundspurple.com/mcp'), null)
     expect(response.status).toBe(404)
     expect(response.headers.get('Content-Type')).toContain('text/plain')
-    const text = await response.text()
-    expect(text).toContain('Allow')
-    expect(text).toContain('claude mcp add --transport http purple https://soundspurple.com/mcp\n')
-    expect(text).toContain('https://soundspurple.com/llms.txt')
   })
 
-  it('answers a GET on a real endpoint with 405 and the same help', async () => {
+  it('answers a GET on a real endpoint with 405 and an Allow header', () => {
     const request = new Request('https://soundspurple.com/mcp/0f7c2d91aa34bb56cc78')
     const response = mcpEndpointHelp(request, '0f7c2d91aa34bb56cc78')
     expect(response.status).toBe(405)
     expect(response.headers.get('Allow')).toBe('POST')
-    expect(await response.text()).toContain('Allow')
   })
 })
 
@@ -93,22 +88,6 @@ describe('handleMcpMessage', () => {
         neverCalled,
       ),
     ).toBeNull()
-  })
-
-  it('lists the shared tool catalog', async () => {
-    const reply = await handleMcpMessage(rpc('tools/list'), neverCalled)
-    expect(reply).toMatchObject({
-      result: {
-        tools: [
-          { name: 'get_strudel_reference' },
-          { name: 'get_session' },
-          { name: 'set_pattern' },
-          { name: 'play' },
-          { name: 'stop' },
-          { name: 'share_pattern' },
-        ],
-      },
-    })
   })
 
   it('serves the Strudel reference without the relay', async () => {

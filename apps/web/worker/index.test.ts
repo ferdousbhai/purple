@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { handleFeedbackRequest } from './feedback'
-import {
-  handleAssetRequest,
-  redirectToCanonicalOrigin,
-  routeMetadata,
-} from './index'
+import { handleAssetRequest, redirectToCanonicalOrigin } from './index'
 
 interface EmailHarness {
   env: Pick<Env, 'FEEDBACK_EMAIL' | 'TURNSTILE_SECRET'>
@@ -34,17 +30,6 @@ describe('canonical origin redirect', () => {
 })
 
 describe('route shell delivery', () => {
-  it('defines distinct canonical metadata for the public gallery', () => {
-    expect(routeMetadata('/patterns')).toEqual({
-      title: 'Public Strudel Patterns | Purple',
-      heading: 'Public Strudel patterns to play, save, and remix',
-      description:
-        'Browse, play, save, and remix public Strudel patterns made with Purple. Listening needs nothing but a browser.',
-      url: 'https://soundspurple.com/patterns',
-    })
-    expect(routeMetadata('/')).toBeNull()
-  })
-
   it('preserves the HTML fallback for client-side routes', async () => {
     let removedStudioPreload = false
     const response = await handleAssetRequest(

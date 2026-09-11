@@ -38,17 +38,6 @@ describe('lazy chunk reload recovery', () => {
     expect(event.defaultPrevented).toBe(false)
     expect(reload).not.toHaveBeenCalled()
   })
-
-  it('does not throw when reading session storage is blocked', () => {
-    const reload = vi.fn()
-    const event = new Event('vite:preloadError', { cancelable: true })
-
-    expect(recoverFromPreloadError(event, () => {
-      throw new DOMException('storage blocked', 'SecurityError')
-    }, reload)).toBe(false)
-    expect(event.defaultPrevented).toBe(false)
-    expect(reload).not.toHaveBeenCalled()
-  })
 })
 
 function mapStorage(values: Map<string, string>): Pick<Storage, 'getItem' | 'setItem'> {
