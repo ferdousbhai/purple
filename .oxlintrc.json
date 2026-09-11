@@ -16,10 +16,7 @@
     "dist/**",
     "build/**",
     "coverage/**",
-    ".wrangler/**",
-    ".output/**",
-    ".vinxi/**",
-    ".tanstack/**"
+    ".wrangler/**"
   ],
   "jsPlugins": [
     {
