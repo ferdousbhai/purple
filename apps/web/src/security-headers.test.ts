@@ -9,6 +9,9 @@ describe("hosted app security headers", () => {
     expect(headers).toContain("script-src 'self' https://challenges.cloudflare.com");
     expect(headers).toContain("frame-src https://challenges.cloudflare.com");
     expect(headers).toContain("frame-ancestors 'none'");
+    // The iOS silent-WAV unlock in media-channel.ts is a data: URL, and <audio>
+    // src is governed by media-src, not img-src.
+    expect(headers).toContain("media-src 'self' data:");
     expect(headers).toContain("X-Content-Type-Options: nosniff");
     expect(headers).not.toContain("unsafe-eval");
     expect(headers).not.toContain("fonts.googleapis.com");
