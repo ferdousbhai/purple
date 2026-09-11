@@ -59,18 +59,14 @@ try {
   });
   const page = await browser.newPage();
   await page.goto(`http://127.0.0.1:${address.port}/`, { waitUntil: "load" });
-  const result = await page.evaluate(async () => {
+  await page.evaluate(async () => {
     const context = new AudioContext();
     try {
       await context.audioWorklet.addModule("/worklet.js");
-      return { ok: true };
     } finally {
       await context.close();
     }
   });
-  if (result.ok !== true) {
-    throw new Error(`AudioWorklet CSP smoke failed: ${JSON.stringify(result)}`);
-  }
   console.log("AudioWorklet loaded under the production CSP.");
 } finally {
   await browser?.close();

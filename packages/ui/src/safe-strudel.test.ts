@@ -49,7 +49,6 @@ function scope() {
     pattern,
     shuffle,
     scope: createSafeStrudelScope({
-      Math: Object.freeze({ max: Math.max, min: Math.min }),
       cat: vi.fn(() => pattern),
       m: vi.fn((value: string) => value),
       mini2ast: parseMiniNotation,
