@@ -1,7 +1,8 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  // The Gemini key, chat, library and inference remain browser-only. A pattern
-  // title and code reach D1 only after the visitor explicitly shares them.
+  // The personal library and the working pattern stay in the visitor's
+  // browser. A pattern title and code reach D1 only after the visitor
+  // explicitly shares them.
   // The feedback route sends only its submitted fields to a fixed destination.
   "name": "purple-web",
   "main": "./worker/index.ts",
