@@ -110,7 +110,10 @@ export function inlineHostedStylesheet(
 
   const link = `<link rel="stylesheet" crossorigin href="/${fileName}">`
   const style = `<style ${INLINE_STYLE_MARKER}>${assetText(stylesheet.source)}</style>`
-  return { fileName, html: html.replace(link, style) }
+  // The function form is never scanned for `$&`/`$'`/`$$` patterns, so a `$`
+  // sequence anywhere in the bundled CSS cannot silently rewrite itself; the
+  // standalone asset is deleted afterwards, leaving no fallback.
+  return { fileName, html: html.replace(link, () => style) }
 }
 
 /** Cache only files emitted by this build. Unknown old chunks must remain
