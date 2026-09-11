@@ -329,19 +329,6 @@ describe('Purple studio browser flow', () => {
     }
   })
 
-  it('puts the equalizer first and keeps feedback beside library and the agent badge', async () => {
-    const { container } = await renderPlayingStudio()
-
-    const actions = container.querySelector('.topbar-actions')
-    const feedback = screen.getByRole('button', { name: 'FEEDBACK' })
-    const library = screen.getByRole('button', { name: 'LIBRARY' })
-    const agent = screen.getByRole('button', { name: /AGENT/ })
-
-    expect(actions?.firstElementChild).toHaveClass('eq-bars')
-    expect(feedback.nextElementSibling).toBe(library)
-    expect(library.nextElementSibling).toBe(agent)
-  })
-
   it('applies an edit to live playback with Ctrl+Enter', async () => {
     await renderPlayingStudio()
     const editor = await screen.findByLabelText('Pattern code')

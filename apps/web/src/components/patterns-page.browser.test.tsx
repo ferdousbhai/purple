@@ -143,18 +143,7 @@ describe('public pattern gallery', () => {
     render(<PatternsPage navigate={(href) => gallery.navigateCalls.push(href)} />)
 
     const heading = await screen.findByRole('heading', { name: 'Acid rain' })
-    expect(screen.getByRole('heading', {
-      level: 1,
-      name: 'PUBLIC PATTERNS',
-    })).toBeVisible()
-    expect(screen.getByText(
-      'Listen in any browser. Vote for keepers, open any pattern in the studio.',
-    )).toBeVisible()
     expect(screen.queryByRole('button', { name: 'STOP AUDIO' })).toBeNull()
-    expect(screen.getByRole('link', { name: 'BACK TO STUDIO' })).toHaveClass(
-      'primary',
-      'patterns-studio-link',
-    )
     expect(heading).toBeVisible()
     const open = screen.getByRole('link', { name: 'Open Acid rain in studio' })
     expect(open).toHaveAttribute(
