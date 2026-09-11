@@ -79,8 +79,6 @@ export interface PatternEditorProps {
   getActiveSourceRanges: () => readonly SourceRange[];
   onEvaluate: () => void;
   className?: string;
-  /** Streamed model prefixes are display-only until the pattern is complete. */
-  readOnly?: boolean;
   wrapLines?: boolean;
 }
 
@@ -91,7 +89,6 @@ export function PatternEditor({
   getActiveSourceRanges,
   onEvaluate,
   className,
-  readOnly = false,
   wrapLines = false,
 }: PatternEditorProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -100,18 +97,15 @@ export function PatternEditor({
   const onCodeChangeRef = useRef(onCodeChange);
   const evaluateRef = useRef(onEvaluate);
   const getActiveSourceRangesRef = useRef(getActiveSourceRanges);
-  const readOnlyRef = useRef(readOnly);
   const [darkTheme, setDarkTheme] = useState(prefersDarkEditor);
   const [compartments] = useState(() => ({
     appearance: new Compartment(),
-    editability: new Compartment(),
   }));
-  const appliedConfigurationRef = useRef({ darkTheme, readOnly, wrapLines });
+  const appliedConfigurationRef = useRef({ darkTheme, wrapLines });
   codeRef.current = code;
   onCodeChangeRef.current = onCodeChange;
   evaluateRef.current = onEvaluate;
   getActiveSourceRangesRef.current = getActiveSourceRanges;
-  readOnlyRef.current = readOnly;
 
   useLayoutEffect(() => {
     const parent = containerRef.current;
@@ -125,13 +119,11 @@ export function PatternEditor({
         javascript(),
         playbackHighlightExtension,
         compartments.appearance.of(appearanceExtensions(darkTheme, wrapLines)),
-        compartments.editability.of(editabilityExtensions(readOnly)),
         Prec.high(
           keymap.of([
             {
               key: "Mod-Enter",
               run: () => {
-                if (readOnlyRef.current) return false;
                 evaluateRef.current();
                 return true;
               },
@@ -179,7 +171,6 @@ export function PatternEditor({
     const applied = appliedConfigurationRef.current;
     if (
       applied.darkTheme === darkTheme &&
-      applied.readOnly === readOnly &&
       applied.wrapLines === wrapLines
     ) {
       return;
@@ -189,11 +180,10 @@ export function PatternEditor({
         compartments.appearance.reconfigure(
           appearanceExtensions(darkTheme, wrapLines),
         ),
-        compartments.editability.reconfigure(editabilityExtensions(readOnly)),
       ],
     });
-    appliedConfigurationRef.current = { darkTheme, readOnly, wrapLines };
-  }, [compartments, darkTheme, readOnly, wrapLines]);
+    appliedConfigurationRef.current = { darkTheme, wrapLines };
+  }, [compartments, darkTheme, wrapLines]);
 
   // CodeMirror owns decoration state outside React. Poll the scheduler beside
   // the editor and dispatch decorations directly, so playback does not trigger
@@ -246,13 +236,6 @@ function appearanceExtensions(darkTheme: boolean, wrapLines: boolean): Extension
   return [
     darkTheme ? purpleEditorDark : purpleEditorLight,
     ...(wrapLines ? [EditorView.lineWrapping] : []),
-  ];
-}
-
-function editabilityExtensions(readOnly: boolean): Extension {
-  return [
-    EditorState.readOnly.of(readOnly),
-    EditorView.editable.of(!readOnly),
   ];
 }
 

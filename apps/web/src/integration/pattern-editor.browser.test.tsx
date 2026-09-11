@@ -41,20 +41,11 @@ describe('PatternEditor in Chromium', () => {
         code={'note("c3")'}
         onCodeChange={onCodeChange}
         onEvaluate={onEvaluate}
-        readOnly
         wrapLines
       />,
     )
     expect(content.textContent).toBe('note("c3")')
-    expect(content.getAttribute('contenteditable')).not.toBe('true')
     expect(content.classList.contains('cm-lineWrapping')).toBe(true)
     expect(onCodeChange).not.toHaveBeenCalled()
-
-    content.dispatchEvent(new KeyboardEvent('keydown', {
-      bubbles: true,
-      ctrlKey: true,
-      key: 'Enter',
-    }))
-    expect(onEvaluate).toHaveBeenCalledOnce()
   })
 })
