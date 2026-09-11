@@ -62,8 +62,6 @@ export function PatternsPage({ focusOnMount, navigate, playback }: PatternsPageP
 
   useEffect(() => {
     const controller = new AbortController()
-    loadMoreControllerRef.current?.abort()
-    loadMoreControllerRef.current = null
     setLoading(true)
     setLoadingMore(false)
     setPatterns([])
@@ -86,11 +84,8 @@ export function PatternsPage({ focusOnMount, navigate, playback }: PatternsPageP
       })
     return () => {
       controller.abort()
-      const loadMoreController = loadMoreControllerRef.current
-      loadMoreController?.abort()
-      if (loadMoreControllerRef.current === loadMoreController) {
-        loadMoreControllerRef.current = null
-      }
+      loadMoreControllerRef.current?.abort()
+      loadMoreControllerRef.current = null
     }
   }, [loadAttempt, sort])
 
