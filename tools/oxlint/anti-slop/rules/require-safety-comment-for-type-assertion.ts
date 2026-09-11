@@ -2,7 +2,7 @@ import { defineRule } from "@oxlint/plugins";
 
 import type { ESTree, SourceCode } from "@oxlint/plugins";
 
-type TypeAssertion = ESTree.TSAsExpression | ESTree.TSTypeAssertion;
+import { isConstAssertion, type TypeAssertion } from "../shared/expressions.ts";
 
 const SAFETY_PATTERN = /\bSAFETY\s*:/u;
 
@@ -17,14 +17,6 @@ const statementListContainers = new Set([
   "SwitchCase",
   "TSModuleBlock",
 ]);
-
-function isConstAssertion(node: TypeAssertion): boolean {
-  return (
-    node.typeAnnotation.type === "TSTypeReference" &&
-    node.typeAnnotation.typeName.type === "Identifier" &&
-    node.typeAnnotation.typeName.name === "const"
-  );
-}
 
 function hasSafetyComment(sourceCode: SourceCode, node: TypeAssertion): boolean {
   let current: ESTree.Node = node;

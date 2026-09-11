@@ -4,6 +4,10 @@ import type { ESTree, SourceCode } from "@oxlint/plugins";
 
 import { lexicalTypeParameterNames } from "../shared/lexical-type-parameters.ts";
 import {
+	collectTypeAliases,
+	resolveAliasReference,
+} from "../shared/type-aliases.ts";
+import {
 	parameterAnnotation,
 	functionLikeVisitors,
 	type Parameter,
@@ -29,12 +33,12 @@ export const noObjectParametersRule = defineRule({
 		},
 	},
 	createOnce(context) {
-		const aliases = new Map<string, ESTree.TSType>();
+		const aliases = new Map<string, ESTree.TSTypeAliasDeclaration>();
 
 		const resolvesToObject = (
 			type: ESTree.TSType,
 			shadowedAliases: ReadonlySet<string>,
-			visited = new Set<string>(),
+			visited: ReadonlySet<string> = new Set(),
 		): boolean => {
 			if (type.type === "TSObjectKeyword") return true;
 			if (type.type === "TSParenthesizedType")
@@ -44,22 +48,11 @@ export const noObjectParametersRule = defineRule({
 					resolvesToObject(member, shadowedAliases, visited),
 				);
 			}
-			if (
-				type.type !== "TSTypeReference" ||
-				type.typeName.type !== "Identifier" ||
-				(type.typeArguments !== null &&
-					type.typeArguments !== undefined &&
-					type.typeArguments.params.length > 0) ||
-				visited.has(type.typeName.name) ||
-				shadowedAliases.has(type.typeName.name)
-			) {
-				return false;
-			}
-			const alias = aliases.get(type.typeName.name);
-			if (alias === undefined) return false;
-			const nextVisited = new Set(visited);
-			nextVisited.add(type.typeName.name);
-			return resolvesToObject(alias, shadowedAliases, nextVisited);
+			const alias = resolveAliasReference(type, aliases, visited, shadowedAliases);
+			return (
+				alias !== null &&
+				resolvesToObject(alias.annotation, shadowedAliases, alias.visited)
+			);
 		};
 
 		const checkParameters = (node: ParameterOwner) => {
@@ -82,15 +75,8 @@ export const noObjectParametersRule = defineRule({
 		return {
 			Program(node) {
 				aliases.clear();
-				for (const statement of node.body) {
-					const declaration =
-						statement.type === "ExportNamedDeclaration" ? statement.declaration : statement;
-					if (
-						declaration?.type === "TSTypeAliasDeclaration" &&
-						(declaration.typeParameters === null || declaration.typeParameters === undefined)
-					) {
-						aliases.set(declaration.id.name, declaration.typeAnnotation);
-					}
+				for (const [name, alias] of collectTypeAliases(node)) {
+					aliases.set(name, alias);
 				}
 			},
 			...functionLikeVisitors(checkParameters),
