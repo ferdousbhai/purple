@@ -24,22 +24,19 @@ function parseSessionPattern(value: JsonValue): SessionPattern | null {
   const shareId = fields?.get("shareId");
   if (
     !isJsonString(code) ||
-    code.length === 0 ||
-    code.length > MAX_PATTERN_LENGTH ||
     (customTitle !== null && !isJsonString(customTitle)) ||
-    (shareId !== undefined && (!isJsonString(shareId) || !isShareId(shareId)))
+    (shareId !== undefined && !isJsonString(shareId))
   ) {
     return null;
   }
+  // Only the JSON shapes are checked here; normalizeSessionPattern owns the
+  // bounds, the share-id check, and the title clamp for both paths.
   const pattern: SessionPattern = {
     code,
-    customTitle:
-      isJsonString(customTitle)
-        ? customTitle.slice(0, 60)
-        : null,
+    customTitle: isJsonString(customTitle) ? customTitle : null,
   };
-  if (isJsonString(shareId)) pattern.shareId = shareId;
-  return pattern;
+  if (shareId !== undefined) pattern.shareId = shareId;
+  return normalizeSessionPattern(pattern);
 }
 
 function normalizeSessionPattern(pattern: SessionPattern): SessionPattern | null {
