@@ -19,11 +19,7 @@ const SKIPPED_DIRECTORIES = new Set([
   'out',
   'target',
 ])
-const SKIPPED_PATHS = new Set([
-  'apps/web/worker-configuration.d.ts',
-  'packaging/src',
-  'packaging/pkg',
-])
+const SKIPPED_PATHS = new Set(['apps/web/worker-configuration.d.ts'])
 
 const offenders = []
 const isBinaryFileContents = (contents) => contents.includes(0)
