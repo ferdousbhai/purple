@@ -18,7 +18,13 @@ import {
   type JsonValue,
 } from '@purple/core/json'
 import { isPairingCode } from './agent-relay'
-import { base64url, hasContentType, jsonResponse, readBoundedBody } from './http'
+import {
+  base64url,
+  hasContentType,
+  jsonResponse,
+  readBoundedBody,
+  sha256Hex,
+} from './http'
 
 export const MCP_PATH = '/mcp'
 export const AUTHORIZE_PATH = '/authorize'
@@ -142,12 +148,6 @@ async function registerClient(request: Request, env: OAuthEnv): Promise<Response
     grant_types: ['authorization_code'],
     response_types: ['code'],
   }, 201)
-}
-
-/** Display-only: the name a client registered, for the consent page. */
-export function clientDisplayName(clientId: string): string {
-  const payload = decodeUnverified(clientId)
-  return jsonText(payload?.get('name')) ?? DEFAULT_CLIENT_NAME
 }
 
 /**
@@ -324,11 +324,6 @@ function hmacKey(secret: string): Promise<CryptoKey> {
 async function pkceChallenge(verifier: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))
   return base64url(new Uint8Array(digest))
-}
-
-async function sha256Hex(text: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
 function fromBase64url(text: string): Uint8Array | null {

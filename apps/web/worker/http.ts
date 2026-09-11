@@ -41,6 +41,16 @@ export function base64url(bytes: Uint8Array): string {
   return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '')
 }
 
+/** Lowercase hex, the alphabet digests and voter ids share. */
+export function hex(bytes: Uint8Array): string {
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+export async function sha256Hex(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
+  return hex(new Uint8Array(digest))
+}
+
 export function hasContentType(request: Request, expected: string): boolean {
   const mediaType = request.headers.get('Content-Type')?.split(';', 1)[0]
   return mediaType?.trim().toLowerCase() === expected

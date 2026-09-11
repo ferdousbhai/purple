@@ -15,7 +15,14 @@ import {
   jsonText,
   type JsonValue,
 } from '@purple/core/json'
-import { base64url, hasContentType, jsonResponse, readBoundedBody } from './http'
+import {
+  base64url,
+  hasContentType,
+  hex,
+  jsonResponse,
+  readBoundedBody,
+  sha256Hex,
+} from './http'
 import {
   type SiteverifyFetch,
   turnstileFailureResponse,
@@ -454,13 +461,9 @@ async function getVoter(request: Request): Promise<Voter> {
   const id = existing && VOTER_ID.test(existing)
     ? existing
     : randomHex(16)
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(id))
-  const hash = [...new Uint8Array(digest)]
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('')
   return {
     id,
-    hash,
+    hash: await sha256Hex(id),
     setCookie: id === existing
       ? undefined
       : `${VOTER_COOKIE}=${id}; Path=/; Max-Age=${VOTER_MAX_AGE}; HttpOnly; Secure; SameSite=Lax`,
@@ -479,9 +482,7 @@ function parseCookie(header: string | null, name: string): string | null {
 }
 
 function randomHex(byteLength: number): string {
-  return [...crypto.getRandomValues(new Uint8Array(byteLength))]
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('')
+  return hex(crypto.getRandomValues(new Uint8Array(byteLength)))
 }
 
 function voterResponse(
