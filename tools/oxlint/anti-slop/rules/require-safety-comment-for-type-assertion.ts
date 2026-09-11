@@ -4,12 +4,18 @@ import type { ESTree, SourceCode } from "@oxlint/plugins";
 
 type TypeAssertion = ESTree.TSAsExpression | ESTree.TSTypeAssertion;
 
-const commentOwnerKinds = new Set([
-  "ExpressionStatement",
-  "PropertyDefinition",
-  "ReturnStatement",
-  "ThrowStatement",
-  "VariableDeclaration",
+const SAFETY_PATTERN = /\bSAFETY\s*:/u;
+
+// The walk must stop at the statement list holding the assertion's own statement:
+// climbing further would let one comment above a function justify every assertion
+// inside it.
+const statementListContainers = new Set([
+  "BlockStatement",
+  "ClassBody",
+  "Program",
+  "StaticBlock",
+  "SwitchCase",
+  "TSModuleBlock",
 ]);
 
 function isConstAssertion(node: TypeAssertion): boolean {
@@ -26,12 +32,13 @@ function hasSafetyComment(sourceCode: SourceCode, node: TypeAssertion): boolean 
     if (
       sourceCode
         .getCommentsBefore(current)
-        .some((comment) => comment.end <= node.start && /\bSAFETY\s*:/u.test(comment.value))
+        .some((comment) => comment.end <= node.start && SAFETY_PATTERN.test(comment.value))
     ) {
       return true;
     }
-    if (commentOwnerKinds.has(current.type) || current.parent.type === "Program") return false;
-    current = current.parent;
+    const parent: ESTree.Node | null = current.parent;
+    if (parent === null || statementListContainers.has(parent.type)) return false;
+    current = parent;
   }
 }
 
