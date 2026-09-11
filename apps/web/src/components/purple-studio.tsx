@@ -583,8 +583,8 @@ function loadInitialPattern(sharedPattern?: SharedPattern) {
 }
 
 function randomStarter(): ShowcasePattern {
-  const random = crypto.getRandomValues(new Uint32Array(1))[0] ?? 0
-  return SHOWCASE_PATTERNS[random % SHOWCASE_PATTERNS.length] ?? SHOWCASE_PATTERNS[0]
+  const random = crypto.getRandomValues(new Uint32Array(1))[0]
+  return SHOWCASE_PATTERNS[random % SHOWCASE_PATTERNS.length]
 }
 
 function transportLabel(state: WebPlayback['playbackState']): string {
