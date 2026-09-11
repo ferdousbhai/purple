@@ -18,8 +18,6 @@
   --pane-editor: color-mix(in srgb, var(--surface) 55%, transparent);
   --pane-session: rgba(24, 18, 36, 0.45);
   --grid-line: color-mix(in srgb, var(--accent) 3%, transparent);
-  --glow-active: 0 0 12px color-mix(in srgb, var(--active) 19%, transparent);
-  --glow-hot: 0 0 12px color-mix(in srgb, var(--hot) 19%, transparent);
   --glow-active-sm: 0 0 6px color-mix(in srgb, var(--active) 50%, transparent);
   --glow-warn-sm: 0 0 6px color-mix(in srgb, var(--warn) 50%, transparent);
   --shadow: rgba(0, 0, 0, 0.55);
