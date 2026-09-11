@@ -21,6 +21,31 @@ import type { JsonValue } from "@purple/core/json";
 
 export { NOT_CONNECTED_MESSAGE };
 
+const HOSTED_ORIGIN = "https://soundspurple.com";
+const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/**
+ * Browsers do not apply CORS to WebSocket, so without this check any page the
+ * visitor has open could dial 127.0.0.1 and take the link: it would then see
+ * every pattern the agent writes and could answer in the tab's place. Browsers
+ * always send Origin on an upgrade, so refusing a present-but-foreign one
+ * blocks that while leaving the header-less Node clients (tests, other local
+ * tooling) working.
+ */
+function isAllowedOrigin(origin: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(origin);
+  } catch {
+    return false;
+  }
+  if (url.origin === HOSTED_ORIGIN) return true;
+  return (
+    (url.protocol === "http:" || url.protocol === "https:") &&
+    LOOPBACK_HOSTNAMES.has(url.hostname)
+  );
+}
+
 interface BrowserLinkOptions {
   /** 0 asks the OS for a free port; read the actual one from the result. */
   port: number;
@@ -61,7 +86,15 @@ export async function createBrowserLink(
     server.once("error", reject);
   });
 
-  server.on("connection", (socket) => {
+  server.on("connection", (socket, request) => {
+    const origin = request.headers.origin;
+    if (origin !== undefined && !isAllowedOrigin(origin)) {
+      // Refuse before the eviction below, so a rejected page cannot knock the
+      // real tab off the link. The origin is not echoed into the log.
+      socket.close(4002, "Origin is not a Purple tab.");
+      log("Refused a WebSocket connection from a disallowed origin.");
+      return;
+    }
     if (tab) {
       tab.close(LINK_TAKEN_OVER_CODE, "Another Purple tab connected.");
       dropPending("The Purple tab was replaced by a new connection.");

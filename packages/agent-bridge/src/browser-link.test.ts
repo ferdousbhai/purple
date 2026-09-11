@@ -94,6 +94,21 @@ describe("createBrowserLink", () => {
     );
   });
 
+  it("refuses a foreign origin without evicting the connected tab", async () => {
+    const bridge = await openLink();
+    answerRequests(await connectTab(bridge.port), () => null);
+    const hostile = new WebSocket(`ws://127.0.0.1:${bridge.port}`, {
+      origin: "https://evil.example",
+    });
+    await new Promise<void>((resolve) => {
+      hostile.once("close", () => resolve());
+    });
+
+    await expect(bridge.call({ method: "stop" }, 1_000)).resolves.toEqual({
+      method: "stop",
+    });
+  });
+
   it("fails pending calls when the tab disconnects", async () => {
     const bridge = await openLink();
     const socket = await connectTab(bridge.port);
