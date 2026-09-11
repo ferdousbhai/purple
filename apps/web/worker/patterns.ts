@@ -400,24 +400,19 @@ function decodeCursor(value: string, sort: PatternSort): PageCursor | null {
       .padEnd(Math.ceil(value.length / 4) * 4, '=')
     const parsed: JsonValue = JSON.parse(atob(padded))
     const fields = jsonMembers(parsed)
+    const id = fields?.get('id')
+    const createdAt = fields?.get('createdAt')
     if (
       jsonText(fields?.get('sort')) !== sort ||
-      !isShareIdValue(fields?.get('id')) ||
-      !isNonNegativeInteger(fields?.get('createdAt'))
+      !isShareIdValue(id) ||
+      !isNonNegativeInteger(createdAt)
     ) return null
-    const id = jsonText(fields.get('id'))
-    const createdAt = jsonNumber(fields.get('createdAt'))
-    if (!id || createdAt === null) return null
     if (sort === 'fresh') {
       return { sort, createdAt, id }
     }
-    if (
-      !isSignedInteger(fields.get('score')) ||
-      !isNonNegativeInteger(fields.get('likes'))
-    ) return null
-    const score = jsonNumber(fields.get('score'))
-    const likes = jsonNumber(fields.get('likes'))
-    if (score === null || likes === null) return null
+    const score = fields?.get('score')
+    const likes = fields?.get('likes')
+    if (!isSignedInteger(score) || !isNonNegativeInteger(likes)) return null
     return {
       sort,
       score,
@@ -522,10 +517,6 @@ function isNonNegativeInteger(value: JsonValue | undefined): value is number {
 
 function isSignedInteger(value: JsonValue | undefined): value is number {
   return isJsonNumber(value) && Number.isInteger(value)
-}
-
-function jsonNumber(value: JsonValue | undefined): number | null {
-  return isJsonNumber(value) ? value : null
 }
 
 function patternVote(value: JsonValue | undefined): -1 | 0 | 1 | null {
