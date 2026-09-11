@@ -4,8 +4,8 @@ import {
   jsonMembers,
   jsonText,
   type JsonValue,
-} from "./json";
-import { MAX_PATTERN_LENGTH } from "./pattern";
+} from "./json.ts";
+import { MAX_PATTERN_LENGTH } from "./pattern.ts";
 
 export const MAX_SHARED_TITLE_LENGTH = 60;
 /** Poster names are 4chan-style: free text, no account, Anonymous by default. */
