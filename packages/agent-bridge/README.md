@@ -21,9 +21,8 @@ codex mcp add purple -- node <repo>/packages/agent-bridge/bin/purple-mcp.mjs
 
 Then open Purple and point the tab at the bridge by setting `"local": true`
 inside the `purple-agent-link` localStorage entry
-(no UI toggles this). Ask the agent to make music. `--port <n>` (or
-`PURPLE_MCP_PORT`) moves the WebSocket off the default port 7723, though the
-tab always dials 7723 in local mode.
+(no UI toggles this). Ask the agent to make music. The bridge and the tab both
+use port 7723.
 
 ## Tools
 

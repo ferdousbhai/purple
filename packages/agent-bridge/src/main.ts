@@ -40,26 +40,11 @@ async function callTool(
   return formatAgentToolResult(plan.call, result);
 }
 
-function resolvePort(
-  argv: readonly string[],
-  envPort: string | undefined,
-): number {
-  const flagIndex = argv.indexOf("--port");
-  const raw = flagIndex >= 0 ? argv[flagIndex + 1] : envPort;
-  if (raw === undefined) return AGENT_LINK_DEFAULT_PORT;
-  const port = Number(raw);
-  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
-    throw new Error(
-      `"${raw}" is not a valid port. Pass --port with a number from 1 to 65535.`,
-    );
-  }
-  return port;
-}
-
 export async function main(): Promise<void> {
-  const port = resolvePort(process.argv.slice(2), process.env.PURPLE_MCP_PORT);
+  // The tab always dials AGENT_LINK_DEFAULT_PORT in local mode, so the bridge
+  // is only reachable there.
   const link = await createBrowserLink({
-    port,
+    port: AGENT_LINK_DEFAULT_PORT,
     log: (line) => console.error(`[purple-mcp] ${line}`),
   });
   console.error(
