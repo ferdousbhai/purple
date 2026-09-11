@@ -191,10 +191,7 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
     await ensureRunningRef.current(ctx);
   }, [acquireAudioContext, init]);
 
-  const evaluate = useCallback(async (
-    code: string,
-    options: { hushBefore?: boolean } = {},
-  ): Promise<EvalResult> => {
+  const evaluate = useCallback(async (code: string): Promise<EvalResult> => {
     const strudel = strudelRef.current;
     const safeStrudel = safeStrudelRef.current;
     const repl = replRef.current;
@@ -217,10 +214,8 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
         };
       }
 
-      // Expression-only patterns have no labelled REPL state to clear, so the
-      // historical hushBefore distinction is intentionally a no-op. setPattern
-      // replaces the scheduler atomically for both direct plays and x-fades.
-      void options.hushBefore;
+      // setPattern replaces the scheduler atomically for both direct plays and
+      // x-fades, so nothing has to be hushed first.
       const pattern = interpretPattern(safeStrudel, code, expressionScope);
       if (pattern === null) {
         return {

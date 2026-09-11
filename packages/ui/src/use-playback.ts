@@ -160,12 +160,8 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
   );
 
   const evaluateCandidate = useCallback(
-    async (
-      code: string,
-      operation: number,
-      evaluateOptions?: { hushBefore?: boolean },
-    ): Promise<EvalResult> => {
-      const result = await evaluate(code, evaluateOptions);
+    async (code: string, operation: number): Promise<EvalResult> => {
+      const result = await evaluate(code);
       if (discardOvertakenEvaluation(operation)) {
         return { ok: false, kind: "cancelled" };
       }
@@ -298,9 +294,7 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
           return { ok: false, kind: "evaluation", error };
         }
 
-        const transitionResult = await evaluate(transitionCode, {
-          hushBefore: false,
-        });
+        const transitionResult = await evaluate(transitionCode);
         if (discardOvertakenEvaluation(operation)) {
           return { ok: false, kind: "cancelled" };
         }
@@ -335,7 +329,7 @@ export function usePlayback(options: StrudelAudioOptions = {}) {
           return waitResult;
         }
 
-        return evaluateCandidate(nextCode, operation, { hushBefore: false });
+        return evaluateCandidate(nextCode, operation);
       } finally {
         release();
       }
