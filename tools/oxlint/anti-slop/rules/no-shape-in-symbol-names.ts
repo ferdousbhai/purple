@@ -20,8 +20,15 @@ export const noForbiddenTermInSymbolNamesRule = defineRule({
     },
   },
   createOnce(context) {
+    // Import/export specifiers and shorthand properties each carry two
+    // identifier nodes over one span, so dedupe by start offset: one rename
+    // must read as one problem. Cleared per file when Program is entered.
+    const reported = new Set<number>();
+
     const reportForbiddenSymbolName = (node: ESTree.Node & { name: string }) => {
       if (!containsForbiddenSymbolName(node.name)) return;
+      if (reported.has(node.start)) return;
+      reported.add(node.start);
       context.report({
         node,
         messageId: "forbiddenSymbolName",
@@ -30,6 +37,9 @@ export const noForbiddenTermInSymbolNamesRule = defineRule({
     };
 
     return {
+      Program() {
+        reported.clear();
+      },
       Identifier: reportForbiddenSymbolName,
       PrivateIdentifier: reportForbiddenSymbolName,
       JSXIdentifier: reportForbiddenSymbolName,
