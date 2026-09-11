@@ -30,7 +30,7 @@ export const noUnknownReturnsRule = defineRule({
     const resolvesToUnknown = (
       type: ESTree.TSType,
       shadowedAliases: ReadonlySet<string>,
-      visited = new Set<string>(),
+      visited: ReadonlySet<string> = new Set(),
     ): boolean => {
       if (type.type === "TSUnknownKeyword") return true;
       if (type.type === "TSParenthesizedType") {

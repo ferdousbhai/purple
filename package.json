@@ -14,7 +14,7 @@
     "web:check": "pnpm --filter @purple/web run check",
     "test": "vitest run",
     "test:browser": "pnpm --filter @purple/web run test:browser",
-    "typecheck": "pnpm -r --if-present run typecheck",
+    "typecheck": "pnpm -r --if-present run typecheck && tsc --noEmit -p tools/oxlint/tsconfig.json",
     "check": "pnpm run lint && pnpm run test && pnpm run typecheck && pnpm run build",
     "lint": "oxlint && pnpm run lint:text && pnpm run lint:duplicates",
     "lint:duplicates": "jscpd apps packages scripts tools",
