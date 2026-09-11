@@ -5,9 +5,9 @@ import {
   jsonText,
   type JsonValue,
 } from "./json.ts";
-import { MAX_PATTERN_LENGTH } from "./pattern.ts";
+import { MAX_PATTERN_LENGTH, MAX_TITLE_LENGTH } from "./pattern.ts";
 
-export const MAX_SHARED_TITLE_LENGTH = 60;
+export { MAX_TITLE_LENGTH as MAX_SHARED_TITLE_LENGTH } from "./pattern.ts";
 /** Poster names are 4chan-style: free text, no account, Anonymous by default. */
 export const MAX_HANDLE_LENGTH = 24;
 export const DEFAULT_HANDLE = "Anonymous";
@@ -66,7 +66,7 @@ function parseDraftMembers(
   const handle = parseHandle(fields.get("handle"));
   if (
     !title ||
-    title.length > MAX_SHARED_TITLE_LENGTH ||
+    title.length > MAX_TITLE_LENGTH ||
     title.includes("\n") ||
     !code ||
     code.length > MAX_PATTERN_LENGTH ||
@@ -76,7 +76,7 @@ function parseDraftMembers(
 }
 
 /** A missing or blank handle is anonymous (null); undefined marks an unusable one. */
-export function parseHandle(value: JsonValue | undefined): string | null | undefined {
+function parseHandle(value: JsonValue | undefined): string | null | undefined {
   if (value === undefined || value === null) return null;
   const handle = jsonText(value)?.trim();
   if (handle === undefined || handle.length > MAX_HANDLE_LENGTH || /[\n\r]/.test(handle)) {
@@ -90,7 +90,7 @@ export function parseSharedPattern(value: JsonValue): SharedPattern | null {
   if (!fields) return null;
   const draft = parseDraftMembers(fields);
   const id = jsonText(fields.get("id"));
-  const createdAt = integer(fields.get("createdAt"), 0);
+  const createdAt = nonNegativeInteger(fields.get("createdAt"));
   const vote = parseVoteMembers(fields);
   if (
     !draft ||
@@ -126,8 +126,8 @@ export function parsePatternVoteResult(value: JsonValue): PatternVoteResult | nu
 function parseVoteMembers(
   fields: ReadonlyMap<string, JsonValue>,
 ): PatternVoteResult | null {
-  const likes = integer(fields.get("likes"), 0);
-  const dislikes = integer(fields.get("dislikes"), 0);
+  const likes = nonNegativeInteger(fields.get("likes"));
+  const dislikes = nonNegativeInteger(fields.get("dislikes"));
   const score = signedInteger(fields.get("score"));
   const viewerVote = patternVote(fields.get("viewerVote"));
   if (
@@ -139,10 +139,8 @@ function parseVoteMembers(
   return { likes, dislikes, score, viewerVote };
 }
 
-function integer(value: JsonValue | undefined, minimum: number): number | null {
-  return isJsonNumber(value) && Number.isInteger(value) && value >= minimum
-    ? value
-    : null;
+function nonNegativeInteger(value: JsonValue | undefined): number | null {
+  return isJsonNumber(value) && Number.isInteger(value) && value >= 0 ? value : null;
 }
 
 function signedInteger(value: JsonValue | undefined): number | null {
