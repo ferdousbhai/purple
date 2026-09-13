@@ -2,7 +2,7 @@ import { defineRule } from "@oxlint/plugins";
 
 import type { ESTree } from "@oxlint/plugins";
 
-import { lexicalTypeParameterNames } from "../shared/lexical-type-parameters.ts";
+import { shadowedTypeNames } from "../shared/shadowed-type-names.ts";
 import {
   collectTypeAliases,
   resolveAliasReference,
@@ -29,16 +29,16 @@ export const noUnknownReturnsRule = defineRule({
 
     const resolvesToUnknown = (
       type: ESTree.TSType,
-      shadowedAliases: ReadonlySet<string>,
+      shadowedNames: ReadonlySet<string>,
       visited: ReadonlySet<string> = new Set(),
     ): boolean => {
       if (type.type === "TSUnknownKeyword") return true;
       if (type.type === "TSParenthesizedType") {
-        return resolvesToUnknown(type.typeAnnotation, shadowedAliases, visited);
+        return resolvesToUnknown(type.typeAnnotation, shadowedNames, visited);
       }
       if (type.type === "TSUnionType") {
         return type.types.some((member) =>
-          resolvesToUnknown(member, shadowedAliases, visited),
+          resolvesToUnknown(member, shadowedNames, visited),
         );
       }
       if (
@@ -47,12 +47,12 @@ export const noUnknownReturnsRule = defineRule({
         (type.typeName.name === "Promise" || type.typeName.name === "PromiseLike")
       ) {
         const value = type.typeArguments?.params[0];
-        return value !== undefined && resolvesToUnknown(value, shadowedAliases, visited);
+        return value !== undefined && resolvesToUnknown(value, shadowedNames, visited);
       }
-      const alias = resolveAliasReference(type, aliases, visited, shadowedAliases);
+      const alias = resolveAliasReference(type, aliases, visited, shadowedNames);
       return (
         alias !== null &&
-        resolvesToUnknown(alias.annotation, shadowedAliases, alias.visited)
+        resolvesToUnknown(alias.annotation, shadowedNames, alias.visited)
       );
     };
 
@@ -62,7 +62,7 @@ export const noUnknownReturnsRule = defineRule({
       if (
         !resolvesToUnknown(
           annotation.typeAnnotation,
-          lexicalTypeParameterNames(node, context.sourceCode.visitorKeys),
+          shadowedTypeNames(node, context.sourceCode.visitorKeys),
         )
       ) {
         return;

@@ -1,3 +1,6 @@
+import { shadowedTypeNames } from "./shadowed-type-names.ts";
+
+import type { VisitorKeys } from "./lexical-type-parameters.ts";
 import type { ESTree } from "@oxlint/plugins";
 
 const BUILT_INS = new Set([
@@ -37,10 +40,17 @@ export type WideningTargetKind =
 	| "open dictionary"
 	| "unknown";
 
-export type TypeEnvironment = {
+export type ProgramTypes = {
 	readonly aliases: ReadonlyMap<string, ESTree.TSTypeAliasDeclaration>;
 	readonly interfaces: ReadonlyMap<string, readonly ESTree.TSInterfaceDeclaration[]>;
 	readonly shadowedBuiltIns: ReadonlySet<string>;
+};
+
+// The Program-level tables read from one use site, where `shadowedNames` holds the type names a
+// nearer scope binds. Such a name must never resolve against the tables above; it belongs to a
+// type parameter or to a declaration inside an enclosing block.
+export type TypeEnvironment = ProgramTypes & {
+	readonly shadowedNames: ReadonlySet<string>;
 };
 
 function declaredStatement(statement: ESTree.Statement): ESTree.Node | null {
@@ -54,7 +64,7 @@ function markShadowedBuiltIn(name: string, shadowedBuiltIns: Set<string>): void 
 	if (BUILT_INS.has(name)) shadowedBuiltIns.add(name);
 }
 
-export function createTypeEnvironment(program: ESTree.Program): TypeEnvironment {
+export function createProgramTypes(program: ESTree.Program): ProgramTypes {
 	const aliases = new Map<string, ESTree.TSTypeAliasDeclaration>();
 	const interfaces = new Map<string, ESTree.TSInterfaceDeclaration[]>();
 	const shadowedBuiltIns = new Set<string>();
@@ -97,6 +107,16 @@ export function createTypeEnvironment(program: ESTree.Program): TypeEnvironment 
 	}
 
 	return { aliases, interfaces, shadowedBuiltIns };
+}
+
+export function typeEnvironmentAt(
+	types: ProgramTypes | null,
+	node: ESTree.Node | null | undefined,
+	visitorKeys: VisitorKeys,
+): TypeEnvironment | null {
+	return types === null || node === null || node === undefined
+		? null
+		: { ...types, shadowedNames: shadowedTypeNames(node, visitorKeys) };
 }
 
 export function typeReferenceName(type: ESTree.TSTypeReference): string | null {
@@ -154,6 +174,7 @@ function resolveReference<T>(
 	if (substitution !== undefined) {
 		return substitution === null ? empty : recurse(substitution);
 	}
+	if (environment.shadowedNames.has(name)) return empty;
 	const wrapped = transparentWrapperArgument(type, environment);
 	if (wrapped === undefined) return resolveName(name);
 	return wrapped === null ? empty : recurse(wrapped);

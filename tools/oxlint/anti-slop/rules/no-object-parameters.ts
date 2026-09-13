@@ -2,7 +2,7 @@ import { defineRule } from "@oxlint/plugins";
 
 import type { ESTree, SourceCode } from "@oxlint/plugins";
 
-import { lexicalTypeParameterNames } from "../shared/lexical-type-parameters.ts";
+import { shadowedTypeNames } from "../shared/shadowed-type-names.ts";
 import {
 	collectTypeAliases,
 	resolveAliasReference,
@@ -37,33 +37,33 @@ export const noObjectParametersRule = defineRule({
 
 		const resolvesToObject = (
 			type: ESTree.TSType,
-			shadowedAliases: ReadonlySet<string>,
+			shadowedNames: ReadonlySet<string>,
 			visited: ReadonlySet<string> = new Set(),
 		): boolean => {
 			if (type.type === "TSObjectKeyword") return true;
 			if (type.type === "TSParenthesizedType")
-				return resolvesToObject(type.typeAnnotation, shadowedAliases, visited);
+				return resolvesToObject(type.typeAnnotation, shadowedNames, visited);
 			if (type.type === "TSUnionType") {
 				return type.types.some((member) =>
-					resolvesToObject(member, shadowedAliases, visited),
+					resolvesToObject(member, shadowedNames, visited),
 				);
 			}
-			const alias = resolveAliasReference(type, aliases, visited, shadowedAliases);
+			const alias = resolveAliasReference(type, aliases, visited, shadowedNames);
 			return (
 				alias !== null &&
-				resolvesToObject(alias.annotation, shadowedAliases, alias.visited)
+				resolvesToObject(alias.annotation, shadowedNames, alias.visited)
 			);
 		};
 
 		const checkParameters = (node: ParameterOwner) => {
-			const shadowedAliases = lexicalTypeParameterNames(
+			const shadowedNames = shadowedTypeNames(
 				node,
 				context.sourceCode.visitorKeys,
 			);
 			for (const parameter of node.params) {
 				const annotation = parameterAnnotation(parameter);
 				if (annotation === null || annotation === undefined) continue;
-				if (!resolvesToObject(annotation.typeAnnotation, shadowedAliases)) continue;
+				if (!resolvesToObject(annotation.typeAnnotation, shadowedNames)) continue;
 				context.report({
 					node: annotation.typeAnnotation,
 					messageId: "objectParameter",

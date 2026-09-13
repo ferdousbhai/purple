@@ -2,9 +2,11 @@ import { defineRule } from "@oxlint/plugins";
 
 import {
 	classifyWideningTarget,
-	createTypeEnvironment,
+	createProgramTypes,
 	isKnownEvidenceExpression,
+	typeEnvironmentAt,
 	unwrapKnownEvidenceExpression,
+	type ProgramTypes,
 	type TypeEnvironment,
 	type WideningTargetKind,
 } from "../shared/dictionary-types.ts";
@@ -36,9 +38,9 @@ function hasKnownEvidence(
 
 function annotationTarget(
 	annotation: ESTree.TSTypeAnnotation | null | undefined,
-	environment: TypeEnvironment,
+	environment: TypeEnvironment | null,
 ): WideningTargetKind | null {
-	return annotation === null || annotation === undefined
+	return annotation === null || annotation === undefined || environment === null
 		? null
 		: classifyWideningTarget(annotation.typeAnnotation, environment);
 }
@@ -100,7 +102,10 @@ export const noKnownValueWideningRule = defineRule({
 		},
 	},
 	createOnce(context) {
-		let environment: TypeEnvironment | null = null;
+		let programTypes: ProgramTypes | null = null;
+
+		const environmentAt = (node: ESTree.Node | null | undefined) =>
+			typeEnvironmentAt(programTypes, node, context.sourceCode.visitorKeys);
 
 		const reportFlow = (
 			expression: ESTree.Expression,
@@ -122,32 +127,35 @@ export const noKnownValueWideningRule = defineRule({
 			});
 		};
 
-			const targetFromAnnotation = (annotation: ESTree.TSTypeAnnotation | null | undefined) =>
-				environment === null ? null : annotationTarget(annotation, environment);
-			const reportPropertyFlow = (
-				node: ESTree.PropertyDefinition | ESTree.AccessorProperty,
-			) => {
-				if (node.value === null) return;
-				reportFlow(
-					node.value,
-					targetFromAnnotation(node.typeAnnotation),
-					`property \`${sourceKeyName(context.sourceCode, node.key)}\``,
-				);
-			};
-			const reportAssertionFlow = (
-				node: ESTree.TSAsExpression | ESTree.TSTypeAssertion,
-			) => {
-				if (environment === null || hasParentAssertion(node)) return;
-				reportFlow(
-					node.expression,
-					classifyWideningTarget(node.typeAnnotation, environment),
-					"assertion",
-				);
-			};
+		const targetFromAnnotation = (annotation: ESTree.TSTypeAnnotation | null | undefined) =>
+			annotationTarget(annotation, environmentAt(annotation));
+
+		const reportPropertyFlow = (
+			node: ESTree.PropertyDefinition | ESTree.AccessorProperty,
+		) => {
+			if (node.value === null) return;
+			reportFlow(
+				node.value,
+				targetFromAnnotation(node.typeAnnotation),
+				`property \`${sourceKeyName(context.sourceCode, node.key)}\``,
+			);
+		};
+
+		const reportAssertionFlow = (
+			node: ESTree.TSAsExpression | ESTree.TSTypeAssertion,
+		) => {
+			const environment = environmentAt(node);
+			if (environment === null || hasParentAssertion(node)) return;
+			reportFlow(
+				node.expression,
+				classifyWideningTarget(node.typeAnnotation, environment),
+				"assertion",
+			);
+		};
 
 		return {
 			Program(node) {
-				environment = createTypeEnvironment(node);
+				programTypes = createProgramTypes(node);
 			},
 			VariableDeclarator(node) {
 				if (node.init === null || node.id.type !== "Identifier") return;

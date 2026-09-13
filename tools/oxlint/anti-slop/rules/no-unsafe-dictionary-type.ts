@@ -3,8 +3,10 @@ import { defineRule } from "@oxlint/plugins";
 import {
 	classifyUnsafeDictionary,
 	classifyUnsafeDictionaryValue,
-	createTypeEnvironment,
+	createProgramTypes,
+	typeEnvironmentAt,
 	typeReferenceName,
+	type ProgramTypes,
 	type TypeEnvironment,
 } from "../shared/dictionary-types.ts";
 
@@ -62,11 +64,14 @@ export const noUnsafeDictionaryTypeRule = defineRule({
 		},
 	},
 	createOnce(context) {
-		let environment: TypeEnvironment | null = null;
+		let programTypes: ProgramTypes | null = null;
+		const environmentAt = (node: ESTree.Node) =>
+			typeEnvironmentAt(programTypes, node, context.sourceCode.visitorKeys);
 		const report = (node: ESTree.Node, value: string) => {
 			context.report({ node, messageId: "unsafeDictionary", data: { value } });
 		};
 		const reportIfUnsafe = (node: ESTree.TSType) => {
+			const environment = environmentAt(node);
 			if (environment === null || !shouldReportType(node, environment)) return;
 			const unsafe = classifyUnsafeDictionary(node, environment);
 			if (unsafe === null) return;
@@ -75,18 +80,15 @@ export const noUnsafeDictionaryTypeRule = defineRule({
 
 		return {
 			Program(node) {
-				environment = createTypeEnvironment(node);
+				programTypes = createProgramTypes(node);
 			},
 			TSTypeReference: reportIfUnsafe,
 			TSTypeLiteral: reportIfUnsafe,
 			TSMappedType: reportIfUnsafe,
 			TSIndexSignature(node) {
-				if (
-					environment === null ||
-					node.typeAnnotation === null ||
-					node.parent.type === "TSTypeLiteral"
-				)
-					return;
+				if (node.typeAnnotation === null || node.parent.type === "TSTypeLiteral") return;
+				const environment = environmentAt(node);
+				if (environment === null) return;
 				const unsafe = classifyUnsafeDictionaryValue(
 					node.typeAnnotation.typeAnnotation,
 					environment,

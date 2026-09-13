@@ -14,13 +14,31 @@ function referencedAliasName(type: ESTree.TSType): string | null {
     : null;
 }
 
+type TypeDeclaration = ESTree.TSTypeAliasDeclaration | ESTree.TSInterfaceDeclaration;
+
+function typeDeclaration(
+  statement: ESTree.Directive | ESTree.Statement,
+): TypeDeclaration | null {
+  const declaration =
+    statement.type === "ExportNamedDeclaration" ? statement.declaration : statement;
+  return declaration?.type === "TSTypeAliasDeclaration" ||
+    declaration?.type === "TSInterfaceDeclaration"
+    ? declaration
+    : null;
+}
+
+export function declaredTypeName(
+  statement: ESTree.Directive | ESTree.Statement,
+): string | null {
+  return typeDeclaration(statement)?.id.name ?? null;
+}
+
 export function collectTypeAliases(
   program: ESTree.Program,
 ): Map<string, ESTree.TSTypeAliasDeclaration> {
   const aliases = new Map<string, ESTree.TSTypeAliasDeclaration>();
   for (const statement of program.body) {
-    const declaration =
-      statement.type === "ExportNamedDeclaration" ? statement.declaration : statement;
+    const declaration = typeDeclaration(statement);
     if (declaration?.type === "TSTypeAliasDeclaration") {
       aliases.set(declaration.id.name, declaration);
     }
@@ -37,10 +55,10 @@ export function resolveAliasReference(
   type: ESTree.TSType,
   aliases: ReadonlyMap<string, ESTree.TSTypeAliasDeclaration>,
   visited: ReadonlySet<string>,
-  shadowedAliases: ReadonlySet<string> = new Set(),
+  shadowedNames: ReadonlySet<string> = new Set(),
 ): ResolvedAliasReference | null {
   const name = referencedAliasName(type);
-  if (name === null || visited.has(name) || shadowedAliases.has(name)) return null;
+  if (name === null || visited.has(name) || shadowedNames.has(name)) return null;
   const alias = aliases.get(name);
   if (
     alias === undefined ||
