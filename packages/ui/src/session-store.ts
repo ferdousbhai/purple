@@ -2,7 +2,7 @@
  * The working pattern survives a reload: the editor's code, title, and share
  * identity in localStorage, written behind a trailing debounce.
  */
-import { MAX_PATTERN_LENGTH } from "@purple/core/pattern";
+import { MAX_PATTERN_LENGTH, MAX_TITLE_LENGTH } from "@purple/core/pattern";
 import { isShareId } from "@purple/core/shared-pattern";
 import { isJsonString, jsonMembers, type JsonValue } from "@purple/core/json";
 
@@ -49,7 +49,7 @@ function normalizeSessionPattern(pattern: SessionPattern): SessionPattern | null
   }
   const normalized: SessionPattern = {
     code: pattern.code,
-    customTitle: pattern.customTitle?.slice(0, 60) ?? null,
+    customTitle: pattern.customTitle?.slice(0, MAX_TITLE_LENGTH) ?? null,
   };
   if (pattern.shareId !== undefined) normalized.shareId = pattern.shareId;
   return normalized;
