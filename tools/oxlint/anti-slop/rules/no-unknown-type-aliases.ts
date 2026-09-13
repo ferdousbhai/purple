@@ -1,10 +1,9 @@
 import { defineRule } from "@oxlint/plugins";
 
 import type { ESTree } from "@oxlint/plugins";
-import {
-		collectTypeAliases,
-		resolveAliasReference,
-	} from "../shared/type-aliases.ts";
+import { shadowedTypeNames } from "../shared/shadowed-type-names.ts";
+import { collectTypeAliases } from "../shared/type-aliases.ts";
+import { createUnknownResolver } from "../shared/unknown-types.ts";
 
 export const noUnknownTypeAliasesRule = defineRule({
 	meta: {
@@ -21,23 +20,29 @@ export const noUnknownTypeAliasesRule = defineRule({
 	createOnce(context) {
 		const aliases = new Map<string, ESTree.TSTypeAliasDeclaration>();
 
-		const resolvesToUnknown = (
-			type: ESTree.TSType,
-			visited: ReadonlySet<string> = new Set(),
-		): boolean => {
-			if (type.type === "TSUnknownKeyword") return true;
-			if (type.type === "TSParenthesizedType")
-				return resolvesToUnknown(type.typeAnnotation, visited);
-			const alias = resolveAliasReference(type, aliases, visited);
-			return alias !== null && resolvesToUnknown(alias.annotation, alias.visited);
-		};
+		const resolvesToUnknown = createUnknownResolver(aliases);
 
 		return {
 			Program(node) {
 				aliases.clear();
 				for (const [name, alias] of collectTypeAliases(node)) aliases.set(name, alias);
 				for (const alias of aliases.values()) {
-					if (!resolvesToUnknown(alias.typeAnnotation, new Set([alias.id.name]))) continue;
+					// A generic alias binds its own parameters over its right-hand side, so `type
+					// Box<T> = T` means the parameter and not a same-named top-level alias. Without
+					// this the table resolved it to that alias and reported a use that is well typed.
+					const shadowedNames = shadowedTypeNames(
+						alias.typeAnnotation,
+						context.sourceCode.visitorKeys,
+					);
+					if (
+						!resolvesToUnknown(
+							alias.typeAnnotation,
+							shadowedNames,
+							new Set([alias.id.name]),
+						)
+					) {
+						continue;
+					}
 					context.report({
 						node: alias.id,
 						messageId: "unknownAlias",
