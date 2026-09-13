@@ -114,6 +114,34 @@ describe("evaluateSafeStrudelExpression", () => {
     ).toThrow("cumulative event multiplier");
   });
 
+  it("names the method it refused, so a correction costs no guessing", () => {
+    // A rejection costs the agent a whole turn. Naming the one method in a long chain is the
+    // difference between fixing it and re-sending the same pattern with something else changed.
+    const fixture = scope();
+    expect(() =>
+      evaluateSafeStrudelExpression('s("bd*4").gain(.8).reverb(.5)', fixture.scope),
+    ).toThrow('".reverb()" is not allowed');
+  });
+
+  it("says whether a refused pattern is too long or too deeply nested", () => {
+    // One sentence used to cover both, and the fixes are opposite: shorten, or flatten.
+    const fixture = scope();
+    // Wide and shallow spends nodes; a long chain spends depth, because each call wraps the
+    // one before it -- which is the half of this an agent would otherwise guess wrong.
+    expect(() =>
+      evaluateSafeStrudelExpression(
+        `stack(${'s("bd"), '.repeat(700)}s("bd"))`,
+        fixture.scope,
+      ),
+    ).toThrow("shorter");
+    expect(() =>
+      evaluateSafeStrudelExpression(
+        `s("bd")${".gain(.8)".repeat(400)}`,
+        fixture.scope,
+      ),
+    ).toThrow("fewer chained or nested calls");
+  });
+
   it("adds independent stack branches instead of multiplying them", () => {
     const fixture = scope();
     expect(

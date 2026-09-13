@@ -374,8 +374,22 @@ function interpret(
   source: string,
 ): unknown {
   budget.nodes += 1;
-  if (budget.nodes > MAX_AST_NODES || depth > MAX_AST_DEPTH) {
-    throw new UnsafePatternError("Pattern is too complex.", node);
+  // Two different ceilings, and the fix differs: nodes count the whole expression, while depth
+  // counts nesting -- and a long .a().b().c() chain is nesting, since each call wraps the last,
+  // so "flatter" would send someone at their brackets when the chain is what to shorten.
+  // Naming the number that was hit is what lets the next attempt be designed rather than
+  // guessed, the way the event-multiplier refusal already does.
+  if (budget.nodes > MAX_AST_NODES) {
+    throw new UnsafePatternError(
+      `Pattern exceeds ${MAX_AST_NODES} expression nodes; write a shorter pattern.`,
+      node,
+    );
+  }
+  if (depth > MAX_AST_DEPTH) {
+    throw new UnsafePatternError(
+      `Pattern nests deeper than ${MAX_AST_DEPTH} levels; use fewer chained or nested calls.`,
+      node,
+    );
   }
 
   const nextDepth = depth + 1;
@@ -501,7 +515,10 @@ function miniEventBound(
   const node = asMiniNode(value, sourceNode);
   budget.nodes += 1;
   if (budget.nodes > MAX_AST_NODES) {
-    throw new UnsafePatternError("Pattern is too complex.", sourceNode);
+    throw new UnsafePatternError(
+      `Pattern exceeds ${MAX_AST_NODES} expression nodes; write a shorter pattern.`,
+      sourceNode,
+    );
   }
 
   if (node.type_ === "atom") return 1;
@@ -835,13 +852,23 @@ function resolveMember(
   depth: number,
   source: string,
 ): { owner: object; value: unknown } {
-  if (
-    node.computed ||
-    node.optional ||
-    node.property.type !== "Identifier" ||
-    !SAFE_MEMBERS.has(node.property.name)
-  ) {
+  // Four different mistakes used to share one sentence that named none of them. A rejection
+  // costs the agent a whole turn, so each says what to change, and the allowlist miss -- much
+  // the likeliest of them -- names the method rather than leaving a long chain to be guessed at.
+  if (node.computed || node.optional) {
+    throw new UnsafePatternError(
+      "Only plain .method() access is allowed here, not x[...] or ?. access.",
+      node,
+    );
+  }
+  if (node.property.type !== "Identifier") {
     throw new UnsafePatternError("This property is not an allowed Strudel method.", node);
+  }
+  if (!SAFE_MEMBERS.has(node.property.name)) {
+    throw new UnsafePatternError(
+      `Strudel method ".${node.property.name}()" is not allowed.`,
+      node,
+    );
   }
   if (node.object.type === "Super") {
     throw new UnsafePatternError("super is not allowed.", node);
