@@ -1,0 +1,51 @@
+# The hermetic checks (lint, test, typecheck, build, audit) run in Workers Builds via
+# workers-builds:build. These two do not: both need a real Chromium, which a build
+# command cannot provide, so they stay here.
+name: Browser gate
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: browser-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  browser:
+    name: Browser flow and worklet CSP
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Enable the repository-pinned pnpm
+        run: |
+          corepack enable
+          pnpm --version
+
+      - name: Install locked dependencies without browser downloads
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: pnpm install --frozen-lockfile
+
+      # verify-worklet-csp reads apps/web/dist, so the bundle has to exist first.
+      - name: Build the web app
+        run: pnpm run build
+
+      - name: Verify AudioWorklet under the production CSP
+        run: |
+          browser_path="$(command -v chromium || command -v google-chrome || command -v google-chrome-stable)"
+          CHROMIUM_BIN="$browser_path" node scripts/verify-worklet-csp.mjs
+
+      - name: Run browser flow smoke tests
+        run: |
+          browser_path="$(command -v chromium || command -v google-chrome)"
+          CHROMIUM_PATH="$browser_path" timeout --signal=TERM 90s pnpm run test:browser
