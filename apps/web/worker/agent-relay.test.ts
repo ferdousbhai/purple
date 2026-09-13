@@ -90,6 +90,22 @@ describe('handleMcpMessage', () => {
     ).toBeNull()
   })
 
+  it('lists the shared tool catalog', async () => {
+    const reply = await handleMcpMessage(rpc('tools/list'), neverCalled)
+    expect(reply).toMatchObject({
+      result: {
+        tools: [
+          { name: 'get_strudel_reference' },
+          { name: 'get_session' },
+          { name: 'set_pattern' },
+          { name: 'play' },
+          { name: 'stop' },
+          { name: 'share_pattern' },
+        ],
+      },
+    })
+  })
+
   it('serves the Strudel reference without the relay', async () => {
     const reply = await handleMcpMessage(
       rpc('tools/call', { name: 'get_strudel_reference' }),
