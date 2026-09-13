@@ -16,6 +16,7 @@
     "test:browser": "pnpm --filter @purple/web run test:browser",
     "typecheck": "pnpm -r --if-present run typecheck && tsc --noEmit -p tools/oxlint/tsconfig.json",
     "check": "pnpm run lint && pnpm run test && pnpm run typecheck && pnpm run build",
+    "workers-builds:build": "pnpm install --frozen-lockfile && pnpm audit --prod --audit-level=high && pnpm run check",
     "lint": "oxlint && pnpm run lint:text && pnpm run lint:duplicates",
     "lint:duplicates": "jscpd apps packages scripts tools",
     "lint:text": "node scripts/check-no-em-dash.mjs"
