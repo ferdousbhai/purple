@@ -422,11 +422,22 @@ button:focus-visible, a:focus-visible, select:focus-visible {
   position: fixed; left: -10000px; top: auto;
   width: 1px; height: 1px; overflow: hidden;
 }
-.turnstile-widget { min-height: 65px; width: 100%; overflow: hidden; }
+.turnstile-widget { width: 100%; overflow: hidden; height: 0; }
+.turnstile-widget.interactive { height: auto; min-height: 65px; }
 .turnstile-widget iframe { max-width: 100%; }
 .feedback-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 2px; }
 .feedback-success { display: grid; justify-items: start; gap: 9px; padding: 26px 18px 22px; }
 .feedback-success p { margin: 0 0 6px; color: var(--text-dim); font-size: 14px; }
+.feedback-form > label.feedback-include {
+  display: flex; align-items: flex-start; gap: 8px;
+}
+.feedback-form > label.feedback-include input {
+  width: auto; height: auto; flex: none; margin-top: 3px;
+}
+.feedback-form > label.feedback-include small {
+  display: block; margin-top: 4px; letter-spacing: 0; text-transform: none;
+  font-size: 11px; font-weight: 400; overflow-wrap: anywhere;
+}
 
 .share-success { display: grid; gap: 12px; padding: 22px 18px 18px; }
 .share-success > p { margin: 0; color: var(--text-dim); font-size: 14px; }
@@ -437,6 +448,7 @@ button:focus-visible, a:focus-visible, select:focus-visible {
   color: var(--text); background: var(--panel-strong); font: 400 12px var(--font-mono);
 }
 .share-link-row input:focus { border-color: color-mix(in srgb, var(--accent) 48%, transparent); }
+.share-link-actions { display: flex; gap: 8px; }
 .share-success .feedback-actions { border-top: 1px solid var(--border); padding-top: 12px; }
 
 .patterns-shell {
@@ -586,6 +598,7 @@ button:focus-visible, a:focus-visible, select:focus-visible {
   .editor-bar { gap: 5px; padding-inline: 8px; }
   .editor-bar .chrome { padding-inline: 6px; letter-spacing: 0.08em; }
   .share-link-row { grid-template-columns: minmax(0, 1fr); }
+  .share-link-actions > * { flex: 1; }
   .patterns-content { width: min(100% - 20px, 1380px); padding-top: 18px; }
   .patterns-intro { align-items: start; flex-direction: column; gap: 14px; }
   .patterns-intro h1 { font-size: 21px; }

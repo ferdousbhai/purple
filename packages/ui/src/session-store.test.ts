@@ -75,6 +75,17 @@ describe("session pattern storage", () => {
     expect(store.load()).toEqual(shared);
   });
 
+  it("keeps the origin share after the exact share identity is cleared", () => {
+    vi.useFakeTimers();
+    stubStorage();
+    const store = createPatternStore();
+    const edited = { ...pattern, originShareId: "Abc_123-xYz9" };
+
+    store.save(edited);
+    flushPatternSave();
+    expect(store.load()).toEqual(edited);
+  });
+
   it("does not save a malformed public share reference", () => {
     vi.useFakeTimers();
     const values = stubStorage();

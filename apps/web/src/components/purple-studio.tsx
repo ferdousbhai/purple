@@ -18,6 +18,7 @@ import {
   upsertPattern,
   usePatterns,
 } from '#/lib/patterns'
+import { syncSharedPatternUrl } from '#/lib/public-patterns'
 import {
   agentLinkSocketUrl,
   loadAgentLinkSettings,
@@ -99,6 +100,9 @@ export function PurpleStudio({
   const [code, setCode] = useState(initialPattern.code)
   const [customTitle, setCustomTitle] = useState(initialPattern.customTitle)
   const [shareId, setShareId] = useState<string | null>(initialPattern.shareId)
+  const [originShareId, setOriginShareId] = useState<string | null>(
+    initialPattern.originShareId,
+  )
   const isPhoneWidth = usePhoneWidth()
   const savedPatterns = usePatterns()
   const mainRef = useRef<HTMLElement | null>(null)
@@ -119,8 +123,13 @@ export function PurpleStudio({
   }, [])
 
   useEffect(() => {
-    saveSessionPattern({ code, customTitle, shareId: shareId ?? undefined })
-  }, [code, customTitle, shareId])
+    saveSessionPattern({
+      code,
+      customTitle,
+      shareId: shareId ?? undefined,
+      originShareId: originShareId ?? undefined,
+    })
+  }, [code, customTitle, shareId, originShareId])
 
   const title = customTitle ?? 'Untitled Pattern'
   const patternName = title.trim() || 'Untitled Pattern'
@@ -219,6 +228,12 @@ export function PurpleStudio({
     setLibraryWasCleared(false)
   }
 
+  const applyShareIdentity = (id: string | null) => {
+    setShareId(id)
+    setOriginShareId(id)
+    syncSharedPatternUrl(id)
+  }
+
   const acceptSharedPattern = (id: string, sharedTitle: string) => {
     const libraryUpdated = !libraryPattern || upsertPattern({
       ...libraryPattern,
@@ -226,7 +241,7 @@ export function PurpleStudio({
       shareId: id,
     })
     commitCustomTitle(sharedTitle)
-    setShareId(id)
+    applyShareIdentity(id)
     if (!libraryUpdated) {
       setPatternStorageError(
         'The pattern was published, but this browser could not update its library copy.',
@@ -234,6 +249,18 @@ export function PurpleStudio({
       return
     }
     setPatternStorageError(null)
+  }
+
+  const loadLibraryPattern = (pattern: {
+    title: string
+    code: string
+    shareId?: string
+  }) => {
+    commitCode(pattern.code)
+    commitCustomTitle(pattern.title)
+    applyShareIdentity(pattern.shareId ?? null)
+    setPatternStorageError(null)
+    setLibraryOpen(false)
   }
 
   const exportPattern = () => {
@@ -381,7 +408,10 @@ export function PurpleStudio({
 
       {feedbackOpen ? (
         <Suspense fallback={null}>
-          <FeedbackDialog onClose={() => setFeedbackOpen(false)} />
+          <FeedbackDialog
+            onClose={() => setFeedbackOpen(false)}
+            playbackError={playback.error}
+          />
         </Suspense>
       ) : null}
 
@@ -391,6 +421,7 @@ export function PurpleStudio({
             code={code}
             existingId={shareId}
             navigate={navigate}
+            republish={shareId === null && originShareId !== null}
             title={patternName}
             onClose={() => setShareOpen(false)}
             onShared={acceptSharedPattern}
@@ -417,15 +448,7 @@ export function PurpleStudio({
               .sort((a, b) => b.updatedAt - a.updatedAt)
               .map((pattern) => (
                 <div key={pattern.id} className="library-row">
-                  <button
-                    onClick={() => {
-                      commitCode(pattern.code)
-                      commitCustomTitle(pattern.title)
-                      setShareId(pattern.shareId ?? null)
-                      setPatternStorageError(null)
-                      setLibraryOpen(false)
-                    }}
-                  >
+                  <button onClick={() => loadLibraryPattern(pattern)}>
                     {pattern.title}
                   </button>
                   <button
@@ -473,11 +496,18 @@ export function PurpleStudio({
               <span aria-live="polite">{currentPatternSaved ? 'SAVED' : 'SAVE'}</span>
             </button>
             <button
-              className="chrome"
+              className={`chrome ${shareId ? 'saved' : ''}`}
               disabled={!patternIsSavable}
+              title={
+                shareId
+                  ? 'This pattern is published. Click for the link.'
+                  : originShareId
+                    ? 'Publish a new public copy of this pattern.'
+                    : 'Publish to the public gallery'
+              }
               onClick={() => setShareOpen(true)}
             >
-              SHARE
+              <span aria-live="polite">{shareId ? 'SHARED' : 'SHARE'}</span>
             </button>
             <button className="chrome export" onClick={exportPattern}>
               EXPORT
@@ -562,24 +592,41 @@ function usePhoneWidth(): boolean {
 }
 
 function loadInitialPattern(sharedPattern?: SharedPattern) {
-  if (sharedPattern) {
-    return {
-      code: sharedPattern.code,
-      customTitle: sharedPattern.title,
-      shareId: sharedPattern.id,
-    }
-  }
   const restored = loadSessionPattern()
-  if (restored) return {
-    ...restored,
-    shareId: restored.shareId ?? null,
+  if (sharedPattern) {
+    if (
+      restored
+      && (restored.shareId === sharedPattern.id
+        || restored.originShareId === sharedPattern.id)
+    ) {
+      return fromSession(restored, sharedPattern.id)
+    }
+    return workingPattern(sharedPattern.code, sharedPattern.title, sharedPattern.id)
   }
+  if (restored) return fromSession(restored, null)
   const starter = randomStarter()
-  return {
-    code: starter.code,
-    customTitle: starter.title,
-    shareId: null,
-  }
+  return workingPattern(starter.code, starter.title, null)
+}
+
+function fromSession(
+  restored: NonNullable<ReturnType<typeof loadSessionPattern>>,
+  originFallback: string | null,
+) {
+  return workingPattern(
+    restored.code,
+    restored.customTitle,
+    restored.shareId ?? null,
+    restored.originShareId ?? restored.shareId ?? originFallback,
+  )
+}
+
+function workingPattern(
+  code: string,
+  customTitle: string | null,
+  shareId: string | null,
+  originShareId: string | null = shareId,
+) {
+  return { code, customTitle, shareId, originShareId }
 }
 
 function randomStarter(): ShowcasePattern {

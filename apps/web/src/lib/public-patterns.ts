@@ -55,13 +55,46 @@ export async function createSharedPattern(
       'content-type': 'application/json',
     },
     body: JSON.stringify({ ...draft, turnstileToken }),
+  }).catch(() => {
+    throw new Error('Purple could not reach the public pattern service.')
   })
   const body = await responseBody(response)
   const id = jsonText(jsonMembers(body)?.get('id'))
   if (!response.ok || !id || !isShareId(id)) {
-    throw apiError(response, body)
+    throw new Error(
+      sharePublishError(response.status, jsonText(jsonMembers(body)?.get('error'))),
+    )
   }
   return id
+}
+
+/** Visitor-facing reason a public publish failed. */
+export function sharePublishError(
+  status: number,
+  serverMessage: string | null,
+): string {
+  if (status === 429) return 'Too many shares from this network. Wait a minute.'
+  if (status === 404 || status === 405) {
+    return 'Pattern service is not running in this dev server.'
+  }
+  if (status === 403) return 'Bot protection expired or failed. Please retry.'
+  if (serverMessage) return serverMessage
+  return 'Purple could not reach the public pattern service.'
+}
+
+/** Put the share link in the address bar, or clear it, without remounting the studio. */
+export function syncSharedPatternUrl(id: string | null): void {
+  if (window.location.pathname !== '/') return
+  if (id !== null && !isShareId(id)) return
+  const url = new URL(window.location.href)
+  if (id) url.searchParams.set('s', id)
+  else url.searchParams.delete('s')
+  const next = `${url.pathname}${url.search}`
+  const current = `${window.location.pathname}${window.location.search}`
+  if (next !== current) window.history.replaceState(window.history.state, '', next)
+  document.title = id
+    ? 'Shared Strudel Pattern | Purple'
+    : 'Purple: AI Music Production with Strudel'
 }
 
 export async function voteForPattern(

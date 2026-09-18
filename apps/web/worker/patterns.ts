@@ -502,7 +502,7 @@ function methodNotAllowed(allow: string): Response {
 
 function rateLimited(): Response {
   return jsonResponse(
-    { error: 'Too many requests.' },
+    { error: 'Too many shares from this network. Wait a minute.' },
     429,
     { 'Retry-After': '60' },
   )

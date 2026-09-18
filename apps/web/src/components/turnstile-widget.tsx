@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 
 const TURNSTILE_SCRIPT_ID = 'purple-turnstile-script'
 const TURNSTILE_SCRIPT_URL =
@@ -18,6 +18,7 @@ interface TurnstileOptions {
   callback: (token: string) => void
   'error-callback': () => void
   'expired-callback': () => void
+  'before-interactive-callback': () => void
 }
 
 interface TurnstileApi {
@@ -34,23 +35,58 @@ declare global {
 
 let turnstileLoad: Promise<TurnstileApi> | null = null
 
+interface TurnstileField {
+  token: string
+  error: string | null
+  resetKey: number
+  waiting: boolean
+  accept(token: string): void
+  reject(): void
+  reset(): void
+}
+
+/** Token, challenge error, and widget reset for a Turnstile-backed form. */
+export function useTurnstile(): TurnstileField {
+  const [token, setToken] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [resetKey, setResetKey] = useState(0)
+  const accept = useCallback((next: string) => {
+    setToken(next)
+    setError(null)
+  }, [])
+  const reject = useCallback(() => {
+    setToken('')
+    setError('Bot protection could not verify this browser. Please retry.')
+  }, [])
+  const reset = useCallback(() => {
+    setToken('')
+    setResetKey((key) => key + 1)
+  }, [])
+  return {
+    token,
+    error,
+    resetKey,
+    waiting: !token && !error,
+    accept,
+    reject,
+    reset,
+  }
+}
+
 export function TurnstileFormEnd(props: {
   action: string
   children: ReactNode
-  error: string | null
-  onError: () => void
-  onToken: (token: string) => void
-  resetKey: number
+  turnstile: TurnstileField
 }) {
   return (
     <>
       <TurnstileWidget
         action={props.action}
-        resetKey={props.resetKey}
-        onToken={props.onToken}
-        onError={props.onError}
+        resetKey={props.turnstile.resetKey}
+        onToken={props.turnstile.accept}
+        onError={props.turnstile.reject}
       />
-      {props.error ? <p className="error" role="alert">{props.error}</p> : null}
+      {props.turnstile.error ? <p className="error" role="alert">{props.turnstile.error}</p> : null}
       <div className="feedback-actions">{props.children}</div>
     </>
   )
@@ -65,6 +101,7 @@ function TurnstileWidget(props: {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const widgetIdRef = useRef<string | null>(null)
   const previousResetKeyRef = useRef(props.resetKey)
+  const [interactive, setInteractive] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -80,9 +117,13 @@ function TurnstileWidget(props: {
           appearance: 'interaction-only',
           size: 'flexible',
           theme: 'auto',
-          callback: props.onToken,
+          callback: (token) => {
+            setInteractive(false)
+            props.onToken(token)
+          },
           'error-callback': props.onError,
           'expired-callback': props.onError,
+          'before-interactive-callback': () => setInteractive(true),
         })
       })
       .catch(props.onError)
@@ -98,11 +139,19 @@ function TurnstileWidget(props: {
   useEffect(() => {
     if (previousResetKeyRef.current === props.resetKey) return
     previousResetKeyRef.current = props.resetKey
+    setInteractive(false)
     const widgetId = widgetIdRef.current
     if (widgetId && window.turnstile) window.turnstile.reset(widgetId)
   }, [props.resetKey])
 
-  return <div className="turnstile-widget" ref={containerRef} aria-label="Bot protection" />
+  return (
+    <div
+      className={interactive ? 'turnstile-widget interactive' : 'turnstile-widget'}
+      ref={containerRef}
+      aria-hidden={!interactive}
+      aria-label={interactive ? 'Bot protection' : undefined}
+    />
+  )
 }
 
 function loadTurnstile(): Promise<TurnstileApi> {

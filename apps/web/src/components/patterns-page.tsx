@@ -6,7 +6,7 @@ import {
   type SharedPattern,
 } from '@purple/core/shared-pattern'
 import { PurpleMark } from '@purple/ui/purple-mark'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { InternalLink, type NavigateInApp } from './internal-link'
 import { unlockMediaChannel } from '#/lib/media-channel'
 import {
@@ -17,6 +17,11 @@ import {
 } from '#/lib/patterns'
 import type { WebPlayback } from '#/lib/playback'
 import { fetchPatternPage, voteForPattern } from '#/lib/public-patterns'
+
+const FeedbackDialog = lazy(async () => {
+  const feedback = await import('./feedback-dialog')
+  return { default: feedback.FeedbackDialog }
+})
 
 const PATTERN_DATE_FORMAT = new Intl.DateTimeFormat(undefined, {
   day: 'numeric',
@@ -40,6 +45,7 @@ export function PatternsPage({ focusOnMount, navigate, playback }: PatternsPageP
   const [loadError, setLoadError] = useState(false)
   const [loadAttempt, setLoadAttempt] = useState(0)
   const [votePending, setVotePending] = useState<Set<string>>(() => new Set())
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
   const loadMoreControllerRef = useRef<AbortController | null>(null)
   const mainRef = useRef<HTMLElement | null>(null)
   const library = usePatterns()
@@ -219,11 +225,27 @@ export function PatternsPage({ focusOnMount, navigate, playback }: PatternsPageP
         </InternalLink>
         <nav className="topbar-actions" aria-label="Primary">
           <span className="chrome open" aria-current="page">PATTERNS</span>
+          <button
+            className="chrome feedback-trigger"
+            aria-haspopup="dialog"
+            onClick={() => setFeedbackOpen(true)}
+          >
+            FEEDBACK
+          </button>
           <InternalLink className="primary patterns-studio-link" href="/" navigate={navigate}>
             BACK TO STUDIO
           </InternalLink>
         </nav>
       </header>
+
+      {feedbackOpen ? (
+        <Suspense fallback={null}>
+          <FeedbackDialog
+            onClose={() => setFeedbackOpen(false)}
+            playbackError={playback.error}
+          />
+        </Suspense>
+      ) : null}
 
       <section className="patterns-content">
         <header className="patterns-intro">

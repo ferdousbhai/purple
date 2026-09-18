@@ -33,7 +33,7 @@ describe('feedback dialog', () => {
     vi.stubGlobal('fetch', submitFeedback)
 
     const user = userEvent.setup()
-    render(<FeedbackDialog onClose={() => undefined} />)
+    render(<FeedbackDialog onClose={() => undefined} playbackError={null} />)
 
     expect(await screen.findByRole('dialog', { name: 'Send a note to Ferdous' })).toBeVisible()
     expect(screen.getByText(/Only this form is sent to Purple/)).toBeVisible()
@@ -56,5 +56,44 @@ describe('feedback dialog', () => {
       'website',
       'turnstileToken',
     ])
+  })
+
+  it('appends the current playback error only when asked', async () => {
+    const submission: SubmissionCapture = { body: null }
+    window.turnstile = {
+      render(_container, options) {
+        options.callback('test-turnstile-token')
+        return 'feedback-widget'
+      },
+      remove() {},
+      reset() {},
+    }
+    vi.stubGlobal('fetch', async (_input: RequestInfo | URL, init?: RequestInit) => {
+      submission.body = new URLSearchParams(String(init?.body ?? ''))
+      return Response.json({ ok: true })
+    })
+
+    const user = userEvent.setup()
+    render(
+      <FeedbackDialog
+        onClose={() => undefined}
+        playbackError="Pattern used an unknown sound: xyz"
+      />,
+    )
+
+    expect(await screen.findByText('Pattern used an unknown sound: xyz')).toBeVisible()
+    await user.type(
+      screen.getByPlaceholderText('What should Purple do better?'),
+      'It died on play.',
+    )
+    await user.click(screen.getByRole('checkbox', {
+      name: /INCLUDE THE CURRENT PLAYBACK ERROR/,
+    }))
+    await user.click(await screen.findByRole('button', { name: 'SEND FEEDBACK' }))
+
+    expect(await screen.findByText('Your note reached Ferdous.')).toBeVisible()
+    expect(submission.body?.get('message')).toBe(
+      'It died on play.\n\nPlayback error:\nPattern used an unknown sound: xyz',
+    )
   })
 })

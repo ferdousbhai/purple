@@ -15,6 +15,7 @@ const gallery = vi.hoisted(() => ({
   nextCursor: null as string | null,
   playCalls: [] as string[],
   playbackState: 'stopped',
+  playbackError: null as string | null,
   library: [] as Array<{
     id: string
     title: string
@@ -85,11 +86,27 @@ vi.mock('#/lib/patterns', () => ({
   usePatterns: () => gallery.library,
 }))
 
+vi.mock('./feedback-dialog', async () => {
+  const React = await import('react')
+  return {
+    FeedbackDialog(props: { onClose(): void; playbackError?: string | null }) {
+      return React.createElement(
+        'div',
+        { role: 'dialog', 'aria-label': 'Send a note to Ferdous' },
+        props.playbackError
+          ? React.createElement('p', null, props.playbackError)
+          : null,
+        React.createElement('button', { type: 'button', onClick: props.onClose }, 'DONE'),
+      )
+    },
+  }
+})
+
 vi.mock('#/lib/media-channel', () => ({ unlockMediaChannel: () => undefined }))
 vi.mock('@purple/ui/use-playback', () => ({
   usePlayback: () => ({
     activeCode: gallery.activeCode,
-    error: null,
+    error: gallery.playbackError,
     playbackState: gallery.playbackState,
     play: async (code: string) => {
       gallery.playCalls.push(code)
@@ -110,6 +127,7 @@ afterEach(() => {
   gallery.nextCursor = null
   gallery.playCalls.length = 0
   gallery.playbackState = 'stopped'
+  gallery.playbackError = null
   gallery.library = []
   gallery.removed.length = 0
   gallery.saved.length = 0
@@ -143,6 +161,7 @@ describe('public pattern gallery', () => {
     render(<PatternsPage navigate={(href) => gallery.navigateCalls.push(href)} />)
 
     const heading = await screen.findByRole('heading', { name: 'Acid rain' })
+    expect(screen.getByRole('button', { name: 'FEEDBACK' })).toBeVisible()
     expect(screen.queryByRole('button', { name: 'STOP AUDIO' })).toBeNull()
     expect(heading).toBeVisible()
     const open = screen.getByRole('link', { name: 'Open Acid rain in studio' })
@@ -289,5 +308,16 @@ describe('public pattern gallery', () => {
       ['fresh', 'next-page'],
     ]))
     expect(screen.getAllByRole('heading', { name: 'Acid rain' })).toHaveLength(1)
+  })
+
+  it('opens feedback from the gallery with the current playback error', async () => {
+    gallery.playbackError = 'Pattern used an unknown sound: xyz'
+    const user = userEvent.setup()
+    render(<PatternsPage />)
+
+    await user.click(await screen.findByRole('button', { name: 'FEEDBACK' }))
+    const feedback = await screen.findByRole('dialog', { name: 'Send a note to Ferdous' })
+    expect(feedback).toBeVisible()
+    expect(feedback).toHaveTextContent('Pattern used an unknown sound: xyz')
   })
 })

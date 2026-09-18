@@ -55,11 +55,13 @@ const studio = vi.hoisted(() => ({
     code: string
     customTitle: string | null
     shareId?: string
+    originShareId?: string
   }>,
   restoredPattern: null as {
     code: string
     customTitle: string | null
     shareId?: string
+    originShareId?: string
   } | null,
 }))
 
@@ -69,6 +71,8 @@ vi.mock('#/lib/patterns', () => ({
   saveSessionPattern: (pattern: {
     code: string
     customTitle: string | null
+    shareId?: string
+    originShareId?: string
   }) => {
     studio.savedSessionPatterns.push(pattern)
   },
@@ -345,6 +349,7 @@ describe('Purple studio browser flow', () => {
     render(<PurpleStudio sharedPattern={publicPattern(1)} />)
 
     expect(screen.queryByRole('button', { name: /LIKE/ })).toBeNull()
+    expect(await screen.findByRole('button', { name: 'SHARED' })).toBeVisible()
     await userEvent.click(screen.getByRole('button', { name: 'SAVE' }))
     expect(studio.upsertedPatterns).toEqual([
       expect.objectContaining({
@@ -393,7 +398,24 @@ describe('Purple studio browser flow', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'SAVED' })).toBeVisible())
     expect(studio.savedSessionPatterns.at(-1)).toMatchObject({
       shareId: 'New_123-xYz9',
+      originShareId: 'New_123-xYz9',
     })
+    expect(await screen.findByRole('button', { name: 'SHARED' })).toBeVisible()
+  })
+
+  it('offers Share again after the published pattern is edited', async () => {
+    studio.restoredPattern = {
+      code: FIRST_PATTERN,
+      customTitle: 'Saved Pattern',
+      shareId: 'New_123-xYz9',
+      originShareId: 'New_123-xYz9',
+    }
+    render(<PurpleStudio />)
+
+    expect(await screen.findByRole('button', { name: 'SHARED' })).toBeVisible()
+    const editor = await screen.findByLabelText('Pattern code')
+    await userEvent.type(editor, ' hh')
+    expect(screen.getByRole('button', { name: 'SHARE' })).toBeEnabled()
   })
 })
 

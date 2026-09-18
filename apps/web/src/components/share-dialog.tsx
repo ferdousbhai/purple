@@ -1,13 +1,13 @@
 import { DEFAULT_HANDLE, MAX_HANDLE_LENGTH, MAX_SHARED_TITLE_LENGTH } from '@purple/core/shared-pattern'
 import { useClipboardCopy } from '@purple/ui/use-clipboard-copy'
-import { useCallback, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import {
   createSharedPattern,
   sharedPatternUrl,
 } from '#/lib/public-patterns'
 import { InternalLink, type NavigateInApp } from './internal-link'
 import { DialogSubmitActions, ModalDialog } from './modal-dialog'
-import { TurnstileFormEnd } from './turnstile-widget'
+import { TurnstileFormEnd, useTurnstile } from './turnstile-widget'
 
 export function ShareDialog(props: {
   code: string
@@ -15,56 +15,66 @@ export function ShareDialog(props: {
   navigate?: NavigateInApp
   onClose: () => void
   onShared: (id: string, title: string) => void
+  republish: boolean
   title: string
 }) {
   const [title, setTitle] = useState(props.title)
   const [handle, setHandle] = useState(loadHandle)
   const [sharedId, setSharedId] = useState(props.existingId)
-  const [turnstileToken, setTurnstileToken] = useState('')
-  const [resetKey, setResetKey] = useState(0)
+  const turnstile = useTurnstile()
   const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [submitError, setSubmitError] = useState<string | null>(null)
   const clipboard = useClipboardCopy()
 
-  const acceptToken = useCallback((token: string) => {
-    setTurnstileToken(token)
-    setError(null)
-  }, [])
-  const rejectToken = useCallback(() => {
-    setTurnstileToken('')
-    setError('Bot protection could not verify this browser. Please retry.')
-  }, [])
+  const nextTitle = title.trim()
+  const nextHandle = handle.trim()
+  const titled = Boolean(nextTitle)
+  const url = sharedId ? sharedPatternUrl(sharedId) : null
+  const canShare = url !== null && browserCanShare(url)
+  const errorAlert = submitError
+    ? <p className="error" role="alert">{submitError}</p>
+    : null
 
   const publish = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!title.trim() || !turnstileToken || submitting) return
+    if (!nextTitle || !turnstile.token || submitting) return
     setSubmitting(true)
-    setError(null)
+    setSubmitError(null)
     try {
       const id = await createSharedPattern(
-        { title: title.trim(), code: props.code, handle: handle.trim() || null },
-        turnstileToken,
+        { title: nextTitle, code: props.code, handle: nextHandle || null },
+        turnstile.token,
       )
-      saveHandle(handle.trim())
+      saveHandle(nextHandle)
       setSharedId(id)
-      props.onShared(id, title.trim())
-    } catch {
-      setError('Purple could not publish this pattern. Please try again in a moment.')
-      setTurnstileToken('')
-      setResetKey((key) => key + 1)
+      props.onShared(id, nextTitle)
+    } catch (reason) {
+      setSubmitError(
+        reason instanceof Error && reason.message
+          ? reason.message
+          : 'Purple could not publish this pattern. Please try again in a moment.',
+      )
+      turnstile.reset()
     } finally {
       setSubmitting(false)
     }
   }
-
   const copyLink = async () => {
-    if (!sharedId) return
-    if (!(await clipboard.copy(sharedPatternUrl(sharedId)))) {
-      setError('Copy was blocked. Select the link and copy it manually.')
+    if (!url) return
+    if (!(await clipboard.copy(url))) {
+      setSubmitError('Copy was blocked. Select the link and copy it manually.')
+    }
+  }
+  const sendLink = async () => {
+    if (!url || !canShare) return
+    try {
+      await navigator.share({ title: nextTitle, url })
+    } catch (reason) {
+      if (reason instanceof Error && reason.name === 'AbortError') return
+      setSubmitError('Sharing was blocked. Copy the link instead.')
     }
   }
 
-  const url = sharedId ? sharedPatternUrl(sharedId) : null
   return (
     <ModalDialog
       className="feedback-dialog"
@@ -82,11 +92,18 @@ export function ShareDialog(props: {
           </p>
           <div className="share-link-row">
             <input aria-label="Shared pattern link" readOnly value={url} onFocus={(event) => event.currentTarget.select()} />
-            <button type="button" className="primary" onClick={copyLink}>
-              {clipboard.copied ? 'COPIED' : 'COPY LINK'}
-            </button>
+            <div className="share-link-actions">
+              {canShare ? (
+                <button type="button" className="chrome" onClick={() => void sendLink()}>
+                  SHARE
+                </button>
+              ) : null}
+              <button type="button" className="primary" onClick={() => void copyLink()}>
+                {clipboard.copied ? 'COPIED' : 'COPY LINK'}
+              </button>
+            </div>
           </div>
-          {error ? <p className="error" role="alert">{error}</p> : null}
+          {errorAlert}
           <div className="feedback-actions">
             <InternalLink className="chrome" href="/patterns" navigate={props.navigate}>
               BROWSE PATTERNS
@@ -97,7 +114,10 @@ export function ShareDialog(props: {
       ) : (
         <form className="feedback-form" onSubmit={publish}>
           <p id="share-privacy" className="feedback-privacy">
-            Sharing publishes this title and pattern code to Purple’s public gallery.
+            {props.republish
+              ? 'This publishes a new public pattern. The previous share link stays as it was.'
+              : 'Sharing publishes this title and pattern code to Purple’s public gallery.'}
+            {' '}
             Do not include private information in either field.
           </p>
           <label>
@@ -119,15 +139,11 @@ export function ShareDialog(props: {
               placeholder={DEFAULT_HANDLE}
             />
           </label>
-          <TurnstileFormEnd
-            action="purple_share"
-            resetKey={resetKey}
-            onToken={acceptToken}
-            onError={rejectToken}
-            error={error}
-          >
+          {errorAlert}
+          <TurnstileFormEnd action="purple_share" turnstile={turnstile}>
             <DialogSubmitActions
-              disabled={!title.trim() || !turnstileToken || submitting}
+              checking={titled && turnstile.waiting}
+              disabled={!titled || !turnstile.token || submitting}
               idleLabel="PUBLISH PATTERN"
               onCancel={close}
               pending={submitting}
@@ -156,5 +172,14 @@ function saveHandle(handle: string): void {
     else localStorage.removeItem(HANDLE_KEY)
   } catch {
     // Remembering the handle is a convenience only.
+  }
+}
+
+function browserCanShare(url: string): boolean {
+  try {
+    if (navigator.canShare) return navigator.canShare({ url })
+    return Boolean(navigator.share)
+  } catch {
+    return false
   }
 }

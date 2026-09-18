@@ -14,7 +14,10 @@ import { isJsonString, jsonMembers, type JsonValue } from "@purple/core/json";
 interface SessionPattern {
   code: string;
   customTitle: string | null;
+  /** Public id of this exact title and code, when they still match a share. */
   shareId?: string;
+  /** Last public id this working copy came from, kept after local edits. */
+  originShareId?: string;
 }
 
 function parseSessionPattern(value: JsonValue): SessionPattern | null {
@@ -22,37 +25,56 @@ function parseSessionPattern(value: JsonValue): SessionPattern | null {
   const code = fields?.get("code");
   const customTitle = fields?.get("customTitle");
   const shareId = fields?.get("shareId");
+  const originShareId = fields?.get("originShareId");
   if (
     !isJsonString(code) ||
     (customTitle !== null && !isJsonString(customTitle)) ||
-    (shareId !== undefined && !isJsonString(shareId))
+    !isOptionalJsonString(shareId) ||
+    !isOptionalJsonString(originShareId)
   ) {
     return null;
   }
   // Only the JSON shapes are checked here; normalizeSessionPattern owns the
   // bounds, the share-id check, and the title clamp for both paths.
-  const pattern: SessionPattern = {
+  return normalizeSessionPattern({
     code,
     customTitle: isJsonString(customTitle) ? customTitle : null,
-  };
-  if (shareId !== undefined) pattern.shareId = shareId;
-  return normalizeSessionPattern(pattern);
+    ...optionalShareIds(shareId, originShareId),
+  });
 }
 
 function normalizeSessionPattern(pattern: SessionPattern): SessionPattern | null {
   if (
     pattern.code.length === 0 ||
     pattern.code.length > MAX_PATTERN_LENGTH ||
-    (pattern.shareId !== undefined && !isShareId(pattern.shareId))
+    isInvalidShareId(pattern.shareId) ||
+    isInvalidShareId(pattern.originShareId)
   ) {
     return null;
   }
-  const normalized: SessionPattern = {
+  return {
     code: pattern.code,
     customTitle: pattern.customTitle?.slice(0, MAX_TITLE_LENGTH) ?? null,
+    ...optionalShareIds(pattern.shareId, pattern.originShareId),
   };
-  if (pattern.shareId !== undefined) normalized.shareId = pattern.shareId;
-  return normalized;
+}
+
+function optionalShareIds(
+  shareId: string | undefined,
+  originShareId: string | undefined,
+): Pick<SessionPattern, "shareId" | "originShareId"> {
+  const ids: Pick<SessionPattern, "shareId" | "originShareId"> = {};
+  if (shareId !== undefined) ids.shareId = shareId;
+  if (originShareId !== undefined) ids.originShareId = originShareId;
+  return ids;
+}
+
+function isInvalidShareId(value: string | undefined): boolean {
+  return value !== undefined && !isShareId(value);
+}
+
+function isOptionalJsonString(value: JsonValue | undefined): value is string | undefined {
+  return value === undefined || isJsonString(value);
 }
 
 /** The editor calls save() on every change; the trailing

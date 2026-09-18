@@ -1,35 +1,30 @@
-import {
-  useCallback,
-  useState,
-  type FormEvent,
-} from 'react'
+import { useState, type FormEvent } from 'react'
 import { DialogSubmitActions, ModalDialog } from './modal-dialog'
-import { TurnstileFormEnd } from './turnstile-widget'
+import { TurnstileFormEnd, useTurnstile } from './turnstile-widget'
 
-export function FeedbackDialog({ onClose }: { onClose: () => void }) {
+const MAX_MESSAGE_LENGTH = 5_000
+
+export function FeedbackDialog({
+  onClose,
+  playbackError,
+}: {
+  onClose: () => void
+  playbackError: string | null
+}) {
   const [category, setCategory] = useState('idea')
   const [email, setEmail] = useState('')
   const [message, setMessage] = useState('')
   const [website, setWebsite] = useState('')
-  const [turnstileToken, setTurnstileToken] = useState('')
-  const [turnstileError, setTurnstileError] = useState<string | null>(null)
-  const [resetKey, setResetKey] = useState(0)
+  const [includePlaybackError, setIncludePlaybackError] = useState(false)
+  const turnstile = useTurnstile()
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
-
-  const acceptTurnstileToken = useCallback((token: string) => {
-    setTurnstileError(null)
-    setTurnstileToken(token)
-  }, [])
-  const rejectTurnstileToken = useCallback(() => {
-    setTurnstileToken('')
-    setTurnstileError('Bot protection could not verify this browser. Please retry.')
-  }, [])
+  const hasNote = Boolean(message.trim())
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!turnstileToken || !message.trim() || submitting) return
+    if (!turnstile.token || !hasNote || submitting) return
 
     setSubmitting(true)
     setSubmitError(null)
@@ -37,9 +32,13 @@ export function FeedbackDialog({ onClose }: { onClose: () => void }) {
       const body = new URLSearchParams({
         category,
         email: email.trim(),
-        message: message.trim(),
+        message: composeFeedbackMessage(
+          message.trim(),
+          playbackError,
+          includePlaybackError,
+        ),
         website,
-        turnstileToken,
+        turnstileToken: turnstile.token,
       })
       const response = await fetch('/api/feedback', {
         method: 'POST',
@@ -52,16 +51,16 @@ export function FeedbackDialog({ onClose }: { onClose: () => void }) {
 
       if (!response.ok) {
         setSubmitError(feedbackError(response.status))
-        setTurnstileToken('')
-        setResetKey((key) => key + 1)
+        turnstile.reset()
         return
       }
 
       setSubmitted(true)
     } catch {
-      setSubmitError('Purple could not reach the feedback service. Please try again.')
-      setTurnstileToken('')
-      setResetKey((key) => key + 1)
+      setSubmitError(
+        'Purple could not reach the feedback service. Please try again.',
+      )
+      turnstile.reset()
     } finally {
       setSubmitting(false)
     }
@@ -119,11 +118,25 @@ export function FeedbackDialog({ onClose }: { onClose: () => void }) {
               value={message}
               onChange={(event) => setMessage(event.target.value)}
               minLength={3}
-              maxLength={5000}
+              maxLength={MAX_MESSAGE_LENGTH}
               rows={7}
               placeholder="What should Purple do better?"
             />
           </label>
+
+          {playbackError ? (
+            <label className="feedback-include">
+              <input
+                type="checkbox"
+                checked={includePlaybackError}
+                onChange={(event) => setIncludePlaybackError(event.target.checked)}
+              />
+              <span>
+                INCLUDE THE CURRENT PLAYBACK ERROR
+                <small>{playbackError}</small>
+              </span>
+            </label>
+          ) : null}
 
           <label className="feedback-honeypot" aria-hidden="true">
             Website
@@ -137,15 +150,10 @@ export function FeedbackDialog({ onClose }: { onClose: () => void }) {
 
           {submitError ? <p className="error" role="alert">{submitError}</p> : null}
 
-          <TurnstileFormEnd
-            action="purple_feedback"
-            resetKey={resetKey}
-            onToken={acceptTurnstileToken}
-            onError={rejectTurnstileToken}
-            error={turnstileError}
-          >
+          <TurnstileFormEnd action="purple_feedback" turnstile={turnstile}>
             <DialogSubmitActions
-              disabled={!message.trim() || !turnstileToken || submitting}
+              checking={hasNote && turnstile.waiting}
+              disabled={!hasNote || !turnstile.token || submitting}
               idleLabel="SEND FEEDBACK"
               onCancel={close}
               pending={submitting}
@@ -158,10 +166,25 @@ export function FeedbackDialog({ onClose }: { onClose: () => void }) {
   )
 }
 
+function composeFeedbackMessage(
+  note: string,
+  playbackError: string | null,
+  includePlaybackError: boolean,
+): string {
+  if (!includePlaybackError || !playbackError) return note
+  const combined = `${note}\n\nPlayback error:\n${playbackError}`
+  return combined.length <= MAX_MESSAGE_LENGTH
+    ? combined
+    : combined.slice(0, MAX_MESSAGE_LENGTH)
+}
+
 function feedbackError(status: number): string {
   if (status === 400 || status === 413) {
     return 'Check the form fields and keep the note under 5,000 characters.'
   }
   if (status === 403) return 'Bot protection expired or failed. Please retry.'
+  if (status === 404 || status === 405) {
+    return 'Feedback service is not running in this dev server.'
+  }
   return 'Purple could not deliver the note. Please try again in a moment.'
 }

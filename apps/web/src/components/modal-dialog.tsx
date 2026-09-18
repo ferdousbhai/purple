@@ -56,12 +56,18 @@ export function ModalDialog(props: {
 }
 
 export function DialogSubmitActions(props: {
+  checking: boolean
   disabled: boolean
   idleLabel: string
   onCancel: () => void
   pending: boolean
   pendingLabel: string
 }) {
+  const label = props.pending
+    ? props.pendingLabel
+    : props.checking
+      ? 'CHECKING…'
+      : props.idleLabel
   return (
     <>
       <button
@@ -73,7 +79,7 @@ export function DialogSubmitActions(props: {
         CANCEL
       </button>
       <button className="primary" disabled={props.disabled}>
-        {props.pending ? props.pendingLabel : props.idleLabel}
+        {label}
       </button>
     </>
   )
