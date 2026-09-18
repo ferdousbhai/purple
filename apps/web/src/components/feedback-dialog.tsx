@@ -72,18 +72,19 @@ export function FeedbackDialog({
       dismissible={!submitting}
       titleId="feedback-title"
       descriptionId="feedback-privacy"
-      title="Send a note to Ferdous"
+      title="Send feedback"
       closeLabel="Close feedback"
       onClose={onClose}
     >
       {(close) => submitted ? (
         <section className="feedback-success" role="status">
-          <p id="feedback-privacy">Your note reached Ferdous.</p>
+          <p id="feedback-privacy">Thanks for your feedback.</p>
           <button type="button" className="primary" onClick={close}>DONE</button>
         </section>
       ) : (
         <form className="feedback-form" onSubmit={submit}>
           <p id="feedback-privacy" className="feedback-privacy">
+            Your feedback goes to Ferdous, the creator of Purple.
             Only this form is sent to Purple. Do not include your pairing link,
             pattern code, or other private information.
           </p>

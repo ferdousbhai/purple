@@ -92,7 +92,7 @@ vi.mock('./feedback-dialog', async () => {
     FeedbackDialog(props: { onClose(): void; playbackError?: string | null }) {
       return React.createElement(
         'div',
-        { role: 'dialog', 'aria-label': 'Send a note to Ferdous' },
+        { role: 'dialog', 'aria-label': 'Send feedback' },
         props.playbackError
           ? React.createElement('p', null, props.playbackError)
           : null,
@@ -316,7 +316,7 @@ describe('public pattern gallery', () => {
     render(<PatternsPage />)
 
     await user.click(await screen.findByRole('button', { name: 'FEEDBACK' }))
-    const feedback = await screen.findByRole('dialog', { name: 'Send a note to Ferdous' })
+    const feedback = await screen.findByRole('dialog', { name: 'Send feedback' })
     expect(feedback).toBeVisible()
     expect(feedback).toHaveTextContent('Pattern used an unknown sound: xyz')
   })

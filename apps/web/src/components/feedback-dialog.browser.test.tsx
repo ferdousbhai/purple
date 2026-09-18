@@ -35,7 +35,7 @@ describe('feedback dialog', () => {
     const user = userEvent.setup()
     render(<FeedbackDialog onClose={() => undefined} playbackError={null} />)
 
-    expect(await screen.findByRole('dialog', { name: 'Send a note to Ferdous' })).toBeVisible()
+    expect(await screen.findByRole('dialog', { name: 'Send feedback' })).toBeVisible()
     expect(screen.getByText(/Only this form is sent to Purple/)).toBeVisible()
     await user.selectOptions(screen.getByRole('combobox'), 'bug')
     await user.type(screen.getByPlaceholderText('you@example.com'), 'listener@example.com')
@@ -43,7 +43,7 @@ describe('feedback dialog', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'SEND FEEDBACK' })).toBeEnabled())
     await user.click(screen.getByRole('button', { name: 'SEND FEEDBACK' }))
 
-    expect(await screen.findByText('Your note reached Ferdous.')).toBeVisible()
+    expect(await screen.findByText('Thanks for your feedback.')).toBeVisible()
     expect(renderedSiteKey).toBe('1x00000000000000000000AA')
     expect(submission.body?.get('category')).toBe('bug')
     expect(submission.body?.get('email')).toBe('listener@example.com')
@@ -91,7 +91,7 @@ describe('feedback dialog', () => {
     }))
     await user.click(await screen.findByRole('button', { name: 'SEND FEEDBACK' }))
 
-    expect(await screen.findByText('Your note reached Ferdous.')).toBeVisible()
+    expect(await screen.findByText('Thanks for your feedback.')).toBeVisible()
     expect(submission.body?.get('message')).toBe(
       'It died on play.\n\nPlayback error:\nPattern used an unknown sound: xyz',
     )
