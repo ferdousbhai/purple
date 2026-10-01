@@ -20,7 +20,7 @@ Local-first browser studio where the visitor's own MCP agent writes and plays St
 - `packages/ui/src/use-playback.ts`: playback, crossfades, and derived transport state
 - `packages/ui/src/session-store.ts`: working-pattern persistence
 - `scripts/verify-worklet-csp.mjs`: worklet/CSP alignment check
-- `apps/web/migrations/` and `apps/web/wrangler.jsonc`: public-pattern schema and Worker bindings
+- `apps/web/migrations/` and `apps/web/cloudflare.config.ts`: public-pattern schema and Worker bindings (`apps/web/wrangler.jsonc` stays only until Workers Builds deploys with cf)
 
 ## Boundaries
 

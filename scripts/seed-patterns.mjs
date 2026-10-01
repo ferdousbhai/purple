@@ -1,7 +1,7 @@
 // Prints the SQL that loads SEED_PATTERNS into the shared_patterns table.
 // Ids derive from titles, so rerunning is a no-op for rows already present:
 //   node scripts/seed-patterns.mjs > seed.sql
-//   pnpm --filter @purple/web exec wrangler d1 execute purple-patterns --remote --file=seed.sql
+//   pnpm --filter @purple/web exec cf d1 query 6e9cbe0d-7161-462b-91dc-8cab77fd9047 --sql "$(cat seed.sql)"
 import { createHash } from "node:crypto";
 import { SEED_PATTERNS } from "../packages/core/src/seed-patterns.ts";
 

@@ -1,3 +1,4 @@
+import { cloudflare } from '@cloudflare/vite-plugin'
 import { defineConfig } from 'vite'
 import viteReact from '@vitejs/plugin-react'
 import { sameOriginSuperdoughWorklet } from './vite/superdough-worklet'
@@ -9,6 +10,7 @@ import { hostedPageHints } from './vite/hosted-page-hints'
 const INITIAL_JAVASCRIPT_GZIP_BUDGET = 75 * 1024
 
 export default defineConfig({
+  server: { port: 3000 },
   resolve: { tsconfigPaths: true },
   build: {
     // The hosted document embeds the one application stylesheet. Keeping CSS
@@ -21,8 +23,17 @@ export default defineConfig({
   },
   plugins: [
     viteReact(),
-    sameOriginSuperdoughWorklet(),
-    initialBundleBudget(INITIAL_JAVASCRIPT_GZIP_BUDGET),
-    hostedPageHints(),
+    // The Cloudflare plugin adds a Worker build environment. The worklet
+    // rewrite and the bundle checks concern only the browser bundle.
+    ...[
+      sameOriginSuperdoughWorklet(),
+      initialBundleBudget(INITIAL_JAVASCRIPT_GZIP_BUDGET),
+      hostedPageHints(),
+    ].map((plugin) => ({ ...plugin, applyToEnvironment: clientOnly })),
+    cloudflare(),
   ],
 })
+
+function clientOnly(environment: { name: string }): boolean {
+  return environment.name === 'client'
+}

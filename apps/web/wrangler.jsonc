@@ -10,7 +10,9 @@
   "preview_urls": true,
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
-    "directory": "./dist",
+    // cf build (the Cloudflare Vite plugin) writes the client build here. Kept
+    // only so `wrangler deploy` still works until Workers Builds runs cf deploy.
+    "directory": "./.cloudflare/output/v0/workers/default/assets",
     "binding": "ASSETS",
     "not_found_handling": "404-page",
     // Run only app documents and APIs through Worker logic. Matching static

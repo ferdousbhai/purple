@@ -36,7 +36,7 @@ jobs:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
         run: pnpm install --frozen-lockfile
 
-      # verify-worklet-csp reads apps/web/dist, so the bundle has to exist first.
+      # verify-worklet-csp reads the built client assets, so the bundle has to exist first.
       - name: Build the web app
         run: pnpm run build
 

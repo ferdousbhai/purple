@@ -64,7 +64,7 @@ pnpm run test          # Run unit and integration tests
 pnpm run test:browser  # Run browser flow tests in Chromium
 pnpm run typecheck     # Check all TypeScript projects
 pnpm run check         # Lint, test, typecheck, and build
-pnpm run deploy        # Build, migrate remote D1, and deploy with Wrangler
+pnpm run deploy        # Build, migrate remote D1, and deploy with cf
 ```
 
 ## Architecture

@@ -7,7 +7,18 @@ import { fileURLToPath } from "node:url";
 const projectRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const requireFromWeb = createRequire(join(projectRoot, "apps", "web", "package.json"));
 const { chromium } = requireFromWeb("playwright");
-const assetsDirectory = join(projectRoot, "apps", "web", "dist", "assets");
+const assetsDirectory = join(
+  projectRoot,
+  "apps",
+  "web",
+  ".cloudflare",
+  "output",
+  "v0",
+  "workers",
+  "default",
+  "assets",
+  "assets",
+);
 const workletName = (await readdir(assetsDirectory)).find(
   (name) => name.startsWith("superdough-worklets-") && name.endsWith(".js"),
 );

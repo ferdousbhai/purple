@@ -7,15 +7,15 @@
     "#/*": "./src/*"
   },
   "scripts": {
-    "dev": "vite dev --port 3000",
-    "build": "vite build",
+    "dev": "cf dev",
+    "build": "cf build",
     "preview": "vite preview",
-    "db:migrate": "wrangler d1 migrations apply PATTERNS_DB --remote",
-    "db:migrate:local": "wrangler d1 migrations apply PATTERNS_DB --local",
-    "deploy": "pnpm run build && pnpm run db:migrate && wrangler deploy",
+    "db:migrate": "cf d1 migrations apply 6e9cbe0d-7161-462b-91dc-8cab77fd9047 --dir migrations",
+    "db:migrate:local": "cf d1 migrations apply 6e9cbe0d-7161-462b-91dc-8cab77fd9047 --dir migrations --local --persist-to .cloudflare/state",
+    "deploy": "pnpm run build && pnpm run db:migrate && cf deploy --prebuilt",
     "test": "vitest run",
     "test:browser": "vitest run --config vitest.browser.config.ts",
-    "typecheck": "wrangler types && tsc --noEmit && tsc --noEmit -p worker/tsconfig.json",
+    "typecheck": "cf workers types && tsc --noEmit && tsc --noEmit -p worker/tsconfig.json",
     "check": "pnpm run test && pnpm run typecheck && pnpm run build"
   },
   "dependencies": {
@@ -26,6 +26,7 @@
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "2.0.0-beta.sha-ad79608dd",
     "@testing-library/react": "16.3.2",
     "@testing-library/user-event": "14.6.1",
     "@types/node": "^22.10.2",
@@ -33,10 +34,11 @@
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^6.0.1",
     "@vitest/browser-playwright": "4.1.10",
+    "cf": "1.0.0-beta.10",
     "playwright": "1.62.1",
     "typescript": "^6.0.2",
     "vite": "^8.0.16",
     "vitest": "^4.1.10",
-    "wrangler": "^4.127.1"
+    "wrangler": "^4.145.0"
   }
 }

@@ -8,6 +8,7 @@
   "ignore": [
     "**/node_modules/**",
     "**/dist/**",
+    "**/.cloudflare/**",
     "**/pnpm-lock.yaml"
   ],
   "reporters": ["console"],

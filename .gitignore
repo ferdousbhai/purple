@@ -11,7 +11,7 @@ artifacts/
 !.dev.vars.example
 *.tsbuildinfo
 .wrangler/
-apps/web/worker-configuration.d.ts
+.cloudflare/
 
 **/.vitest-attachments/
 **/__screenshots__/

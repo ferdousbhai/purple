@@ -8,6 +8,7 @@ import { join } from 'node:path'
 
 const EM_DASH = '\u2014'
 const SKIPPED_DIRECTORIES = new Set([
+  '.cloudflare',
   '.git',
   '.vite',
   '.wrangler',
@@ -19,7 +20,6 @@ const SKIPPED_DIRECTORIES = new Set([
   'out',
   'target',
 ])
-const SKIPPED_PATHS = new Set(['apps/web/worker-configuration.d.ts'])
 
 const offenders = []
 const isBinaryFileContents = (contents) => contents.includes(0)
@@ -28,10 +28,9 @@ function scan(directory) {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     const path = join(directory, entry.name)
     if (entry.isDirectory()) {
-      if (!SKIPPED_DIRECTORIES.has(entry.name) && !SKIPPED_PATHS.has(path)) scan(path)
+      if (!SKIPPED_DIRECTORIES.has(entry.name)) scan(path)
       continue
     }
-    if (SKIPPED_PATHS.has(path)) continue
     if (!entry.isFile()) continue
     const contents = readFileSync(path)
     if (isBinaryFileContents(contents)) continue
