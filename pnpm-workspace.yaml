@@ -8,8 +8,6 @@ allowBuilds:
   sharp: true
   workerd: true
 
-# Security fix: qs 6.16.0 patches two advisories and is younger than the release-age wait.
-minimumReleaseAgeExclude:
-  - qs
+# Security fix: qs 6.16.0 patches two advisories.
 overrides:
   qs: ^6.16.0
