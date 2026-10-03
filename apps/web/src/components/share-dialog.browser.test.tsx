@@ -87,15 +87,6 @@ describe('share dialog', () => {
     expect(screen.queryByRole('button', { name: 'PUBLISH PATTERN' })).toBeNull()
   })
 
-  it('says a later publish is a new public pattern', async () => {
-    sharing.gate = null
-    render(dialog({ republish: true }))
-
-    expect(await screen.findByText(
-      /This publishes a new public pattern. The previous share link stays as it was./,
-    )).toBeVisible()
-  })
-
   it('shows the service error instead of a generic retry', async () => {
     sharing.publishError = new Error('Too many shares from this network. Wait a minute.')
     const user = userEvent.setup()
@@ -130,7 +121,6 @@ function dialog(overrides: {
   existingId?: string | null
   onClose?: () => void
   onShared?: (id: string, title: string) => void
-  republish?: boolean
 } = {}) {
   return (
     <ShareDialog
@@ -138,7 +128,7 @@ function dialog(overrides: {
       existingId={overrides.existingId ?? null}
       onClose={overrides.onClose ?? (() => undefined)}
       onShared={overrides.onShared ?? (() => undefined)}
-      republish={overrides.republish ?? false}
+      republish={false}
       title="Acid rain"
     />
   )

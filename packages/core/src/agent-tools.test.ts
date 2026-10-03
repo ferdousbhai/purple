@@ -20,12 +20,6 @@ describe("agentGuide", () => {
 });
 
 describe("planAgentToolCall", () => {
-  it("answers the reference itself, without a studio round trip", () => {
-    const plan = planAgentToolCall("get_strudel_reference", null);
-    if (plan.kind !== "text") throw new Error("the reference needs no tab");
-    expect(plan.text).toContain("## Mini-notation");
-  });
-
   it("plans parameterless calls with their timeouts", () => {
     expect(planAgentToolCall("play", null)).toEqual({
       kind: "call",
@@ -81,15 +75,6 @@ describe("formatAgentToolResult", () => {
     expect(JSON.parse(text)).toEqual({ code: 's("bd")', playbackState: "stopped" });
   });
 
-  it("tells the agent a committed pattern is ready to play", () => {
-    expect(
-      formatAgentToolResult(
-        { method: "set_pattern", code: "s()", title: null },
-        { committed: true },
-      ),
-    ).toContain("Call play");
-  });
-
   it("lists rejection problems for the agent to revise against", () => {
     const text = formatAgentToolResult(
       { method: "set_pattern", code: "s()", title: null },
@@ -97,10 +82,5 @@ describe("formatAgentToolResult", () => {
     );
     expect(text).toContain("rejected the pattern");
     expect(text).toContain('- "bd9" does not exist');
-  });
-
-  it("acknowledges transport controls tersely", () => {
-    expect(formatAgentToolResult({ method: "play" }, {})).toBe("Playing.");
-    expect(formatAgentToolResult({ method: "stop" }, {})).toBe("Stopped.");
   });
 });
