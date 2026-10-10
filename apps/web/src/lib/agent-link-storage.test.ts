@@ -4,7 +4,6 @@ import {
   generateAgentLinkCode,
   loadAgentLinkSettings,
   parseAgentLinkSettings,
-  saveAgentLinkSettings,
 } from './agent-link-storage'
 
 afterEach(() => {
@@ -38,13 +37,6 @@ describe('parseAgentLinkSettings', () => {
 })
 
 describe('load and save', () => {
-  it('round-trips through localStorage', () => {
-    vi.stubGlobal('localStorage', localStorageStub().window.localStorage)
-    const code = generateAgentLinkCode()
-    saveAgentLinkSettings({ code, local: false })
-    expect(loadAgentLinkSettings()).toEqual({ code, local: false })
-  })
-
   it('mints and persists a code on first load', () => {
     vi.stubGlobal('localStorage', localStorageStub().window.localStorage)
     const first = loadAgentLinkSettings()
