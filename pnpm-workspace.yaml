@@ -8,7 +8,8 @@ allowBuilds:
   sharp: true
   workerd: true
 
-# Security fixes: qs 6.16.0 and fast-uri 3.1.7 each patch advisories.
+# Security fixes: qs 6.16.0, fast-uri 3.1.7, and proxy-addr 2.0.8 each patch advisories.
 overrides:
   fast-uri: ^3.1.7
+  proxy-addr: ^2.0.8
   qs: ^6.16.0
