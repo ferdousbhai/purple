@@ -2,9 +2,8 @@
 /* oxlint-disable anti-slop/require-safety-comment-for-type-assertion -- Vitest's hoisted mutable fixtures need explicit collection and result types. */
 import { act } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { page } from 'vitest/browser'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { page, userEvent } from 'vitest/browser'
 import '#/styles.css'
 import { PurpleStudio as StudioPage, type PurpleStudioProps } from './purple-studio'
 import { usePlayback } from '@purple/ui/use-playback'

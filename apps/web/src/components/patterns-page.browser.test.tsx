@@ -1,7 +1,7 @@
 /* oxlint-disable anti-slop/no-module-mocking -- The gallery browser flow keeps network, storage, and audio boundaries deterministic. */
 /* oxlint-disable anti-slop/require-safety-comment-for-type-assertion -- Vitest's hoisted mutable fixtures need explicit result collection types. */
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { userEvent } from 'vitest/browser'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PatternsPage as GalleryPage, type PatternsPageProps } from './patterns-page'
 import { usePlayback } from '@purple/ui/use-playback'

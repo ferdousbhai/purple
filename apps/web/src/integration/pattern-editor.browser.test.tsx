@@ -1,5 +1,5 @@
 import { render } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { userEvent } from 'vitest/browser'
 import { PatternEditor } from '@purple/ui/pattern-editor'
 import { describe, expect, it, vi } from 'vitest'
 

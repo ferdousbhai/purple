@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { userEvent } from 'vitest/browser'
 import { FeedbackDialog } from './feedback-dialog'
 
 interface SubmissionCapture {

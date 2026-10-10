@@ -11,7 +11,7 @@ Local-first browser studio where the visitor's own MCP agent writes and plays St
 - `apps/web/worker/index.ts`, `apps/web/worker/http.ts`, `apps/web/worker/feedback.ts`, and `apps/web/worker/patterns.ts`: Worker routing, feedback, public patterns, and votes
 - `apps/web/vite/superdough-worklet.ts`: same-origin AudioWorklet emission
 - `packages/core/src/`: dependency-free Strudel reference, showcase patterns, parsing, validation, and transitions
-- `packages/core/src/agent-link.ts` and `packages/core/src/agent-tools.ts`: agent wire protocol, the shared MCP tool surface, and the instructions that teach a continuous set
+- `packages/core/src/agent-link.ts`, `packages/core/src/agent-tools.ts`, and `packages/core/src/mcp-server.ts`: agent wire protocol, the shared MCP tool surface and JSON-RPC server, and the instructions that teach a continuous set
 - `apps/web/worker/agent-relay.ts`: hosted MCP endpoint and the Durable Object pairing an agent with its tab
 - `apps/web/worker/oauth.ts` and `apps/web/src/components/agent-authorize.tsx`: MCP authorization with the browser as the authenticator, and the Allow page
 - `packages/agent-bridge/src/`: purple-mcp, the optional fully offline stdio bridge

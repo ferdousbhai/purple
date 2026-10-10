@@ -15,7 +15,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.32.1",
     "@purple/core": "workspace:*",
     "ws": "^8.18.3"
   },

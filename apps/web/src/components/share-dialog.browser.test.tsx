@@ -2,7 +2,7 @@
 /* oxlint-disable anti-slop/require-safety-comment-for-type-assertion -- Vitest's hoisted deferred fixture needs an explicit nullable type. */
 import { act } from 'react'
 import { cleanup, render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { userEvent } from 'vitest/browser'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ShareDialog } from './share-dialog'
 
