@@ -90,7 +90,8 @@ export function PurpleStudio({
   const [agentLink] = useState<AgentLinkSettings>(loadAgentLinkSettings)
   // The pairing panel is the whole session pane. It steps aside once an agent
   // is actually driving the tab, and the topbar badge brings it back.
-  const [agentPanelOpen, setAgentPanelOpen] = useState(true)
+  const isPhoneWidth = usePhoneWidth()
+  const [agentPanelOpen, setAgentPanelOpen] = useState(() => !isPhoneWidth)
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
@@ -103,7 +104,6 @@ export function PurpleStudio({
   const [originShareId, setOriginShareId] = useState<string | null>(
     initialPattern.originShareId,
   )
-  const isPhoneWidth = usePhoneWidth()
   const savedPatterns = usePatterns()
   const mainRef = useRef<HTMLElement | null>(null)
   const libraryRef = useRef<HTMLElement | null>(null)
@@ -557,6 +557,7 @@ export function PurpleStudio({
             <AgentCard
               code={agentLink.code}
               linked={agentLinked}
+              mobile={isPhoneWidth}
               onClose={() => setAgentPanelOpen(false)}
             />
           </Suspense>

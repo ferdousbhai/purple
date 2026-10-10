@@ -420,6 +420,27 @@ describe('Purple studio browser flow', () => {
 })
 
 describe('agent pairing panel', () => {
+  it('starts phones in the editor and offers a pairing address without terminal clients', async () => {
+    await act(async () => page.viewport(390, 844))
+    try {
+      const { container } = render(<PurpleStudio />)
+      await screen.findByLabelText('Pattern code')
+      expect(container.querySelector('.session-pane')).toBeNull()
+
+      await userEvent.click(screen.getByRole('button', { name: /AGENT/ }))
+      expect(await screen.findByText('CONNECT AN AGENT')).toBeVisible()
+      expect(screen.queryByRole('button', { name: 'CODEX' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'CLAUDE CODE' })).toBeNull()
+      expect(container.querySelector('.agent-clients')).toBeNull()
+      expect(container.querySelector('.agent-command')?.textContent).toBe(
+        `${window.location.origin}/mcp/${studio.agentUrl.split('/link/')[1]}`,
+      )
+      expect(screen.getByRole('button', { name: 'COPY PAIRING ADDRESS' })).toBeVisible()
+    } finally {
+      await act(async () => page.viewport(1280, 720))
+    }
+  })
+
   it('offers a registration command per client over one pairing endpoint', async () => {
     const { container } = render(<PurpleStudio />)
 

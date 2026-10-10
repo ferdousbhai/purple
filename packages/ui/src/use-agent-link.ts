@@ -31,16 +31,13 @@ const FIRST_RECONNECT_DELAY_MS = 2_500;
 const MAX_RECONNECT_DELAY_MS = 30_000;
 
 /**
- * Answer one bridge frame: the encoded response to send back, or null for
- * frames that are not requests. A handler failure becomes an error response;
- * it never escapes to the socket layer.
+ * Answer one agent request: the encoded response to send back. A handler
+ * failure becomes an error response; it never escapes to the socket layer.
  */
-export async function handleAgentFrame(
-  text: string,
+export async function answerAgentRequest(
+  request: AgentRequest,
   handlers: AgentLinkHandlers,
-): Promise<string | null> {
-  const request = decodeAgentRequest(text);
-  if (!request) return null;
+): Promise<string> {
   try {
     const result = await dispatchAgentRequest(request, handlers);
     return encodeAgentResponse({ id: request.id, ok: true, result });
@@ -73,7 +70,7 @@ async function dispatchAgentRequest(
   }
 }
 
-/** True once the agent is linked to this tab. */
+/** True after an agent requests this tab, until the relay disconnects. */
 export function useAgentLink(options: {
   /** ws:// or wss:// endpoint: the hosted relay, or a local bridge. */
   url: string;
@@ -111,13 +108,17 @@ export function useAgentLink(options: {
       candidate.onopen = () => {
         candidate.send(encodeAgentHello());
         reconnectDelayMs = FIRST_RECONNECT_DELAY_MS;
-        setConnected(true);
       };
       candidate.onmessage = (event) => {
         // The bridge only sends text frames; anything else stringifies into
         // a frame the decoder rejects.
-        void handleAgentFrame(String(event.data), handlersRef.current).then((reply) => {
-          if (reply !== null && candidate.readyState === WebSocket.OPEN) {
+        const request = decodeAgentRequest(String(event.data));
+        if (!request) return;
+        // An open socket only means the relay answered; an agent is linked
+        // once it actually asks this tab for something.
+        setConnected(true);
+        void answerAgentRequest(request, handlersRef.current).then((reply) => {
+          if (candidate.readyState === WebSocket.OPEN) {
             candidate.send(reply);
           }
         });
