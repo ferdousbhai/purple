@@ -25,7 +25,8 @@ import {
   type AgentLinkSettings,
 } from '#/lib/agent-link-storage'
 import { PurpleMark } from '@purple/ui/purple-mark'
-import { useAgentLink } from '@purple/ui/use-agent-link'
+import { useAgentLink, type AgentLinkHandlers } from '@purple/ui/use-agent-link'
+import { useWebMcpTools } from '@purple/ui/use-web-mcp'
 import { SpectrumBars } from '@purple/ui/spectrum-bars'
 import { hasUnappliedEditorChanges, isTransportActive } from '@purple/ui/use-playback'
 import type { PatternEditorProps } from '@purple/ui/pattern-editor'
@@ -141,50 +142,53 @@ export function PurpleStudio({
   codeRef.current = code
   const patternNameRef = useRef(patternName)
   patternNameRef.current = patternName
+  // One set of handlers serves the relay link and the page's WebMCP tools.
+  const agentHandlers: AgentLinkHandlers = {
+    getSession: () => ({
+      code: codeRef.current,
+      title: patternNameRef.current,
+      playbackState: playback.playbackState,
+      playbackError: playback.error,
+    }),
+    setPattern: async (rawCode, rawTitle) => {
+      const nextCode = validatePatternCode(rawCode)
+      if (!nextCode) {
+        throw new Error(
+          `The pattern must be non-empty and at most ${MAX_PATTERN_LENGTH} characters.`,
+        )
+      }
+      // Null means the engine has not initialized yet (no click so far);
+      // the pattern lands unaudited and play-time errors stay the net.
+      const problems = await playback.validatePattern(nextCode)
+      if (problems !== null && problems.length > 0) {
+        return {
+          committed: false,
+          problems: problems.map(describeValidationProblem),
+        }
+      }
+      codeRef.current = nextCode
+      commitCode(nextCode)
+      if (rawTitle !== null) {
+        const nextTitle = validatePatternTitle(rawTitle)
+        if (nextTitle) commitCustomTitle(nextTitle)
+      }
+      return { committed: true }
+    },
+    play: async () => {
+      const result = await playback.transition(codeRef.current)
+      if (result.ok) return { ok: true }
+      if (result.kind === 'cancelled') {
+        return { ok: false, error: 'Playback was interrupted by another action.' }
+      }
+      return { ok: false, error: result.error }
+    },
+    stop: () => playback.stop(),
+  }
   const agentLinked = useAgentLink({
     url: agentLinkSocketUrl(agentLink),
-    handlers: {
-      getSession: () => ({
-        code: codeRef.current,
-        title: patternNameRef.current,
-        playbackState: playback.playbackState,
-        playbackError: playback.error,
-      }),
-      setPattern: async (rawCode, rawTitle) => {
-        const nextCode = validatePatternCode(rawCode)
-        if (!nextCode) {
-          throw new Error(
-            `The pattern must be non-empty and at most ${MAX_PATTERN_LENGTH} characters.`,
-          )
-        }
-        // Null means the engine has not initialized yet (no click so far);
-        // the pattern lands unaudited and play-time errors stay the net.
-        const problems = await playback.validatePattern(nextCode)
-        if (problems !== null && problems.length > 0) {
-          return {
-            committed: false,
-            problems: problems.map(describeValidationProblem),
-          }
-        }
-        codeRef.current = nextCode
-        commitCode(nextCode)
-        if (rawTitle !== null) {
-          const nextTitle = validatePatternTitle(rawTitle)
-          if (nextTitle) commitCustomTitle(nextTitle)
-        }
-        return { committed: true }
-      },
-      play: async () => {
-        const result = await playback.transition(codeRef.current)
-        if (result.ok) return { ok: true }
-        if (result.kind === 'cancelled') {
-          return { ok: false, error: 'Playback was interrupted by another action.' }
-        }
-        return { ok: false, error: result.error }
-      },
-      stop: () => playback.stop(),
-    },
+    handlers: agentHandlers,
   })
+  useWebMcpTools(agentHandlers)
 
   useEffect(() => {
     // Setup is done the moment an agent answers, so hand the room back to the

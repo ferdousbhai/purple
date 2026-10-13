@@ -131,6 +131,8 @@ vi.mock('@purple/ui/pattern-editor', async () => {
   }
 })
 
+vi.mock('@purple/ui/use-web-mcp', () => ({ useWebMcpTools() {} }))
+
 vi.mock('@purple/ui/use-agent-link', async () => {
   const React = await import('react')
   return {

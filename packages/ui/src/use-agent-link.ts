@@ -11,6 +11,7 @@ import {
   encodeAgentHello,
   encodeAgentResponse,
   LINK_TAKEN_OVER_CODE,
+  type AgentCall,
   type AgentRequest,
   type AgentSessionSnapshot,
   type SetPatternOutcome,
@@ -39,7 +40,7 @@ export async function answerAgentRequest(
   handlers: AgentLinkHandlers,
 ): Promise<string> {
   try {
-    const result = await dispatchAgentRequest(request, handlers);
+    const result = await dispatchAgentCall(request, handlers);
     return encodeAgentResponse({ id: request.id, ok: true, result });
   } catch (cause) {
     return encodeAgentResponse({
@@ -50,8 +51,9 @@ export async function answerAgentRequest(
   }
 }
 
-async function dispatchAgentRequest(
-  request: AgentRequest,
+/** Run one call against the studio's handlers; the relay and WebMCP share it. */
+export async function dispatchAgentCall(
+  request: AgentCall,
   handlers: AgentLinkHandlers,
 ): Promise<JsonValue> {
   switch (request.method) {

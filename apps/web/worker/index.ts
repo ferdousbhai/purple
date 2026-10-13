@@ -3,7 +3,7 @@ import {
   handleAgentLinkUpgrade,
   handleMcpRequest,
 } from './agent-relay'
-import { agentGuide } from '@purple/core/agent-tools'
+import { agentGuide, agentGuideFull } from '@purple/core/agent-tools'
 import { handleFeedbackRequest } from './feedback'
 import { textResponse } from './http'
 import {
@@ -20,6 +20,7 @@ export { AgentLinkSession } from './agent-relay'
 
 const FEEDBACK_PATH = '/api/feedback'
 const AGENT_GUIDE_PATH = '/llms.txt'
+const AGENT_GUIDE_FULL_PATH = '/llms-full.txt'
 const MCP_PREFIX = '/mcp/'
 const LINK_PREFIX = '/link/'
 const CANONICAL_HOST = 'soundspurple.com'
@@ -76,6 +77,9 @@ export default {
     }
     if (url.pathname === AGENT_GUIDE_PATH) {
       return textResponse(agentGuide(url.origin), 200)
+    }
+    if (url.pathname === AGENT_GUIDE_FULL_PATH) {
+      return textResponse(agentGuideFull(url.origin), 200)
     }
     if (url.pathname === FEEDBACK_PATH) {
       return handleFeedbackRequest(request, env)

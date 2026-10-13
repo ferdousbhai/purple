@@ -11,11 +11,12 @@ Local-first browser studio where the visitor's own MCP agent writes and plays St
 - `apps/web/worker/index.ts`, `apps/web/worker/http.ts`, `apps/web/worker/feedback.ts`, and `apps/web/worker/patterns.ts`: Worker routing, feedback, public patterns, and votes
 - `apps/web/vite/superdough-worklet.ts`: same-origin AudioWorklet emission
 - `packages/core/src/`: dependency-free Strudel reference, showcase patterns, parsing, validation, and transitions
-- `packages/core/src/agent-link.ts`, `packages/core/src/agent-tools.ts`, and `packages/core/src/mcp-server.ts`: agent wire protocol, the shared MCP tool surface and JSON-RPC server, and the instructions that teach a continuous set
+- `packages/core/src/agent-link.ts`, `packages/core/src/agent-tools.ts`, and `packages/core/src/mcp-server.ts`: agent wire protocol, the shared MCP tool surface and JSON-RPC server, and the instructions that teach a continuous set; `agentGuide`/`agentGuideFull` generate `/llms.txt` and `/llms-full.txt` (served by the Worker, listed in `runWorkerFirst`)
 - `apps/web/worker/agent-relay.ts`: hosted MCP endpoint and the Durable Object pairing an agent with its tab
 - `apps/web/worker/oauth.ts` and `apps/web/src/components/agent-authorize.tsx`: MCP authorization with the browser as the authenticator, and the Allow page
 - `packages/agent-bridge/src/`: purple-mcp, the optional fully offline stdio bridge
 - `packages/ui/src/use-agent-link.ts`: browser WebSocket client answering agent requests
+- `packages/ui/src/use-web-mcp.ts`: WebMCP, the same tools (minus `share_pattern`) registered on the studio page via `document.modelContext` and run through the same handlers
 - `packages/ui/src/safe-strudel.ts`: allowlisted Strudel interpreter
 - `packages/ui/src/use-playback.ts`: playback, crossfades, and derived transport state
 - `packages/ui/src/session-store.ts`: working-pattern persistence
@@ -24,7 +25,7 @@ Local-first browser studio where the visitor's own MCP agent writes and plays St
 
 ## Boundaries
 
-- Purple runs no inference. The agent is the composer; the studio validates, plays, and stores. A browser-minted pairing code is the only way an agent reaches a tab: it travels either inside a token the person's own browser approved on `/authorize`, or pasted as `/mcp/<code>`. The Worker keeps no accounts and no token tables; every OAuth artifact is a signed payload. The relay (or the offline purple-mcp bridge) carries nothing but session state and pattern code.
+- Purple runs no inference. The agent is the composer; the studio validates, plays, and stores. A browser-minted pairing code is the only way a remote agent reaches a tab (a browser agent already on the page uses the WebMCP tools instead): it travels either inside a token the person's own browser approved on `/authorize`, or pasted as `/mcp/<code>`. The Worker keeps no accounts and no token tables; every OAuth artifact is a signed payload. The relay (or the offline purple-mcp bridge) carries nothing but session state and pattern code.
 - The personal library and the working pattern stay in the browser. Only a share publishes a title, code, and handle to D1: the SHARE button behind Turnstile, or the agent's `share_pattern` tool through the hosted relay, rate-limited per pairing code.
 - A set keeps evolving because `AGENT_INSTRUCTIONS` says so: both MCP front ends advertise them on initialize, and the studio holds no autoplay loop of its own.
 - Keep browser composition in `apps/web`, dependency-free product logic in `packages/core`, and React, editor, Strudel, playback, and persistence modules in `packages/ui`.

@@ -4,6 +4,7 @@ import {
   type AgentRequest,
 } from "@purple/core/agent-link";
 import { answerAgentRequest, type AgentLinkHandlers } from "./use-agent-link";
+import { registerWebMcpTools, type ModelContextTool } from "./use-web-mcp";
 
 function stubHandlers(overrides: Partial<AgentLinkHandlers> = {}): AgentLinkHandlers {
   return {
@@ -82,5 +83,47 @@ describe("answerAgentRequest", () => {
       }),
     );
     expect(reply).toEqual({ id: "4", ok: false, error: "The pattern is empty." });
+  });
+});
+
+describe("registerWebMcpTools", () => {
+  function register(handlers: AgentLinkHandlers) {
+    const tools = new Map<string, ModelContextTool>();
+    registerWebMcpTools(
+      { registerTool: (tool) => void tools.set(tool.name, tool) },
+      () => handlers,
+      new AbortController().signal,
+    );
+    return tools;
+  }
+
+  it("registers the agent tools except share_pattern", () => {
+    expect([...register(stubHandlers()).keys()]).toEqual([
+      "get_strudel_reference",
+      "get_session",
+      "set_pattern",
+      "play",
+      "stop",
+    ]);
+  });
+
+  it("runs calls through the studio handlers with the MCP result text", async () => {
+    let applied: [string, string | null] | null = null;
+    const tools = register(
+      stubHandlers({
+        setPattern: async (code, title) => {
+          applied = [code, title];
+          return { committed: true };
+        },
+      }),
+    );
+    const client = { signal: new AbortController().signal };
+    expect(
+      await tools.get("set_pattern")?.execute({ code: 's("hh*8")' }, client),
+    ).toBe("Applied. Call play.");
+    expect(applied).toEqual(['s("hh*8")', null]);
+    expect(await tools.get("get_session")?.execute({}, client)).toContain("Four Floor");
+    expect(tools.get("get_session")?.annotations?.readOnlyHint).toBe(true);
+    expect(tools.get("play")?.annotations?.readOnlyHint).toBe(false);
   });
 });

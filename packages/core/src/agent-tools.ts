@@ -96,8 +96,8 @@ export function agentGuide(origin: string): string {
   return [
     "# Purple",
     "",
-    "Strudel live-coding studio in the browser. Your MCP agent composes; the " +
-      "tab plays. Nothing runs server-side.",
+    "> Strudel live-coding studio in the browser. Your MCP agent composes; " +
+      "the tab plays. Nothing runs server-side.",
     "",
     "## Connect",
     "",
@@ -109,10 +109,30 @@ export function agentGuide(origin: string): string {
     "",
     AGENT_INSTRUCTIONS,
     "",
-    `Public patterns: ${origin}/patterns`,
-    "Source and offline bridge: https://github.com/ferdousbhai/purple",
+    "A browser agent with WebMCP can call the same tools (except " +
+      "share_pattern) directly on the open studio page, with no pairing.",
+    "",
+    "## Endpoints",
+    "",
+    `- [MCP endpoint](${agentEndpoint(origin, null)}): Streamable HTTP MCP with OAuth`,
+    `- [Studio](${origin}/): the tab that plays; registers WebMCP tools`,
+    `- [Public patterns](${origin}/patterns): the shared feed, playable in the studio`,
+    `- [Public patterns API](${origin}/api/patterns): JSON list, ?sort=fresh|top`,
+    "",
+    "## Optional",
+    "",
+    `- [Full guide](${origin}/llms-full.txt): this guide plus the Strudel reference`,
+    "- [Source and offline bridge](https://github.com/ferdousbhai/purple): " +
+      "purple-mcp runs the same tools over stdio",
     "",
   ].join("\n");
+}
+
+/** The site's llms-full.txt: the guide plus the reference get_strudel_reference returns. */
+export function agentGuideFull(origin: string): string {
+  return [agentGuide(origin), "# Strudel reference", "", STRUDEL_REFERENCE, ""].join(
+    "\n",
+  );
 }
 
 export const NOT_CONNECTED_MESSAGE =

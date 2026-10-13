@@ -12,7 +12,8 @@
     "./use-agent-link": "./src/use-agent-link.ts",
     "./use-clipboard-copy": "./src/use-clipboard-copy.ts",
     "./use-playback": "./src/use-playback.ts",
-    "./use-strudel": "./src/use-strudel.ts"
+    "./use-strudel": "./src/use-strudel.ts",
+    "./use-web-mcp": "./src/use-web-mcp.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

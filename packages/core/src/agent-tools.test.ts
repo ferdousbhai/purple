@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   AGENT_TOOLS,
   agentGuide,
+  agentGuideFull,
   formatAgentToolResult,
   planAgentToolCall,
 } from "./agent-tools";
@@ -16,6 +17,16 @@ describe("agentGuide", () => {
     expect(guide).toContain("https://soundspurple.com/mcp/<pairing-code>");
     for (const { name } of AGENT_TOOLS) expect(guide).toContain(name);
     expect(guide).toContain("Play a set, not a loop");
+  });
+
+  it("follows the llms.txt shape and links the full guide", () => {
+    const guide = agentGuide("https://soundspurple.com");
+    expect(guide.startsWith("# Purple\n\n> ")).toBe(true);
+    expect(guide).toContain("- [MCP endpoint](https://soundspurple.com/mcp): ");
+    expect(guide).toContain("(https://soundspurple.com/llms-full.txt)");
+    const full = agentGuideFull("https://soundspurple.com");
+    expect(full.startsWith(guide)).toBe(true);
+    expect(full).toContain("## Mini-notation");
   });
 });
 
