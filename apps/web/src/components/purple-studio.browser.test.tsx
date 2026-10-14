@@ -442,13 +442,17 @@ describe('agent pairing panel', () => {
     }
   })
 
-  it('offers a registration command per client over one pairing endpoint', async () => {
+  it('leads with an agent prompt and offers manual commands per client', async () => {
     const { container } = render(<PurpleStudio />)
 
     expect(await screen.findByText('WAITING FOR YOUR AGENT')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'COPY PROMPT' })).toBeVisible()
+    expect(screen.getByText('Read https://soundspurple.com/connect/guide, connect to my open Purple tab, and make music with me.')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'CODEX', hidden: true })).not.toBeVisible()
+    await userEvent.click(screen.getByText('MANUAL MCP SETUP'))
     const pairingCode = studio.agentUrl.split('/link/')[1]
     const endpoint = `${window.location.origin}/mcp`
-    const command = () => container.querySelector('.agent-command')?.textContent
+    const command = () => container.querySelector('details .agent-command')?.textContent
 
     // OAuth-capable clients register the bare endpoint and get the code from
     // the Allow page; only OTHER carries the pairing code in the URL.

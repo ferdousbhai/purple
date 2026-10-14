@@ -91,6 +91,55 @@ export function pairingGuide(origin: string): string {
   ].join("\n");
 }
 
+/** Repository-owned onboarding for an agent already in the listener's workspace. */
+export function connectGuide(origin: string): string {
+  const endpoint = agentEndpoint(origin, null);
+  return `# Connect Purple in the current agent
+
+Stay in the user's chosen agent and current conversation. Configure only this
+harness in the current workspace. Preserve unrelated settings and inspect any
+existing purple entry before changing it. Do not launch another agent.
+Purple needs no local connector, package installation, or account.
+
+1. Register ${endpoint} as a Streamable HTTP MCP server using this
+   harness's native configuration, scoped to the current workspace.
+
+   Codex: merge into the trusted workspace's .codex/config.toml:
+
+   [mcp_servers.purple]
+   url = "${endpoint}"
+   enabled = true
+   tool_timeout_sec = 180
+
+   Then run codex mcp login purple from that workspace for browser authorization.
+   The timeout lets play finish its crossfade before the client gives up.
+
+   Claude Code: run in the current workspace:
+   claude mcp add --scope local --transport http purple ${endpoint}
+   Use /mcp to authenticate and reconnect Purple in this conversation.
+
+   Other harnesses: consult their native HTTP MCP configuration and OAuth login.
+   Do not guess a format or configure unrelated installed agents.
+
+2. Let the listener approve Allow in their own browser. This selects that
+   browser's studio tab. Never approve on their behalf, collect credentials in
+   chat, or save OAuth tokens in workspace files. Keep the studio tab open.
+   A client without OAuth support can use the private pairing URL from
+   AGENT then OTHER at ${origin}; treat that URL as a secret.
+
+3. Refresh tools using this harness's supported mechanism. If it cannot load a
+   newly configured server in this conversation, report that setup is saved and
+   give its supported reconnect or resume step. Do not claim tools are loaded
+   merely because registration or authorization succeeded.
+
+4. Call get_strudel_reference, then get_session to verify the live tab before
+   reporting that Purple is connected. Compose with set_pattern and play when
+   the listener asks for music. If audio is blocked, ask them to press PLAY once.
+   Follow the server's instructions to keep a requested set evolving.
+   share_pattern publishes publicly; use it only when the listener wants sharing.
+`;
+}
+
 /** The site's llms.txt: everything an agent needs before it has a tab. */
 export function agentGuide(origin: string): string {
   return [
@@ -100,6 +149,8 @@ export function agentGuide(origin: string): string {
       "the tab plays. Nothing runs server-side.",
     "",
     "## Connect",
+    "",
+    `Follow [Connect in the current agent](${origin}/connect/guide) to configure this workspace and verify the live tab.`,
     "",
     pairingGuide(origin),
     "",

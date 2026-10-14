@@ -3,6 +3,7 @@ import {
   AGENT_TOOLS,
   agentGuide,
   agentGuideFull,
+  connectGuide,
   formatAgentToolResult,
   planAgentToolCall,
 } from "./agent-tools";
@@ -27,6 +28,20 @@ describe("agentGuide", () => {
     const full = agentGuideFull("https://soundspurple.com");
     expect(full.startsWith(guide)).toBe(true);
     expect(full).toContain("## Mini-notation");
+  });
+});
+
+describe("connectGuide", () => {
+  it("scopes setup to the current harness and verifies a live tab", () => {
+    const origin = "https://preview.example";
+    const guide = connectGuide(origin);
+    expect(agentGuide(origin)).toContain(`${origin}/connect/guide`);
+    expect(guide).toContain(`url = "${origin}/mcp"`);
+    expect(guide).toContain(`claude mcp add --scope local --transport http purple ${origin}/mcp`);
+    expect(guide).toContain("codex mcp login purple");
+    expect(guide).toContain("Do not launch another agent");
+    expect(guide).toContain("get_session to verify the live tab");
+    expect(guide).toContain("Never approve on their behalf");
   });
 });
 

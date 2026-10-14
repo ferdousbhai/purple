@@ -19,7 +19,6 @@
   --pane-session: rgba(24, 18, 36, 0.45);
   --grid-line: color-mix(in srgb, var(--accent) 3%, transparent);
   --glow-active-sm: 0 0 6px color-mix(in srgb, var(--active) 50%, transparent);
-  --glow-warn-sm: 0 0 6px color-mix(in srgb, var(--warn) 50%, transparent);
   --shadow: rgba(0, 0, 0, 0.55);
   --font-display: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   --font-mono: var(--font-display);
@@ -126,24 +125,6 @@ button:focus-visible, a:focus-visible, select:focus-visible {
 }
 .topbar-actions { display: flex; align-items: center; gap: 10px; }
 
-.eq-bars { display: flex; align-items: flex-end; gap: 2px; height: 14px; }
-.eq-bars span {
-  width: 3px; height: 100%; border-radius: 0; background: var(--active);
-  transform-origin: bottom;
-}
-/* Canned motion only until the real analyser drives the bars (.live). */
-.eq-bars:not(.live) span { animation: bar-bounce 0.6s ease-in-out infinite; }
-.eq-bars:not(.live) span:nth-child(2) { animation-delay: 0.15s; }
-.eq-bars:not(.live) span:nth-child(3) { animation-delay: 0.3s; }
-.eq-bars:not(.live) span:nth-child(4) { animation-delay: 0.1s; }
-.eq-bars:not(.live) span:nth-child(5) { animation-delay: 0.25s; }
-.status-led { width: 8px; height: 8px; border-radius: 1px; background: rgba(255, 255, 255, 0.2); }
-.status-led.active { background: var(--active); box-shadow: var(--glow-active-sm); animation: glow-pulse 2s ease-in-out infinite; }
-.status-led.busy { background: var(--warn); box-shadow: var(--glow-warn-sm); animation: glow-pulse 2s ease-in-out infinite; }
-
-@keyframes glow-pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
-@keyframes bar-bounce { 0%, 100% { transform: scaleY(0.3); } 50% { transform: scaleY(1); } }
-
 .chrome {
   padding: 4px 9px; border-radius: var(--r-sm);
   border: 1px solid var(--border); background: var(--panel);
@@ -237,6 +218,21 @@ button:focus-visible, a:focus-visible, select:focus-visible {
 .title-input:focus { border-bottom-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 .editor-surface { flex: 1; min-height: 0; }
 .editor-surface > div { height: 100%; }
+.audio-visualizer {
+  flex: 0 1 clamp(160px, 30vh, 320px); min-height: 100px;
+  display: flex; flex-direction: column; margin: 0; padding: 16px 20px 12px;
+  border-top: 1px solid var(--border);
+  background: radial-gradient(ellipse at 50% 80%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 75%);
+}
+.audio-visualizer figcaption {
+  display: flex; justify-content: space-between; gap: 12px;
+  color: var(--text-dim); font: 10px var(--font-mono); letter-spacing: .16em;
+}
+.audio-visualizer figcaption > span:first-child { display: flex; align-items: center; gap: 8px; }
+.audio-visualizer i { width: 5px; height: 5px; border-radius: 50%; background: var(--text-dim); }
+.audio-visualizer.active i { background: var(--accent); box-shadow: 0 0 9px var(--accent); }
+.audio-visualizer canvas { display: block; width: 100%; flex: 1; min-height: 0; height: 0; }
+
 .editor-loading {
   height: 100%; margin: 0; padding: 10px 14px; overflow: hidden;
   color: var(--text); font: 14px/1.4 var(--font-mono); white-space: pre-wrap;
@@ -308,6 +304,8 @@ button:focus-visible, a:focus-visible, select:focus-visible {
 
 .agent-card h2 { margin: 0; color: color-mix(in srgb, var(--accent) 70%, transparent); font: 600 11px var(--font-mono); letter-spacing: 0.3em; }
 .agent-card p { margin: 0; color: var(--text-dim); font-size: 13px; line-height: 1.55; }
+.agent-setup > * + * { margin-top: 12px; }
+.agent-setup summary { cursor: pointer; color: var(--text-dim); font: 600 11px var(--font-mono); }
 .agent-card-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 
 .agent-badge { display: inline-flex; align-items: center; gap: 6px; }
@@ -574,6 +572,8 @@ button:focus-visible, a:focus-visible, select:focus-visible {
   /* minmax(0, ...) everywhere: a bare 1fr track minimum is min-content, and
      CodeMirror's unwrapped lines would push the whole page wider. */
   .studio-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+  .audio-visualizer { flex-basis: clamp(120px, 23dvh, 200px); padding: 12px; }
+  .audio-visualizer figcaption { font-size: 9px; letter-spacing: .08em; }
   .editor-pane { border-right: 0; border-bottom: 1px solid var(--border); }
   .transport { min-width: 0; }
   /* The pairing panel sizes to its content so it never crowds out the editor. */

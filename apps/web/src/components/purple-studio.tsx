@@ -27,7 +27,7 @@ import {
 import { PurpleMark } from '@purple/ui/purple-mark'
 import { useAgentLink, type AgentLinkHandlers } from '@purple/ui/use-agent-link'
 import { useWebMcpTools } from '@purple/ui/use-web-mcp'
-import { SpectrumBars } from '@purple/ui/spectrum-bars'
+import { AudioVisualizer } from '@purple/ui/audio-visualizer'
 import { hasUnappliedEditorChanges, isTransportActive } from '@purple/ui/use-playback'
 import type { PatternEditorProps } from '@purple/ui/pattern-editor'
 import type { WebPlayback } from '#/lib/playback'
@@ -324,8 +324,6 @@ export function PurpleStudio({
 
   const audible =
     playback.playbackState === 'playing' || playback.playbackState === 'transitioning'
-  const ledState =
-    audible ? 'active' : playback.playbackState === 'loading' ? 'busy' : 'idle'
 
   useEffect(() => {
     if (focusOnMount) mainRef.current?.focus({ preventScroll: true })
@@ -343,10 +341,6 @@ export function PurpleStudio({
           <span className="brand-name">PURPLE</span>
         </div>
         <div className="topbar-actions">
-          {audible ? (
-            <SpectrumBars className="eq-bars" getAnalyser={playback.getOutputAnalyser} />
-          ) : null}
-          <StatusLed state={ledState} />
           <InternalLink
             className="chrome patterns-link"
             href="/patterns"
@@ -543,12 +537,13 @@ export function PurpleStudio({
               }
               getActiveSourceRanges={playback.getActiveSourceRanges}
               onCodeChange={commitCode}
-              wrapLines={isPhoneWidth}
               // Strudel convention: Mod+Enter always (re-)evaluates, so a live
               // edit mid-playback picks up the new pattern instead of stopping.
               onEvaluate={playCurrentPattern}
             />
           </div>
+
+          <AudioVisualizer active={audible} getAnalyser={playback.getOutputAnalyser} />
 
           {playback.error ? <p className="error" role="alert">{playback.error}</p> : null}
           {patternStorageError ? (
@@ -568,17 +563,6 @@ export function PurpleStudio({
         ) : null}
       </div>
     </main>
-  )
-}
-
-function StatusLed({ state }: { state: 'active' | 'busy' | 'idle' }) {
-  return (
-    <div
-      aria-label={`Status: ${state}`}
-      title={`Status: ${state}`}
-      role="status"
-      className={`status-led ${state}`}
-    />
   )
 }
 

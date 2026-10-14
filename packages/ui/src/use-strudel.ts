@@ -151,7 +151,9 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
           // Tap superdough's master gain so the UI can render the real output
           // spectrum. The analyser is a sink; playback routing is untouched.
           const analyser = ctx.createAnalyser();
-          analyser.fftSize = 64;
+          // Web Audio's default 2048-sample FFT resolves the full-width waveform
+          // for the studio's live visualization.
+          analyser.fftSize = 2048;
           analyser.smoothingTimeConstant = 0.7;
           strudel
             .getSuperdoughAudioController()

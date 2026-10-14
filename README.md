@@ -21,7 +21,11 @@ Turnstile-protected Cloudflare Worker to the maintainer's inbox.
 
 ## Connecting your agent
 
-Register Purple's Streamable HTTP MCP endpoint once:
+Point your agent at `https://soundspurple.com` and ask it to connect Purple in
+this conversation. The site's `/llms.txt` links `/connect/guide`, which walks
+it through workspace registration, browser authorization, and a live tab check.
+
+For manual setup, register Purple's Streamable HTTP MCP endpoint once:
 
 ```bash
 claude mcp add --transport http purple https://soundspurple.com/mcp

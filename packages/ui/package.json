@@ -7,13 +7,13 @@
     "./pattern-editor": "./src/pattern-editor.tsx",
     "./purple-mark": "./src/purple-mark.tsx",
     "./session-store": "./src/session-store.ts",
-    "./spectrum-bars": "./src/spectrum-bars.tsx",
     "./testing": "./src/testing.ts",
     "./use-agent-link": "./src/use-agent-link.ts",
     "./use-clipboard-copy": "./src/use-clipboard-copy.ts",
     "./use-playback": "./src/use-playback.ts",
     "./use-strudel": "./src/use-strudel.ts",
-    "./use-web-mcp": "./src/use-web-mcp.ts"
+    "./use-web-mcp": "./src/use-web-mcp.ts",
+    "./audio-visualizer": "./src/audio-visualizer.tsx"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

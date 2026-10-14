@@ -3,7 +3,7 @@ import {
   handleAgentLinkUpgrade,
   handleMcpRequest,
 } from './agent-relay'
-import { agentGuide, agentGuideFull } from '@purple/core/agent-tools'
+import { agentGuide, agentGuideFull, connectGuide } from '@purple/core/agent-tools'
 import { handleFeedbackRequest } from './feedback'
 import { textResponse } from './http'
 import {
@@ -74,6 +74,9 @@ export default {
         env,
         agentLinkCodeFromPath(url.pathname, LINK_PREFIX),
       )
+    }
+    if (url.pathname === '/connect/guide') {
+      return textResponse(connectGuide(url.origin), 200)
     }
     if (url.pathname === AGENT_GUIDE_PATH) {
       return textResponse(agentGuide(url.origin), 200)

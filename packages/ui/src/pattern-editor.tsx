@@ -65,6 +65,7 @@ const EDITOR_SETUP: Extension = [
     ...historyKeymap,
     ...foldKeymap,
   ]),
+  EditorView.lineWrapping,
   EditorView.contentAttributes.of({ "aria-label": "Pattern code" }),
   EditorView.theme({
     "&": { height: "100%" },
@@ -79,7 +80,6 @@ export interface PatternEditorProps {
   getActiveSourceRanges: () => readonly SourceRange[];
   onEvaluate: () => void;
   className?: string;
-  wrapLines?: boolean;
 }
 
 export function PatternEditor({
@@ -89,7 +89,6 @@ export function PatternEditor({
   getActiveSourceRanges,
   onEvaluate,
   className,
-  wrapLines = false,
 }: PatternEditorProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -98,10 +97,7 @@ export function PatternEditor({
   const evaluateRef = useRef(onEvaluate);
   const getActiveSourceRangesRef = useRef(getActiveSourceRanges);
   const [darkTheme, setDarkTheme] = useState(prefersDarkEditor);
-  const [compartments] = useState(() => ({
-    appearance: new Compartment(),
-  }));
-  const appliedConfigurationRef = useRef({ darkTheme, wrapLines });
+  const [themeCompartment] = useState(() => new Compartment());
   codeRef.current = code;
   onCodeChangeRef.current = onCodeChange;
   evaluateRef.current = onEvaluate;
@@ -118,7 +114,7 @@ export function PatternEditor({
         EDITOR_SETUP,
         javascript(),
         playbackHighlightExtension,
-        compartments.appearance.of(appearanceExtensions(darkTheme, wrapLines)),
+        themeCompartment.of(darkTheme ? purpleEditorDark : purpleEditorLight),
         Prec.high(
           keymap.of([
             {
@@ -149,7 +145,7 @@ export function PatternEditor({
       viewRef.current = null;
       view.destroy();
     };
-  }, [compartments]);
+  }, [themeCompartment]);
 
   useLayoutEffect(() => {
     const view = viewRef.current;
@@ -168,22 +164,12 @@ export function PatternEditor({
   useLayoutEffect(() => {
     const view = viewRef.current;
     if (!view) return;
-    const applied = appliedConfigurationRef.current;
-    if (
-      applied.darkTheme === darkTheme &&
-      applied.wrapLines === wrapLines
-    ) {
-      return;
-    }
     view.dispatch({
-      effects: [
-        compartments.appearance.reconfigure(
-          appearanceExtensions(darkTheme, wrapLines),
-        ),
-      ],
+      effects: themeCompartment.reconfigure(
+        darkTheme ? purpleEditorDark : purpleEditorLight,
+      ),
     });
-    appliedConfigurationRef.current = { darkTheme, wrapLines };
-  }, [compartments, darkTheme, wrapLines]);
+  }, [themeCompartment, darkTheme]);
 
   // CodeMirror owns decoration state outside React. Poll the scheduler beside
   // the editor and dispatch decorations directly, so playback does not trigger
@@ -230,13 +216,6 @@ export function PatternEditor({
       ref={containerRef}
     />
   );
-}
-
-function appearanceExtensions(darkTheme: boolean, wrapLines: boolean): Extension {
-  return [
-    darkTheme ? purpleEditorDark : purpleEditorLight,
-    ...(wrapLines ? [EditorView.lineWrapping] : []),
-  ];
 }
 
 function getRangesKey(ranges: readonly SourceRange[]): string {

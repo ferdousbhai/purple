@@ -25,6 +25,7 @@ export default defineConfig({
         '/patterns',
         '/authorize',
         '/llms.txt',
+        '/connect/guide',
         '/llms-full.txt',
         '/.well-known/*',
         '/oauth/*',

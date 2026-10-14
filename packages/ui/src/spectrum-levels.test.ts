@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { spectrumLevels } from "./spectrum-bars";
+import { spectrumLevels } from "./spectrum-levels";
 
 describe("spectrumLevels", () => {
   it("folds 32 bins into doubling-width bands and reports each band's peak", () => {
