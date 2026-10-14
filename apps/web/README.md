@@ -25,6 +25,6 @@ From the repository root:
 
 ```bash
 pnpm run dev
-pnpm run check
-pnpm run deploy
+pnpm run check          # also builds
+pnpm run deploy         # migrates remote D1, then deploys that build
 ```
