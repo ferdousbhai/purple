@@ -2,11 +2,13 @@
  * The /authorize page: an MCP client sent the person's browser here. This
  * browser already holds the pairing code, so one click pairs the client
  * with it. The Worker verifies the client and mints the code; the page
- * only shows who is asking and carries the decision.
+ * only shows who is asking and carries the decision. The agent can only
+ * reach an open studio tab, so Allow opens one when none answers.
  */
 import { jsonText, parseJsonMembers } from '@purple/core/json'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { loadAgentLinkSettings } from '#/lib/agent-link-storage'
+import { watchForStudio, type StudioWatch } from '#/lib/studio-presence'
 
 const DEFAULT_CLIENT_NAME = 'An MCP client'
 
@@ -14,6 +16,8 @@ export function AgentAuthorize(props: {
   search: string
   /** Where the browser goes after the decision; the client's own callback. */
   leave?: (url: string) => void
+  /** Opens the studio beside this page when no studio tab answered. */
+  openStudio?: () => void
 }) {
   const params = new URLSearchParams(props.search)
   const clientId = params.get('client_id')
@@ -21,6 +25,14 @@ export function AgentAuthorize(props: {
   const [pending, setPending] = useState<'allow' | 'deny' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const leave = props.leave ?? ((url: string) => window.location.assign(url))
+  const openStudio =
+    props.openStudio ?? (() => void window.open('/', '_blank', 'noopener'))
+  const studio = useRef<StudioWatch | null>(null)
+
+  useEffect(() => {
+    studio.current = watchForStudio()
+    return () => studio.current?.close()
+  }, [])
 
   if (!clientId || !redirectUri) {
     return (
@@ -34,6 +46,8 @@ export function AgentAuthorize(props: {
   const decide = async (decision: 'allow' | 'deny') => {
     setPending(decision)
     setError(null)
+    // Open now, inside the click, so the popup blocker lets it through.
+    if (decision === 'allow' && !studio.current?.found) openStudio()
     try {
       const response = await fetch('/authorize', {
         method: 'POST',
@@ -70,8 +84,9 @@ export function AgentAuthorize(props: {
         this browser.
       </p>
       <p className="muted">
-        Allow pairs it with this browser&rsquo;s studio tab. It can write and
-        play patterns here until you remove it from your agent.
+        Allow pairs it with this browser&rsquo;s studio tab, opening one if
+        none is open. It can write and play patterns here until you remove it
+        from your agent.
       </p>
       {error ? <p className="error" role="alert">{error}</p> : null}
       <div className="authorize-actions">

@@ -19,6 +19,7 @@ import {
   usePatterns,
 } from '#/lib/patterns'
 import { syncSharedPatternUrl } from '#/lib/public-patterns'
+import { answerStudioPings } from '#/lib/studio-presence'
 import {
   agentLinkSocketUrl,
   loadAgentLinkSettings,
@@ -189,6 +190,8 @@ export function PurpleStudio({
     handlers: agentHandlers,
   })
   useWebMcpTools(agentHandlers)
+  // Lets an Allow page in this browser see that a studio tab is already open.
+  useEffect(() => answerStudioPings(), [])
 
   useEffect(() => {
     // Setup is done the moment an agent answers, so hand the room back to the
