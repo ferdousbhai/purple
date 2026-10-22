@@ -1,3 +1,4 @@
+import { secureDocument } from './security-headers'
 import {
   agentLinkCodeFromPath,
   handleAgentLinkUpgrade,
@@ -90,7 +91,7 @@ export default {
     if (url.pathname.startsWith('/api/')) {
       return handlePatternRequest(request, env)
     }
-    return handleAssetRequest(request, env.ASSETS)
+    return secureDocument(await handleAssetRequest(request, env.ASSETS))
   },
 } satisfies ExportedHandler<Env>
 

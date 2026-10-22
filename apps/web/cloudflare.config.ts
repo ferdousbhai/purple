@@ -10,11 +10,14 @@ export default defineConfig({
     compatibilityDate: '2026-08-18',
     compatibilityFlags: ['nodejs_compat'],
     entrypoint: './worker/index.ts',
-    previewUrls: true,
+    previewUrls: false,
+    workersDev: false,
     observability: {
-      enabled: true,
-      logs: { enabled: true, headSamplingRate: 1 },
-      traces: { enabled: true, headSamplingRate: 0.1 },
+      redactQueryString: true,
+      // Pairing credentials occur in URL paths, including metadata attached to error logs.
+      enabled: false,
+      logs: { enabled: false, invocationLogs: false },
+      traces: { enabled: false },
     },
     assets: {
       notFoundHandling: '404-page',
