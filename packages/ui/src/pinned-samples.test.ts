@@ -31,6 +31,28 @@ describe("loadPinnedSamples", () => {
     expect(aliasBank).toHaveBeenCalledWith({ Machine: "Friendly" });
   });
 
+  it("reaches raw GitHub only under the repositories the hosted CSP allows", async () => {
+    // Keep this list in step with connect-src and media-src in
+    // apps/web/public/_headers and apps/web/worker/security-headers.ts.
+    const allowed = /^https:\/\/raw\.githubusercontent\.com\/(tidalcycles\/Dirt-Samples|felixroos\/dough-samples|ritchse\/tidal-drum-machines|todepond\/samples)\/[0-9a-f]{40}\//;
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(json({ bd: ["bd.wav"] }))
+      .mockResolvedValueOnce(json({ Machine_bd: ["bd.wav"] }))
+      .mockResolvedValueOnce(json({ piano: { C3: "C3.mp3" } }))
+      .mockResolvedValueOnce(json({ Machine: "Friendly" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const samples = vi.fn().mockResolvedValue(undefined);
+
+    await loadPinnedSamples({ samples, aliasBank: vi.fn().mockResolvedValue(undefined) });
+
+    const urls = [
+      ...fetchMock.mock.calls.map(([url]) => String(url)),
+      ...samples.mock.calls.map(([, base]) => String(base)),
+    ];
+    expect(urls).toHaveLength(7);
+    for (const url of urls) expect(url).toMatch(allowed);
+  });
+
   it.each([
     { bd: ["https://attacker.invalid/audio.wav"] },
     { bd: ["../audio.wav"] },
