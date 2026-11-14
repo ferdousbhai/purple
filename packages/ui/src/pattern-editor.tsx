@@ -190,9 +190,20 @@ export function PatternEditor({
       lastKey = key;
       updatePlaybackHighlights(view, ranges);
     };
-    update();
-    const intervalId = window.setInterval(update, 50);
-    return () => window.clearInterval(intervalId);
+    let intervalId: number | undefined;
+    const onVisibilityChange = () => {
+      window.clearInterval(intervalId);
+      intervalId = undefined;
+      if (document.hidden) return;
+      update();
+      intervalId = window.setInterval(update, 50);
+    };
+    onVisibilityChange();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [playbackHighlightActive]);
 
   useEffect(() => {

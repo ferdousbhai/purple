@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { spectrumLevels } from "./spectrum-levels";
+import { createSpectrumSampler } from "./spectrum-levels";
 
 interface AudioVisualizerProps {
   active: boolean;
@@ -32,6 +32,9 @@ export function AudioVisualizer({ active, getAnalyser }: AudioVisualizerProps) {
     let analyser: AnalyserNode | null = null;
     let bins = new Uint8Array(0);
     let samples = new Uint8Array(0);
+    let sampleSpectrum = createSpectrumSampler(0, bands);
+    let sampledBands = bands;
+    let sampleBinCount = 0;
 
     const draw = () => {
       context.clearRect(0, 0, width, height);
@@ -45,6 +48,15 @@ export function AudioVisualizer({ active, getAnalyser }: AudioVisualizerProps) {
         analyser = current;
         bins = new Uint8Array(analyser?.frequencyBinCount ?? 0);
         samples = new Uint8Array(analyser?.fftSize ?? 0);
+      }
+      if (analyser && bins.length !== analyser.frequencyBinCount) {
+        bins = new Uint8Array(analyser.frequencyBinCount);
+        samples = new Uint8Array(analyser.fftSize);
+      }
+      if (sampledBands !== bands || sampleBinCount !== bins.length) {
+        sampledBands = bands;
+        sampleBinCount = bins.length;
+        sampleSpectrum = createSpectrumSampler(bins.length, bands);
       }
       if (analyser) {
         analyser.getByteFrequencyData(bins);
@@ -60,7 +72,7 @@ export function AudioVisualizer({ active, getAnalyser }: AudioVisualizerProps) {
         context.stroke();
       }
 
-      const levels = analyser ? spectrumLevels(bins, bands) : [];
+      const levels = sampleSpectrum(bins);
       context.fillStyle = gradient;
       for (let index = 0; index < bands; index++) {
         const level = levels[index] ?? 0;
