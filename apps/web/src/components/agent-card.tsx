@@ -43,7 +43,7 @@ export function AgentCard(props: {
         {props.linked ? 'AGENT LINKED' : 'WAITING FOR YOUR AGENT'}
       </p>
       <p>{props.mobile
-        ? 'On your phone, play patterns, edit music, and save to your library. Purple does not run Claude Code or Codex here.'
+        ? 'On your phone, play patterns, edit music, and save to your library.'
         : 'Paste this into your current conversation with an agent, such as Codex or Claude Code:'}</p>
       {!props.mobile && <>
         <pre className="agent-command agent-prompt">{AGENT_PROMPT}</pre>
@@ -54,7 +54,7 @@ export function AgentCard(props: {
         >
           <span aria-live="polite">{promptClipboard.copied ? 'PROMPT COPIED' : 'COPY PROMPT'}</span>
         </button>
-        <p>Your agent follows the guide to connect. Approve the connection if asked, then keep this tab open to hear the music.</p>
+        <p>Approve the connection if asked, then keep this tab open to hear the music.</p>
       </>}
       {props.mobile && (
         <p>Run your agent on another device, such as a laptop, and add this tab’s private pairing address to any MCP client that accepts a server URL. Keep this tab in front while it plays: a phone pauses background tabs, so an agent app on this same phone cannot reach it.</p>
@@ -92,7 +92,7 @@ export function AgentCard(props: {
         {!props.mobile && <p>
           {client.needsPairingCode
             ? 'This is this browser\u2019s private pairing address for any Streamable HTTP MCP client.'
-            : 'It opens this browser once to ask for approval. Then ask it for music; this tab plays it.'}
+            : 'It opens this browser once to ask for approval.'}
         </p>}
       </details>
       <p>If sound is blocked, press PLAY once.</p>

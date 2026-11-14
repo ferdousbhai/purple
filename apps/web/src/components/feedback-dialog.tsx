@@ -85,7 +85,7 @@ export function FeedbackDialog({
         <form className="feedback-form" onSubmit={submit}>
           <p id="feedback-privacy" className="feedback-privacy">
             Your feedback goes to Ferdous, the creator of Purple.
-            Only this form is sent to Purple. Do not include your pairing link,
+            Do not include your pairing link,
             pattern code, or other private information.
           </p>
 
