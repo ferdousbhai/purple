@@ -138,12 +138,42 @@ describe("session pattern storage", () => {
     expect(store.load()?.customTitle).toBe("t".repeat(60));
   });
 
+  it("flushes the newest pending edit immediately so a fresh store restores it", () => {
+    const { store } = storeWithSavedPattern();
+    const newest = { ...pattern, code: 's("hh*8")' };
+    store.save(newest);
+    expect(createPatternStore().load()).toEqual(pattern);
+    store.flush();
+    expect(createPatternStore().load()).toEqual(newest);
+    flushPatternSave();
+    expect(createPatternStore().load()).toEqual(newest);
+  });
+
+  it("keeps the last valid pending edit when oversized input arrives before saving", () => {
+    const { store } = storeWithSavedPattern();
+    const newest = { ...pattern, code: 's("hh*8")' };
+    store.save(newest);
+    store.save({ ...newest, code: "x".repeat(30_001) });
+    expect(store.load()).toEqual(newest);
+    flushPatternSave();
+    expect(createPatternStore().load()).toEqual(newest);
+  });
+
+  it("flushes an emptied editor without resurrecting the old saved pattern", () => {
+    const { store, values } = storeWithSavedPattern();
+    store.save({ ...pattern, code: "" });
+    store.flush();
+    expect(values.size).toBe(0);
+    expect(createPatternStore().load()).toBeNull();
+  });
+
   it("stays inert when storage is blocked", () => {
     vi.useFakeTimers();
     stubBlockedStorage();
     const store = createPatternStore();
 
     store.save(pattern);
+    expect(() => store.flush()).not.toThrow();
     expect(() => flushPatternSave()).not.toThrow();
     expect(store.load()).toBeNull();
   });

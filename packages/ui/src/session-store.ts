@@ -84,12 +84,33 @@ const PATTERN_SAVE_DEBOUNCE_MS = 300;
 interface PatternStore {
   load(): SessionPattern | null;
   save(pattern: SessionPattern): void;
+  flush(): void;
 }
 
 export function createPatternStore(key = "purple.session-pattern.v1"): PatternStore {
   let pendingSave: ReturnType<typeof setTimeout> | undefined;
   let pendingPattern: { value: SessionPattern | null } | undefined;
+  const flush = () => {
+    clearTimeout(pendingSave);
+    const queued = pendingPattern;
+    pendingPattern = undefined;
+    pendingSave = undefined;
+    if (!queued) return;
+    try {
+      // An emptied editor forgets the stored pattern rather than
+      // resurrecting the previous one on the next launch; an out-of-bounds
+      // one keeps the last good copy.
+      if (!queued.value) {
+        window.localStorage.removeItem(key);
+        return;
+      }
+      window.localStorage.setItem(key, JSON.stringify(queued.value));
+    } catch {
+      // Storage unavailable (private mode); the session lives only in this tab.
+    }
+  };
   return {
+    flush,
     load() {
       if (pendingPattern) {
         return pendingPattern.value ? { ...pendingPattern.value } : null;
@@ -103,33 +124,12 @@ export function createPatternStore(key = "purple.session-pattern.v1"): PatternSt
       }
     },
     save(pattern) {
-      clearTimeout(pendingSave);
       const empty = !pattern.code.trim();
       const valid = empty ? null : normalizeSessionPattern(pattern);
-      if (!empty && !valid) {
-        pendingPattern = undefined;
-        pendingSave = undefined;
-        return;
-      }
+      if (!empty && !valid) return;
+      clearTimeout(pendingSave);
       pendingPattern = { value: valid };
-      pendingSave = setTimeout(() => {
-        const queued = pendingPattern;
-        pendingPattern = undefined;
-        pendingSave = undefined;
-        if (!queued) return;
-        try {
-          // An emptied editor forgets the stored pattern rather than
-          // resurrecting the previous one on the next launch; an out-of-bounds
-          // one keeps the last good copy.
-          if (!queued.value) {
-            window.localStorage.removeItem(key);
-            return;
-          }
-          window.localStorage.setItem(key, JSON.stringify(queued.value));
-        } catch {
-          // Storage unavailable (private mode); the session lives only in this tab.
-        }
-      }, PATTERN_SAVE_DEBOUNCE_MS);
+      pendingSave = setTimeout(flush, PATTERN_SAVE_DEBOUNCE_MS);
     },
   };
 }

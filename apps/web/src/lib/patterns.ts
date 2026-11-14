@@ -206,3 +206,4 @@ const sessionPatternStore = createPatternStore()
 
 export const loadSessionPattern = sessionPatternStore.load
 export const saveSessionPattern = sessionPatternStore.save
+export const flushSessionPattern = sessionPatternStore.flush

@@ -11,6 +11,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { InternalLink, type NavigateInApp } from './internal-link'
 import {
   loadSessionPattern,
+  flushSessionPattern,
   removePattern,
   saveSessionPattern,
   sharedLibraryId,
@@ -132,6 +133,19 @@ export function PurpleStudio({
       originShareId: originShareId ?? undefined,
     })
   }, [code, customTitle, shareId, originShareId])
+
+  useEffect(() => {
+    const flushWhenHidden = () => {
+      if (document.hidden) flushSessionPattern()
+    }
+    document.addEventListener('visibilitychange', flushWhenHidden)
+    window.addEventListener('pagehide', flushSessionPattern)
+    return () => {
+      document.removeEventListener('visibilitychange', flushWhenHidden)
+      window.removeEventListener('pagehide', flushSessionPattern)
+      flushSessionPattern()
+    }
+  }, [])
 
   const title = customTitle ?? 'Untitled Pattern'
   const patternName = title.trim() || 'Untitled Pattern'
