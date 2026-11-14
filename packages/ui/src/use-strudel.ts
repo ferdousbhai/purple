@@ -46,15 +46,46 @@ export interface StrudelAudioOptions {
   ensureRunningContext?: (context: AudioContext) => Promise<void>;
 }
 
+/** The part of an AudioContext the activation guard touches. */
+type ResumableContext = Pick<AudioContext, "state" | "resume">;
+
+/** A resume inside a user gesture settles within milliseconds; this only has
+ * to outlast a slow output device waking up. */
+const RESUME_TIMEOUT_MS = 3_000;
+
+/**
+ * Resume `context`, giving up after `timeoutMs`. Without user activation
+ * (an agent's play request reaching a tab nobody has clicked) Chromium leaves
+ * the resume() promise pending until the next gesture instead of rejecting,
+ * which would hold playback in "loading" and the agent's call open forever.
+ * The abandoned resume still completes on that later gesture.
+ */
+async function resumeWithin(
+  context: ResumableContext,
+  timeoutMs: number,
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, timeoutMs);
+  });
+  try {
+    await Promise.race([context.resume(), deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** The default activation guard: resume and verify. Exported so hosts can
  * compose it with their own gesture-time work (e.g. the web app's iOS
  * media-channel unlock). */
-export async function defaultEnsureRunningContext(context: AudioContext): Promise<void> {
+export async function defaultEnsureRunningContext(
+  context: ResumableContext,
+): Promise<void> {
   const state = String(context.state);
   if (state === "closed") {
     throw new Error("Audio output is closed. Reload Purple and try again.");
   }
-  if (state !== "running") await context.resume();
+  if (state !== "running") await resumeWithin(context, RESUME_TIMEOUT_MS);
   const resumedState = String(context.state);
   if (resumedState !== "running") {
     throw new Error(
@@ -75,7 +106,9 @@ export function useStrudel(options: StrudelAudioOptions = {}) {
   const outputAnalyserRef = useRef<AnalyserNode | null>(null);
   // A ref keeps activate() stable even when the caller passes a fresh options
   // object each render.
-  const ensureRunningRef = useRef(defaultEnsureRunningContext);
+  const ensureRunningRef = useRef<(context: AudioContext) => Promise<void>>(
+    defaultEnsureRunningContext,
+  );
   ensureRunningRef.current =
     options.ensureRunningContext ?? defaultEnsureRunningContext;
 
