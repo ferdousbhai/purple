@@ -39,7 +39,7 @@ function purpleEditorTheme(palette: SyntaxPalette, dark: boolean): Extension {
         { tag: tags.string, color: palette.string },
         { tag: [tags.number, tags.bool, tags.null], color: palette.number },
         { tag: [tags.keyword, tags.operator], color: palette.keyword },
-        { tag: tags.comment, color: palette.comment, fontStyle: "italic" },
+        { tag: tags.comment, color: palette.comment },
         {
           tag: [tags.punctuation, tags.bracket, tags.propertyName],
           color: palette.punctuation,

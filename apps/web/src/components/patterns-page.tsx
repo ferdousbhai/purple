@@ -28,6 +28,9 @@ const PATTERN_DATE_FORMAT = new Intl.DateTimeFormat(undefined, {
   month: 'short',
 })
 
+/** Placeholder cards shown in the grid while the first page loads. */
+const SKELETON_CARDS = ['a', 'b', 'c', 'd', 'e', 'f']
+
 export interface PatternsPageProps {
   focusOnMount?: boolean
   navigate?: NavigateInApp
@@ -289,7 +292,18 @@ export function PatternsPage({ focusOnMount, navigate, playback }: PatternsPageP
         ) : null}
 
         {loading ? (
-          <p className="patterns-status" role="status">LOADING PATTERNS…</p>
+          <section className="pattern-card-grid" aria-busy="true">
+            <p className="sr-only" role="status">LOADING PATTERNS…</p>
+            {SKELETON_CARDS.map((key) => (
+              <div className="pattern-card skeleton" key={key} aria-hidden="true">
+                <div className="pattern-card-preview">
+                  <span className="skeleton-line title" />
+                  <span className="skeleton-line code" />
+                  <span className="skeleton-line short" />
+                </div>
+              </div>
+            ))}
+          </section>
         ) : loadError ? null : patterns.length === 0 ? (
           <section className="patterns-empty">
             <p>No public patterns yet.</p>
