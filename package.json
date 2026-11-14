@@ -13,7 +13,6 @@
     "deploy": "pnpm --filter @purple/web run deploy",
     "web:check": "pnpm --filter @purple/web run check",
     "test": "vitest run",
-    "test:browser": "pnpm --filter @purple/web run test:browser",
     "typecheck": "pnpm -r --if-present run typecheck && tsc --noEmit -p tools/oxlint/tsconfig.json",
     "check": "pnpm run lint && pnpm run test && pnpm run typecheck && pnpm run build",
     "workers-builds:build": "pnpm audit --prod --audit-level=high && pnpm run check",

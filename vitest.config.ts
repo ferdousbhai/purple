@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { configDefaults, defineConfig } from "vitest/config";
+import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   logLevel: "error",
@@ -14,7 +14,6 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    exclude: [...configDefaults.exclude, "**/*.browser.test.tsx"],
     server: {
       deps: {
         // Externalized deps resolve @kabelsalat/web natively and bypass the

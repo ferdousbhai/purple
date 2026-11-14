@@ -12,8 +12,7 @@ pnpm run dev
 ```
 
 Run `pnpm run check` before opening a pull request. It covers linting, unit
-tests, TypeScript, and the production browser build. Run `pnpm run test:browser`
-when changing playback, persistence, the agent link, or other user flows.
+tests, TypeScript, and the production browser build.
 
 ## Layout
 

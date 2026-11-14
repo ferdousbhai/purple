@@ -3,8 +3,7 @@
     "src/**/*.ts",
     "src/**/*.tsx",
     "vite/**/*.ts",
-    "vite.config.ts",
-    "vitest.browser.config.ts"
+    "vite.config.ts"
   ],
   "compilerOptions": {
     "target": "ES2022",

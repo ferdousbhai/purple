@@ -13,7 +13,6 @@
     "db:migrate": "cf d1 migrations apply 6e9cbe0d-7161-462b-91dc-8cab77fd9047 --dir migrations",
     "deploy": "pnpm run db:migrate && cf deploy --prebuilt",
     "test": "vitest run",
-    "test:browser": "vitest run --config vitest.browser.config.ts",
     "typecheck": "cf workers types && tsc --noEmit && tsc --noEmit -p worker/tsconfig.json",
     "check": "pnpm run test && pnpm run typecheck && pnpm run build"
   },
@@ -26,14 +25,11 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "2.0.0-beta.sha-91c870c02",
-    "@testing-library/react": "16.3.2",
     "@types/node": "^22.10.2",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^6.0.1",
-    "@vitest/browser-playwright": "4.1.11",
     "cf": "1.0.0-beta.14",
-    "playwright": "1.62.1",
     "typescript": "^6.0.2",
     "vite": "^8.0.16",
     "vitest": "^4.1.11"
